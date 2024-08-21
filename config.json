@@ -51,13 +51,13 @@
     "batch_size": 100
   },
   "ner": {
-    "input_path": "E:/ner_disease/ner_disease/",
+    "input_path": "/proj/berzelius-2021-21/users/x_caoll/ner_disease/ner_disease/",
     "output_path": "results/ner/",
     "output_file_prefix": "ner_phenomena",
     "model_type": "spacy_phrasematcher",
     "model_folder": "aitslab",
     "model_name": "en_core_web_sm",
-    "vocab_path": "C:/Users/callebalik/Code/EnviDis/data/dictionary/terms_and_synonyms.txt",
+    "vocab_path": "",
     "store_tokens":"no",
     "labels": "",
     "clear_old_results": true,
