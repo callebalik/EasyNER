@@ -57,11 +57,11 @@
     "model_type": "spacy_phrasematcher",
     "model_folder": "aitslab",
     "model_name": "en_core_web_sm",
-    "vocab_path": "",
+    "vocab_path": "/home/x_caoll/EnviDis/vocab/envidis_vocab.txt",
     "store_tokens":"no",
     "labels": "",
     "clear_old_results": true,
-    "article_limit": [-1,1],
+    "article_limit": [-1,10],
     "entity_type": "phenoma",
     "multiprocessing":true
   },
