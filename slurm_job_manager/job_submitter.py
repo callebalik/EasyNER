@@ -8,8 +8,11 @@ def submit_job(script_filename):
     Submits a SLURM job using sbatch and returns the job ID.
     """
     # Submit the job script using sbatch and capture the output
-    result = subprocess.run(['sbatch', script_filename], stdout=subprocess.PIPE, text=True)
-    
+
+    # Universal newlines to handle older python versions 
+    result = subprocess.run(['sbatch', script_filename], stdout=subprocess.PIPE, universal_newlines=True)
+
+
     # Extract the job ID from the output
     output = result.stdout.strip()
     job_id = output.split()[-1]  # The job ID is usually the last part of the sbatch output
