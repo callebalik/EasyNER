@@ -17,6 +17,9 @@ fi
 #    echo "SLURM job detected, skipping conda.sh sourcing"
 #fi
 
+# Change to the working directory
+cd /home/x_caoll/EasyNer/
+
 # Check if the conda environment already exists
 if conda info --envs | grep -q "^easyner_env"; then
     echo "Conda environment 'easyner_env' already exists"
