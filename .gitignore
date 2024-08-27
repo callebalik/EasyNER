@@ -2,3 +2,4 @@ data/tmp/*
 *pycache*
 *results*
 dev_easyner_env/**
+batcher/batches.json
