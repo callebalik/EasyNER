@@ -1,3 +1,4 @@
 data/tmp/*
 *pycache*
 *results*
+dev_easyner_env/**
