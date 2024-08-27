@@ -38,7 +38,7 @@ export ARTICLE_LIMIT="{start}:{end}"
 {setup_script_content}
 
 # Run the main Python script
-python main.py --start {start} --end {end}
+python main.py
 """
 
     script_filename = f"{job_name}.slurm"
