@@ -287,6 +287,23 @@ if __name__ == "__main__":
         tkff = open("timekeep.txt", "w", encoding="utf8")
         tkff.write(f"start_time at: {start_main}\n")
 
+
+    # This allows each slurm job to set an environment variable that replaces the config value which allows for dynamically generating batch jobs without problems of the config changing inbetween runs
+    # Get the ARTICLE_LIMIT environment variable
+    article_limit = os.getenv("ARTICLE_LIMIT")
+
+    if article_limit:
+        try:
+            # Parse the ARTICLE_LIMIT (assuming it's in the format "start:end")
+            print(f'Env var set for article_limit -> used instead of config.json value = {config["ner"]["article_limit"]}')
+            start, end = map(int, article_limit.split(':'))
+            config["ner"]["article_limit"] = [start, end]  # Replace the JSON value with the environment variable
+            print(f'article_limit set to {config["ner"]["article_limit"]}')
+        except ValueError:
+            print(f"Invalid ARTICLE_LIMIT format: {article_limit}. Expected format: 'start:end'.")
+    else:
+        print("ARTICLE_LIMIT environment variable is not set.")
+
     os.makedirs("data", exist_ok=True)
 
     ignore = config["ignore"]
