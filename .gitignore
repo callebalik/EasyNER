@@ -3,3 +3,5 @@ data/tmp/*
 *results*
 dev_easyner_env/**
 batcher/batches.json
+batcher/job_metadata.json
+batcher/**slurm*
