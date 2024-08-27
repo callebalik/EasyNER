@@ -5,3 +5,4 @@ dev_easyner_env/**
 slurm_job_manager/batches.json
 slurm_job_manager/job_metadata.json
 slurm_job_manager/**slurm*
+slurm_job_manager/job_status*
