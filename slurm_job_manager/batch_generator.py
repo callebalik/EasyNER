@@ -26,17 +26,28 @@ def save_batches_to_file(batches, output_file):
     :param batches: List of batch intervals
     :param output_file: File to save the batch intervals
     """
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         json.dump(batches, f, indent=2)
     print(f"{len(batches)} Batches saved to {output_file}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate batch intervals for articles")
-    parser.add_argument('--total-articles', type=int, required=True, help="Total number of articles")
-    parser.add_argument('--batch-size', type=int, required=True, help="Number of articles per batch")
-    parser.add_argument('--output-file', type=str, help="File to save the batch intervals (JSON format)", default="batches.json")
-    
+    parser = argparse.ArgumentParser(
+        description="Generate batch intervals for articles"
+    )
+    parser.add_argument(
+        "--total-articles", type=int, required=True, help="Total number of articles"
+    )
+    parser.add_argument(
+        "--batch-size", type=int, required=True, help="Number of articles per batch"
+    )
+    parser.add_argument(
+        "--output-file",
+        type=str,
+        help="File to save the batch intervals (JSON format)",
+        default="batches.json",
+    )
+
     args = parser.parse_args()
 
     # Generate batch intervals
