@@ -64,7 +64,7 @@
     "clear_old_results": true,
     "article_limit": [-1,0],
     "entity_type": "phenoma",
-    "multiprocessing":true
+      "multiprocesgsing":false
   },
   "analysis": {
     "input_path": "results/ner/",
