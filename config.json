@@ -52,13 +52,13 @@
     "batch_size": 1000
   },
   "ner": {
-    "input_path": "E:/ner_disease/ner_disease/",
-    "output_path": "results/ner/",
+      "input_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_disease/",
+      "output_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_phenomena/",
     "output_file_prefix": "ner_phenomena",
     "model_type": "spacy_phrasematcher",
     "model_folder": "aitslab",
     "model_name": "en_core_web_sm",
-    "vocab_path": "C:/Users/callebalik/Code/EnviDis/vocab/envidis_vocab.txt",
+      "vocab_path": "/home/x_caoll/EnviDis/vocab/envidis_vocab.txt",
     "store_tokens":"no",
     "labels": "",
     "clear_old_results": true,
