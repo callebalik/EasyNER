@@ -8,7 +8,7 @@
     "pubmed_bulk_loader":true,
     "splitter": true,
     "ner": false,
-    "analysis": false,
+      "analysis": true,
     "merger": true,
     "metrics":true,
     "nel":true,
