@@ -116,24 +116,31 @@ def get_self_pairs(sorted_files, entity):
     return d
 
 
-def create_df_from_pairs(d):
+def create_df_from_pairs(pairs_dict):
     """
     Create a pandas DataFrame from the entity pairs dictionary.
 
     Parameters:
-        d (dict): A nested dictionary of entity pairs.
+        pairs_dict (dict): A dictionary where keys are tuples (entity1, entity2) and values are dicts with frequency, PMIDs, and sentences.
 
     Returns:
         pd.DataFrame: DataFrame containing entity pairs, frequency, PMIDs, and sentences.
     """
-    l = []
+    data = []
 
-    for (e1, e2), val in tqdm(d.items(), desc="Creating DataFrame"):
-        l.append([e1, e2, val["freq"], ",".join(val["pmid"]), "; ".join(val["sent"])])
+    for (e1, e2), val in tqdm(pairs_dict.items(), desc="Creating DataFrame"):
+        # Append data for each entity pair
+        data.append([
+            e1,  # First entity
+            e2,  # Second entity
+            val["freq"],  # Frequency
+            ",".join(val["pmid"]),  # PMIDs as a comma-separated string
+            "; ".join(val["sent"])  # Sentences as a semicolon-separated string
+        ])
 
+    # Create DataFrame from the data list
     return pd.DataFrame(
-        l, columns=["entity_1", "entity_2", "frequency", "pmids", "sentences"]
-    ).sort_values("frequency", ascending=False)
+        data, columns=["entity_1", "
 
 
 def save_pairs_to_csv(df, output_file):
