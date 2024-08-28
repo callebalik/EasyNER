@@ -42,9 +42,18 @@ def get_pairs(sorted_files, entity1, entity2):
         entity2 (str): The second entity type (e.g., "chemical") to find co-occurrences for.
 
     Returns:
-        dict: A nested dictionary where entity pairs are stored along with frequency, PMID, and sentences.
+        dict: A dictionary where the keys are (entity1, entity2) tuples, and values are dicts containing frequency, PMID set, and sentences set.
+
+        {
+            (entity1, entity2): {
+                "freq": ...,
+                "pmid": ...,
+                "sent": ...
+            }
+        }
+
     """
-    d = {}
+    pairs_dict = {}
 
     for input_file in tqdm(sorted_files, desc="Processing files"):
         batch = load_json(input_file=input_file)
@@ -53,26 +62,29 @@ def get_pairs(sorted_files, entity1, entity2):
         for idx in batch:
             article = batch[idx]
 
-            for s_idx, sent in enumerate(article["sentences"]):
+            for sent in article["sentences"]:
+                # Ensure there are at least two entities in the sentence
                 if len(sent["entities"]) >= 2:
+                    # Check if both entity1 and entity2 exist in the sentence entities
                     if entity1 in sent["entities"] and entity2 in sent["entities"]:
                         for e1 in sent["entities"][entity1]:
-                            if e1 not in d:
-                                d[e1] = {}
-
                             for e2 in sent["entities"][entity2]:
-                                if e2 not in d[e1]:
-                                    d[e1][e2] = {
+                                # Create a tuple (e1, e2) as the dictionary key
+                                entity_pair = (e1, e2)
+
+                                if entity_pair not in pairs_dict:
+                                    pairs_dict[entity_pair] = {
                                         "freq": 0,
                                         "pmid": set(),
                                         "sent": set(),
                                     }
 
-                                d[e1][e2]["freq"] += 1
-                                d[e1][e2]["pmid"].add(idx)
-                                d[e1][e2]["sent"].add(sent["text"])
+                                # Update frequency, PMIDs, and sentences
+                                pairs_dict[entity_pair]["freq"] += 1
+                                pairs_dict[entity_pair]["pmid"].add(idx)
+                                pairs_dict[entity_pair]["sent"].add(sent["text"])
 
-    return d
+    return pairs_dict
 
 
 def get_self_pairs(sorted_files, entity):
@@ -130,17 +142,20 @@ def create_df_from_pairs(pairs_dict):
 
     for (e1, e2), val in tqdm(pairs_dict.items(), desc="Creating DataFrame"):
         # Append data for each entity pair
-        data.append([
-            e1,  # First entity
-            e2,  # Second entity
-            val["freq"],  # Frequency
-            ",".join(val["pmid"]),  # PMIDs as a comma-separated string
-            "; ".join(val["sent"])  # Sentences as a semicolon-separated string
-        ])
+        data.append(
+            [
+                e1,  # First entity
+                e2,  # Second entity
+                val["freq"],  # Frequency
+                ",".join(val["pmid"]),  # PMIDs as a comma-separated string
+                "; ".join(val["sent"]),  # Sentences as a semicolon-separated string
+            ]
+        )
 
     # Create DataFrame from the data list
     return pd.DataFrame(
-        data, columns=["entity_1", "
+        data, columns=["entity_1", "entity_2", "frequency", "pmids", "sentences"]
+    ).sort_values("frequency", ascending=False)
 
 
 def save_pairs_to_csv(df, output_file):
