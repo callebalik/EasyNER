@@ -6,14 +6,15 @@ import os
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Define the paths relative to the script's location
-metadata_file = os.path.join(script_dir, "job_metadata.json")
-err_dir = script_dir
-error_log_dir = os.path.join(script_dir, "error_logs")
+metadata_file = os.path.join(script_dir, "job_batch_1/job_metadata.json")
+err_dir = os.path.join(script_dir, "job_batch_1")
+error_log_dir = os.path.join(script_dir, "job_batch_1/error_logs")
 batch_completion_log_dir = os.path.join(script_dir, "batch_completion_logs")
-
+batch_completion_log_file = os.path.join(script_dir, "batch_completion.log")
+print(error_log_dir)
 
 # Run the error logging process
 run_error_logging(metadata_file, err_dir, error_log_dir)
 
 # Run the batch completion logging process
-run_completion_logging(metadata_file, err_dir, batch_completion_log_dir)
+# run_completion_logging(metadata_file, err_dir, batch_completion_log_file)

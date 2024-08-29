@@ -30,7 +30,7 @@ def generate_slurm_script(start, end, batch_number, setup_script="setup_env.sh")
 #SBATCH --job-name={job_name}
 #SBATCH --output={job_name}.out
 #SBATCH --error={job_name}.err
-#SBATCH --time=07:00:00
+#SBATCH --time=20:00:00
 
 # Set the ARTICLE_LIMIT environment variable for this batch
 export ARTICLE_LIMIT="{start}:{end}"
