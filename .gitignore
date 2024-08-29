@@ -10,3 +10,4 @@ slurm_job_manager/**/**.err
 slurm_job_manager/**/**.out
 slurm_job_manager/**/**.slurm
 slurm_job_manager/job_batch**/**
+.vscode/**
