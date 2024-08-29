@@ -11,78 +11,93 @@ def extract_errors_from_err_file(err_file, output_file):
     """
     if not os.path.exists(err_file):
         print(f"Error: The file {err_file} does not exist.")
-        return False
+        return None
 
-    error_traceback = []
-    slurm_errors = []
+    errors_present = False
+    error_summary = []
     last_batch_status = None  # To keep track of the last batch status line
-    capture_error = False
+    capture_traceback = False
+    current_traceback = []
 
-    # Regular expressions for batch status and errors
+    # Regular expressions for batch status, traceback start, and slurmstepd errors
     batch_status_pattern = re.compile(
         r"batch:(\d+):\s+(\d+)%\|"
     )  # Matches batch status lines
-    traceback_pattern = re.compile(r"Traceback")
+    traceback_start_pattern = re.compile(
+        r"Traceback \(most recent call last\):"
+    )  # Start of traceback
     slurm_error_pattern = re.compile(
-        r"slurmstepd: error: \*\*\* JOB (\d+) .* CANCELLED"
-    )
+        r"slurmstepd: error: (.*)"
+    )  # Matches slurmstepd errors
+    error_line_pattern = re.compile(
+        r"^\s*raise\s+(\w+Error)"
+    )  # Matches the error type after 'raise'
 
     with open(err_file, "r") as f:
         for line in f:
             # Track the last batch status line before an error
             batch_match = batch_status_pattern.search(line)
             if batch_match:
-                last_batch_status = line.strip()  # Save the latest batch status line
+                last_batch_status = {
+                    "batch_number": batch_match.group(1),
+                    "completion_percentage": int(batch_match.group(2)),
+                }
 
-            # Check for a SLURM job cancellation error
+            # Check for the start of a traceback
+            if traceback_start_pattern.search(line):
+                capture_traceback = True
+                current_traceback = []
+
+            # Capture the entire traceback until it ends, then extract the error type
+            if capture_traceback:
+                current_traceback.append(line.strip())
+                error_match = error_line_pattern.search(line)
+                if error_match:
+                    error_type = error_match.group(1)
+                    error_summary.append(
+                        {"error": error_type, "last_batch_status": last_batch_status}
+                    )
+                    errors_present = True
+                    capture_traceback = False  # Stop capturing once we have the error
+
+            # Check for a slurmstepd error
             slurm_error_match = slurm_error_pattern.search(line)
             if slurm_error_match:
-                if last_batch_status and last_batch_status in line:
-                    # If the error is on the same line as the batch status, log it inline
-                    slurm_errors.append(line.strip())
-                else:
-                    # Log the last batch status before the error
-                    if last_batch_status:
-                        slurm_errors.append(
-                            f"Last Batch Status Before Error:\n{last_batch_status}"
-                        )
-                    slurm_errors.append(line.strip())
+                error_summary.append(
+                    {"error": "Slurm error", "last_batch_status": last_batch_status}
+                )
+                errors_present = True
 
-            # Check for a traceback error
-            elif traceback_pattern.search(line):
-                capture_error = True
-                if last_batch_status:
-                    error_traceback.append(
-                        f"Last Batch Status Before Error:\n{last_batch_status}\n"
-                    )
-                    last_batch_status = None  # Clear after logging
-                error_traceback.append(line)
-            elif capture_error and line.strip() == "":  # End of traceback
-                capture_error = False
+    # Fallback: If a traceback was detected but no specific error was found
+    if capture_traceback and current_traceback:
+        error_summary.append(
+            {
+                "error": "Traceback Error Not Parsed",
+                "last_batch_status": last_batch_status,
+            }
+        )
 
-            if capture_error:
-                error_traceback.append(line)
-
-    # Prepare the final output with the last batch status before the error
-    if error_traceback or slurm_errors:
+    # Write errors to the output file
+    if errors_present:
         with open(output_file, "w") as f_out:
-            if slurm_errors:
-                f_out.write("\nSLURM Job Errors:\n")
-                f_out.write("\n".join(slurm_errors) + "\n")
-            if error_traceback:
-                f_out.write("\nError Traceback:\n")
-                f_out.write("".join(error_traceback))
-        print(f"Extracted errors and last batch status saved to {output_file}")
-        return True
-    else:
-        print(f"No errors found in {err_file}.")
-        return False
+            for error in error_summary:
+                f_out.write(
+                    f"Error: {error['error']}, Last Batch Status: {error['last_batch_status']}\n"
+                )
+
+        return {
+            "errors_present": True,
+            "error_types": error_summary,
+            "error_log_path": f"file://{os.path.abspath(output_file)}",
+        }
+
+    return None
 
 
 def process_job_errors(job_metadata_file, err_dir, output_dir):
     """
     Processes jobs from job_metadata.json and creates error logs for each job, including the last
-    batch status before the error occurs.
+    batch status before the error occurs. Also updates the metadata with error information.
     """
     # Read the job metadata
     with open(job_metadata_file, "r") as f:
@@ -104,12 +119,24 @@ def process_job_errors(job_metadata_file, err_dir, output_dir):
             print(f"Processing error log for Job {job_name} (ID: {job_id})...")
 
             # Extract errors and the last batch status from the .err file
-            errors_found = extract_errors_from_err_file(err_file, output_file)
+            error_summary = extract_errors_from_err_file(err_file, output_file)
 
-            if not errors_found:
+            if error_summary:
+                # Update the metadata with error information
+                job_info["errors_present"] = error_summary["errors_present"]
+                job_info["error_log_path"] = error_summary["error_log_path"]
+                job_info["error_types"] = error_summary["error_types"]
+            else:
                 print(f"No errors found for job {job_name}.")
-        else:
-            print(f"No job ID found for batch {batch}")
+                job_info["errors_present"] = False
+                job_info["error_log_path"] = None
+                job_info["error_types"] = {}
+
+    # Save the updated job metadata back to the file
+    with open(job_metadata_file, "w") as f:
+        json.dump(job_metadata, f, indent=2)
+
+    print(f"Job metadata updated with error information.")
 
 
 def run_error_logging(metadata_file, err_dir, output_dir):
