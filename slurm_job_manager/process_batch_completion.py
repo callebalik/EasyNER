@@ -4,15 +4,15 @@ import json
 import argparse
 
 
-def extract_highest_completion_per_batch(err_file, output_file, batch_range):
+def extract_highest_completion_per_batch(err_file, batch_range):
     """
     Extracts the highest completion percentage for each batch from a SLURM .err file,
-    marking batches not found in the .err file as 'Not Started', and writes the results
-    to a single output file for the job.
+    marking batches not found in the .err file as 'Not Started', and returns the results
+    as a dictionary keyed by batch number.
     """
     if not os.path.exists(err_file):
         print(f"Error: The file {err_file} does not exist.")
-        return False
+        return None
 
     # Initialize all batches in the range as 'Not Started'
     batch_completion = {str(batch): "Not Started" for batch in batch_range}
@@ -30,7 +30,6 @@ def extract_highest_completion_per_batch(err_file, output_file, batch_range):
                 found_any_batch = True
                 batch_number = match.group(1)
                 percentage = int(match.group(2))
-                # print(f"Found batch {batch_number} with {percentage}% progress.")  # Debugging: Show matching line details
 
                 # Track the highest percentage for each batch
                 if batch_number in batch_completion:
@@ -43,71 +42,94 @@ def extract_highest_completion_per_batch(err_file, output_file, batch_range):
 
     if not found_any_batch:
         print(f"No matching batch progress lines found in {err_file}.")
-        return False
+        return None
 
-    # Write the results to the output file
-    with open(output_file, "w") as f_out:
-        for batch, percentage in batch_completion.items():
-            if percentage == "Not Started":
-                f_out.write(f"Batch {batch}: Not Started\n")
-            else:
-                f_out.write(
-                    f"Batch {batch}: Highest completion percentage: {percentage}%\n"
-                )
-
-    print(f"Highest completion percentages for {err_file} saved to {output_file}")
-    return True
+    # Return the dictionary with batch completion percentages
+    return batch_completion
 
 
-def process_batch_completion(job_metadata_file, err_dir, output_dir):
+def process_batch_completion(job_metadata_file, err_dir, output_file):
     """
-    Processes jobs from job_metadata.json and creates a completion log for each job summarizing
-    the highest completion percentage for each batch in the job. Marks batches not started.
+    Processes jobs from job_metadata.json and writes a single completion log
+    summarizing the highest completion percentage for each batch in all jobs.
+    Additionally, updates the job metadata with the completion status.
     """
     # Read the job metadata
     with open(job_metadata_file, "r") as f:
         job_metadata = json.load(f)
 
-    # Make sure output directory exists
-    os.makedirs(output_dir, exist_ok=True)
+    # Open the output file to write the combined results
+    with open(output_file, "w") as f_out:
+        # Process each job in the metadata
+        for job_key, job_info in job_metadata.items():
+            job_id = job_info.get("job_id")
+            job_name = job_info.get("job_name")
 
-    # Process each job in the metadata
-    for job_key, job_info in job_metadata.items():
-        job_id = job_info.get("job_id")
-        job_name = job_info.get("job_name")
+            # Infer batch numbers based on the start and end range
+            start = job_info.get("start")
+            end = job_info.get("end")
+            batch_range = [str(i) for i in range(start, end + 1)]
 
-        # Infer batch numbers based on the start and end range
-        start = job_info.get("start")
-        end = job_info.get("end")
-        batch_range = [str(i) for i in range(start, end + 1)]
+            if job_id:
+                # Construct the .err file path (assuming a naming convention like batch_<job_name>.err)
+                err_file = os.path.join(err_dir, f"{job_name}.err")
 
-        if job_id:
-            # Construct the .err file path (assuming a naming convention like batch_<job_id>.err)
-            err_file = os.path.join(err_dir, f"{job_name}.err")
-            output_file = os.path.join(output_dir, f"{job_name}_completion.log")
+                print(f"Processing completion log for Job {job_name} (ID: {job_id})...")
 
-            print(f"Processing completion log for Job {job_name} (ID: {job_id})...")
+                # Extract highest completion percentages per batch from the .err file
+                batch_completion = extract_highest_completion_per_batch(
+                    err_file, batch_range
+                )
 
-            # Extract highest completion percentages per batch from the .err file
-            result = extract_highest_completion_per_batch(
-                err_file, output_file, batch_range
-            )
+                if batch_completion:
+                    # Initialize counters for unstarted and in-progress batches
+                    unstarted_batches = 0
+                    in_progress_batches = 0
+                    all_batches_completed = True
 
-            if not result:
-                # Remove the empty log file if no valid data was found
-                if os.path.exists(output_file):
-                    os.remove(output_file)
+                    # Write the results to the output file with job name
+                    f_out.write(f"Job {job_name} (ID: {job_id}):\n")
+                    for batch, percentage in batch_completion.items():
+                        if percentage == "Not Started":
+                            unstarted_batches += 1
+                            all_batches_completed = False
+                            f_out.write(f"  Batch {batch}: Not Started\n")
+                        elif percentage < 100:
+                            in_progress_batches += 1
+                            all_batches_completed = False
+                            f_out.write(
+                                f"  Batch {batch}: Highest completion percentage: {percentage}%\n"
+                            )
+                        else:
+                            f_out.write(
+                                f"  Batch {batch}: Highest completion percentage: {percentage}%\n"
+                            )
+                    f_out.write("\n")
 
-        else:
-            print(f"No job ID found for batch {job_key}")
+                    # Update the job metadata with completion status
+                    job_info["all_batches_completed"] = all_batches_completed
+                    job_info["batches_in_progress"] = in_progress_batches
+                    job_info["unstarted_batches"] = unstarted_batches
+
+                else:
+                    print(f"No valid data found for job {job_name} (ID: {job_id}).")
+
+            else:
+                print(f"No job ID found for batch {job_key}")
+
+    # Save the updated job metadata back to the file
+    with open(job_metadata_file, "w") as f:
+        json.dump(job_metadata, f, indent=2)
+
+    print(f"Job metadata updated with completion status.")
 
 
-def run_completion_logging(metadata_file, err_dir, output_dir):
+def run_completion_logging(metadata_file, err_dir, output_file):
     """
     Callable function to run the batch completion logging process programmatically.
     This function can be called from other Python scripts.
     """
-    process_batch_completion(metadata_file, err_dir, output_dir)
+    process_batch_completion(metadata_file, err_dir, output_file)
 
 
 if __name__ == "__main__":
@@ -127,13 +149,13 @@ if __name__ == "__main__":
         help="Directory where .err files are located",
     )
     parser.add_argument(
-        "--output-dir",
+        "--output-file",
         type=str,
         required=True,
-        help="Directory to save completion summary logs",
+        help="File to save the combined completion summary log",
     )
 
     args = parser.parse_args()
 
     # Process the jobs and extract highest completion percentages per batch from their .err files
-    process_batch_completion(args.metadata_file, args.err_dir, args.output_dir)
+    process_batch_completion(args.metadata_file, args.err_dir, args.output_file)
