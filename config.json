@@ -73,9 +73,9 @@
     "plot_top_n":50
   },
   "merger": {
-    "paths": ["results/ner/model-1/", "results/ner/model-2/", "results/ner/model-3/"],
-    "entities": ["model-1_entity", "model-2_entity","model-3_entity"],
-    "output_path": "results/merged/path/to/merged-folder/",
+    "paths": ["/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_disease/", "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_phenomena/"],
+    "entities": ["disease", "phenoma"],
+    "output_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged",
     "output_prefix": "merged"
   },
   "metrics": {
