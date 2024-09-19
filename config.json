@@ -7,9 +7,9 @@
     "text_loader":true,
     "pubmed_bulk_loader":true,
     "splitter": true,
-    "ner": false,
+    "ner": true,
       "analysis": true,
-    "merger": true,
+    "merger": false,
     "metrics":true,
     "nel":true,
     "result_inspection":true
