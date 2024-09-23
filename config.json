@@ -76,7 +76,8 @@
     "paths": ["/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_disease/", "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_phenomena/"],
     "entities": ["disease", "phenoma"],
     "output_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged",
-    "output_prefix": "merged"
+    "output_prefix": "merged",
+    "skip_existing": true
   },
   "metrics": {
     "predictions_file":"path/to/predictions/file.txt",

@@ -128,6 +128,7 @@ def run_entity_merger(merger_config: dict):
     entities = merger_config["entities"]
     output_folder = merger_config["output_path"]
     output_prefix = merger_config["output_prefix"]
+    skip_existing = merger_config.get("skip_existing", False)  # New config option
     os.makedirs(output_folder, exist_ok=True)
 
     file_lists = {
@@ -168,6 +169,12 @@ def run_entity_merger(merger_config: dict):
             output_file = os.path.join(
                 output_folder, output_prefix + batch_no + ".json"
             )
+
+            # Skip merging if the output file already exists and skip_existing is True
+            if skip_existing and os.path.exists(output_file):
+                logging.info(f"Skipping batch {i} as {output_file} already exists.")
+                continue
+            
             logging.info(f"Merging files: {processed_paths}")
             entity_merger(
                 paths=processed_paths, entities=entities, output_file=output_file
