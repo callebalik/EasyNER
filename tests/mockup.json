@@ -1,0 +1,77 @@
+{
+    "1": {
+        "sentences": [
+            {
+                "entities": {
+                    "disease": ["disease1"],
+                    "phenomenon": ["phenomenon1"]
+                },
+                "text": "Sentence with disease1 and phenomenon1."
+            },
+            {
+                "entities": {
+                    "disease": ["disease2"],
+                    "phenomenon": ["phenomenon2"]
+                },
+                "text": "Sentence with disease2 and phenomenon2."
+            },
+            {
+                "entities": {
+                    "disease": ["disease1"],
+                    "phenomenon": ["phenomenon1"]
+                },
+                "text": "Another sentence with disease1 and phenomenon1."
+            },
+            {
+                "entities": {},
+                "text": "Sentence without any entities."
+            },
+            {
+                "entities": {
+                    "disease": ["disease3"]
+                },
+                "text": "Sentence with only disease3."
+            },
+            {
+                "entities": {
+                    "phenomenon": ["phenomenon3"]
+                },
+                "text": "Sentence with only phenomenon3."
+            }
+        ]
+    },
+    "2": {
+        "sentences": [
+            {
+                "entities": {
+                    "disease": ["disease1"],
+                    "phenomenon": ["phenomenon2"]
+                },
+                "text": "Sentence with disease1 and phenomenon2."
+            },
+            {
+                "entities": {
+                    "disease": ["disease1"],
+                    "phenomenon": ["phenomenon1"]
+                },
+                "text": "Yet another sentence with disease1 and phenomenon1."
+            },
+            {
+                "entities": {},
+                "text": "Another sentence without any entities."
+            },
+            {
+                "entities": {
+                    "disease": ["disease4"]
+                },
+                "text": "Another sentence with only disease4."
+            },
+            {
+                "entities": {
+                    "phenomenon": ["phenomenon4"]
+                },
+                "text": "Another sentence with only phenomenon4."
+            }
+        ]
+    }
+}

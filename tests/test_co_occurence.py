@@ -1,5 +1,4 @@
 import unittest
-from unittest.mock import patch, mock_open
 import json
 import sys
 import os
@@ -12,62 +11,31 @@ from scripts.co_occurence import get_pairs
 
 
 class TestGetPairs(unittest.TestCase):
-    @patch("builtins.open", new_callable=mock_open, read_data=json.dumps({
-        "1": {
-            "sentences": [
-                {
-                    "entities": {
-                        "disease": ["disease1"],
-                        "phenoma": ["phenoma1"]
-                    },
-                    "text": "Sentence with disease1 and phenoma1."
-                },
-                {
-                    "entities": {
-                        "disease": ["disease2"],
-                        "phenoma": ["phenoma2"]
-                    },
-                    "text": "Sentence with disease2 and phenoma2."
-                }
-            ]
-        },
-        "2": {
-            "sentences": [
-                {
-                    "entities": {
-                        "disease": ["disease1"],
-                        "phenoma": ["phenoma2"]
-                    },
-                    "text": "Sentence with disease1 and phenoma2."
-                }
-            ]
-        }
-    }))
-    def test_get_pairs(self, mock_file):
-        sorted_files = ["mock_file.json"]
-        entity1 = "disease"
-        entity2 = "phenoma"
+    def test_get_pairs(self):
+        base_path = os.path.dirname(__file__)
+        mockup_path = os.path.join(base_path, "mockup.json")
+        expected_path = os.path.join(base_path, "expected_co_occurences.json")
+        output_path = os.path.join(base_path, "generated_output.json")
 
-        expected_pairs = {
-            ("disease1", "phenoma1"): {
-                "freq": 1,
-                "pmid": {"1"},
-                "sent": {"Sentence with disease1 and phenoma1."}
-            },
-            ("disease2", "phenoma2"): {
-                "freq": 1,
-                "pmid": {"1"},
-                "sent": {"Sentence with disease2 and phenoma2."}
-            },
-            ("disease1", "phenoma2"): {
-                "freq": 1,
-                "pmid": {"2"},
-                "sent": {"Sentence with disease1 and phenoma2."}
-            }
-        }
+        with open(mockup_path, "r") as f:
+            test_data = json.load(f)
+        with open(expected_path, "r") as f:
+            expected_pairs = json.load(f)
+
+        sorted_files = [mockup_path]
+        entity1 = "disease"
+        entity2 = "phenomenon"  # Note: This should match the key in the mockup.json file
 
         pairs = get_pairs(sorted_files, entity1, entity2)
-        self.assertEqual(pairs, expected_pairs)
+
+        # Convert tuple keys to string keys and set values to sorted lists for comparison
+        pairs_str_keys = {str(k): {'freq': v['freq'], 'pmid': sorted(list(v['pmid'])), 'sent': sorted(list(v['sent']))} for k, v in pairs.items()}
+
+        # Write the generated output to a file
+        with open(output_path, "w") as f:
+            json.dump(pairs_str_keys, f, indent=4)
+
+        self.assertEqual(pairs_str_keys, expected_pairs)
 
 if __name__ == "__main__":
     unittest.main()
