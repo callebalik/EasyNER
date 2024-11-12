@@ -3,6 +3,9 @@ import json
 import sys
 import os
 
+# TODO test for multiple occurrences of the same entity in a sentence
+# TODO check when sorting is done, as it seems results must be alphabetically sorted
+
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
