@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from scripts.co_occurence_db import get_inter_entity_co_occurrences
+from scripts.co_occurence_db import store_co_occurrences_in_db, query_co_occurrences
 
 class TestCoOccurrenceDB(unittest.TestCase):
     def setUp(self):
@@ -76,6 +77,38 @@ class TestCoOccurrenceDB(unittest.TestCase):
         }
 
         self.assertEqual(result, expected_result)
+
+    def test_store_and_query_co_occurrences(self):
+        sorted_files = [self.mockup_file_path]
+        entity1 = "disease1"
+        entity2 = "phenomenon1"
+        co_occurrences = get_inter_entity_co_occurrences(sorted_files, "disease", "phenomenon")
+
+        db_path = '/home/x_caoll/EasyNer/tests/co_occurrences.db'
+        store_co_occurrences_in_db(co_occurrences, db_path)
+
+        # Query the database
+        result = query_co_occurrences(db_path, entity1, entity2)
+
+        # print("Query Result:", result)  # Debug statement
+
+        expected_result = {
+            "1": [
+                "[1] Sentence with disease1 and phenomenon1.",
+                "[1] Another sentence with disease1 and phenomenon1.",
+                "[1] Sentence with disease1, disease2 and phenomenon1.",
+                "[1] Sentence with disease1, disease1, phenomenon1 and phenomenon2."
+            ],
+            "2": [
+                "[2] Yet another sentence with disease1 and phenomenon1.",
+                "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2."
+            ]
+        }
+
+        self.assertEqual(result, expected_result)
+
+        # Clean up the database file
+        os.remove(db_path)
 
 if __name__ == '__main__':
     unittest.main()
