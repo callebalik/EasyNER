@@ -1,0 +1,105 @@
+
+{
+    "1": {
+        "sentences": [
+            {
+                "entities": {
+                    "disease": ["disease1"],
+                    "phenomenon": ["phenomenon1"]
+                },
+                "text": "[1] Sentence with disease1 and phenomenon1."
+            },
+            {
+                "entities": {
+                    "disease": ["disease2"],
+                    "phenomenon": ["phenomenon2"]
+                },
+                "text": "[1] Sentence with disease2 and phenomenon2."
+            },
+            {
+                "entities": {
+                    "disease": ["disease1"],
+                    "phenomenon": ["phenomenon1"]
+                },
+                "text": "[1] Another sentence with disease1 and phenomenon1."
+            },
+            {
+                "entities": {},
+                "text": "[1] Sentence without any entities."
+            },
+            {
+                "entities": {
+                    "disease": ["disease3"]
+                },
+                "text": "[1] Sentence with only disease3."
+            },
+            {
+                "entities": {
+                    "phenomenon": ["phenomenon3"]
+                },
+                "text": "[1] Sentence with only phenomenon3."
+            },
+            {
+                "entities": {
+                    "disease": ["disease1", "disease2"],
+                    "phenomenon": ["phenomenon1"]
+                },
+                "text": "[1] Sentence with disease1, disease2 and phenomenon1."
+            },
+            {
+                "entities": {
+                    "disease": ["disease1", "disease2"]
+                },
+                "text": "[1] Sentence with disease1 and disease2 only."
+            },
+            {
+                "entities": {
+                    "disease": ["disease1", "disease1"],
+                    "phenomenon": ["phenomenon1", "phenomenon2"]
+                },
+                "text": "[1] Sentence with disease1, disease1, phenomenon1 and phenomenon2."
+            }
+        ]
+    },
+    "2": {
+        "sentences": [
+            {
+                "entities": {
+                    "disease": ["disease1"],
+                    "phenomenon": ["phenomenon2"]
+                },
+                "text": "[2] Sentence with disease1 and phenomenon2."
+            },
+            {
+                "entities": {
+                    "disease": ["disease1"],
+                    "phenomenon": ["phenomenon1"]
+                },
+                "text": "[2] Yet another sentence with disease1 and phenomenon1."
+            },
+            {
+                "entities": {},
+                "text": "[2] Another sentence without any entities."
+            },
+            {
+                "entities": {
+                    "disease": ["disease4"]
+                },
+                "text": "[2] Another sentence with only disease4."
+            },
+            {
+                "entities": {
+                    "phenomenon": ["phenomenon4"]
+                },
+                "text": "[2] Another sentence with only phenomenon4."
+            },
+            {
+                "entities": {
+                    "disease": ["disease1", "disease3"],
+                    "phenomenon": ["phenomenon1", "phenomenon2"]
+                },
+                "text": "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2."
+            }
+        ]
+    }
+}
