@@ -1,76 +1,154 @@
 {
     "1": {
+        "title": "Title 1",
         "sentences": [
             {
+                "text": "[1] Sentence with disease1 and phenomenon1.",
                 "entities": {
                     "disease": ["disease1"],
                     "phenomenon": ["phenomenon1"]
                 },
-                "text": "Sentence with disease1 and phenomenon1."
+                "entity_spans": {
+                    "disease": [[18, 26]],
+                    "phenomenon": [[31, 42]]
+                }
             },
             {
+                "text": "[1] Sentence with disease2 and phenomenon2.",
                 "entities": {
                     "disease": ["disease2"],
                     "phenomenon": ["phenomenon2"]
                 },
-                "text": "Sentence with disease2 and phenomenon2."
+                "entity_spans": {
+                    "disease": [[18, 26]],
+                    "phenomenon": [[31, 42]]
+                }
             },
             {
+                "text": "[1] Another sentence with disease1 and phenomenon1.",
                 "entities": {
                     "disease": ["disease1"],
                     "phenomenon": ["phenomenon1"]
                 },
-                "text": "Another sentence with disease1 and phenomenon1."
+                "entity_spans": {
+                    "disease": [[22, 30]],
+                    "phenomenon": [[35, 46]]
+                }
             },
             {
+                "text": "[1] Sentence without any entities.",
                 "entities": {},
-                "text": "Sentence without any entities."
+                "entity_spans": {}
             },
             {
+                "text": "[1] Sentence with only disease3.",
                 "entities": {
                     "disease": ["disease3"]
                 },
-                "text": "Sentence with only disease3."
+                "entity_spans": {
+                    "disease": [[23, 31]]
+                }
             },
             {
+                "text": "[1] Sentence with only phenomenon3.",
                 "entities": {
                     "phenomenon": ["phenomenon3"]
                 },
-                "text": "Sentence with only phenomenon3."
+                "entity_spans": {
+                    "phenomenon": [[20, 31]]
+                }
+            },
+            {
+                "text": "[1] Sentence with disease1, disease2 and phenomenon1.",
+                "entities": {
+                    "disease": ["disease1", "disease2"],
+                    "phenomenon": ["phenomenon1"]
+                },
+                "entity_spans": {
+                    "disease": [[18, 26], [28, 36]],
+                    "phenomenon": [[41, 52]]
+                }
+            },
+            {
+                "text": "[1] Sentence with disease1 and disease2 only.",
+                "entities": {
+                    "disease": ["disease1", "disease2"]
+                },
+                "entity_spans": {
+                    "disease": [[18, 26], [31, 39]]
+                }
+            },
+            {
+                "text": "[1] Sentence with disease1, disease1, phenomenon1 and phenomenon2.",
+                "entities": {
+                    "disease": ["disease1", "disease1"],
+                    "phenomenon": ["phenomenon1", "phenomenon2"]
+                },
+                "entity_spans": {
+                    "disease": [[18, 26], [28, 36]],
+                    "phenomenon": [[41, 52], [54, 65]]
+                }
             }
         ]
     },
     "2": {
+        "title": "Title 2",
         "sentences": [
             {
+                "text": "[2] Sentence with disease1 and phenomenon2.",
                 "entities": {
                     "disease": ["disease1"],
                     "phenomenon": ["phenomenon2"]
                 },
-                "text": "Sentence with disease1 and phenomenon2."
+                "entity_spans": {
+                    "disease": [[18, 26]],
+                    "phenomenon": [[31, 42]]
+                }
             },
             {
+                "text": "[2] Yet another sentence with disease1 and phenomenon1.",
                 "entities": {
                     "disease": ["disease1"],
                     "phenomenon": ["phenomenon1"]
                 },
-                "text": "Yet another sentence with disease1 and phenomenon1."
+                "entity_spans": {
+                    "disease": [[30, 38]],
+                    "phenomenon": [[43, 54]]
+                }
             },
             {
+                "text": "[2] Another sentence without any entities.",
                 "entities": {},
-                "text": "Another sentence without any entities."
+                "entity_spans": {}
             },
             {
+                "text": "[2] Another sentence with only disease4.",
                 "entities": {
                     "disease": ["disease4"]
                 },
-                "text": "Another sentence with only disease4."
+                "entity_spans": {
+                    "disease": [[31, 39]]
+                }
             },
             {
+                "text": "[2] Another sentence with only phenomenon4.",
                 "entities": {
                     "phenomenon": ["phenomenon4"]
                 },
-                "text": "Another sentence with only phenomenon4."
+                "entity_spans": {
+                    "phenomenon": [[31, 42]]
+                }
+            },
+            {
+                "text": "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2.",
+                "entities": {
+                    "disease": ["disease1", "disease3"],
+                    "phenomenon": ["phenomenon1", "phenomenon2"]
+                },
+                "entity_spans": {
+                    "disease": [[18, 26], [28, 36]],
+                    "phenomenon": [[38, 49], [54, 65]]
+                }
             }
         ]
     }
