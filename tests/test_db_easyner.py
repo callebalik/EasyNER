@@ -13,6 +13,7 @@ class TestDBAnalysis(unittest.TestCase):
     def setUp(self):
         self.test_db_path = 'test_database.db'
         self.db = EasyNerDB(self.test_db_path)
+        self.cursor = self.db.cursor
         self.entity1 = 'disease'
         self.entity2 = 'phenomenon'
         self.maxDiff = None
@@ -23,15 +24,22 @@ class TestDBAnalysis(unittest.TestCase):
         self.assertEqual(entities, {'disease': 15, 'phenomenon': 12})
 
     def test_get_sentences_with_entities(self):
-        expected_count = 2
-        expected_pmids = [16798089]
-        result = self.db.get_sentence_cooccurence(self.entity1, self.entity2, "disease1", "phenomenon2")
+        self.cursor.execute('DROP TABLE IF EXISTS entity_cooccurrences')
+        expected_result = {
+            ('disease1', 'phenomenon2'): {
+                "freq": 1,
+                "pmid": {
+                    1: {"sentence_index": [8, 8], "sentence.id": [8, 8]},
+                    2: {"sentence_index": [0, 4], "sentence.id": [0, 4]}
+                }
+            }
+        }
+        # result = self.db.get_sentence_cooccurence(self.entity1, self.entity2)
+        result = self.db.find_sentence_cooccurence(self.entity1, self.entity2)
         if result:
-            actual_pmids = result
-            print("Actual pmids:")
-            pprint.pprint(actual_pmids)
-            # self.assertEqual(actual_count, expected_count, "Number of sentences with entities does not match.")
-            # self.assertEqual(actual_pmids, expected_pmids)
+            print("Actual result:")
+            pprint.pprint(result)
+            # self.assertEqual(result, expected_result)
         else:
             self.fail("No cooccurrences found.")
 
