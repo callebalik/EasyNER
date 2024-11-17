@@ -60,7 +60,7 @@ class EasyNerDB:
             entities = self.cursor.fetchall()
             return {entity[0]: entity[1] for entity in entities}
 
-    def find_sentence_cooccurence(self, *entities):
+    def record_entity_cooccurrences(self, *entities):
         # ToDo: Implement with any number of entities
 
         # Ensure the necessary tables exist
@@ -117,6 +117,33 @@ class EasyNerDB:
         self.conn.commit()
         # return cooccurrences
 
+    def get_specified_entity_cooccurrences(self, e1_text, e2_text):
+        """
+        Get all matching entries of entity cooccurrences in the specified format.
+
+        Args:
+            e1_text (str): The text of the first entity.
+            e2_text (str): The text of the second entity.
+
+        Returns:
+            dict: A dictionary representing the cooccurrences.
+        """
+        self.cursor.execute('''
+            SELECT e1_text, e2_text, sentence_id, COUNT(*)
+            FROM entity_cooccurrences
+            WHERE e1_text = ? AND e2_text = ?
+            GROUP BY e1_text, e2_text, sentence_id
+        ''', (e1_text, e2_text))
+        rows = self.cursor.fetchall()
+        cooccurrences = {}
+        for row in rows:
+            key = (row[0], row[1])
+            if key not in cooccurrences:
+                cooccurrences[key] = {"freq": 0, "pmid": [], "sentence_ids": []}
+            cooccurrences[key]["freq"] += row[3]
+            cooccurrences[key]["pmid"].append(str(row[2]))
+            cooccurrences[key]["sentence_ids"].append(row[2])
+        return cooccurrences
 
     def count_cooccurence(self, entity1_text, entity2_text):
         """
@@ -197,7 +224,7 @@ if __name__ == "__main__":
 
     entity1 = 'Entity1'
     entity2 = 'Entity2'
-    total_count, pmid_sentence_indexes = db.find_sentence_cooccurence(entity1, entity2)
+    total_count, pmid_sentence_indexes = db.record_entity_cooccurrences(entity1, entity2)
     print(f"\nTotal cooccurrences of '{entity1}' and '{entity2}': {total_count}")
     if pmid_sentence_indexes:
         for pmid, sentences in pmid_sentence_indexes.items():
