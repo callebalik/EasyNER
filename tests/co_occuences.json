@@ -1,0 +1,40 @@
+{
+    "('disease1', 'phenomenon1')": {
+        "freq": 6,
+        "pmid": {
+            "1": {"sentence_index": [0, 2,6,8]},
+            "2": {"sentence_index": [1,5]}
+        }
+    },
+    "('disease1', 'phenomenon2')": {
+        "freq": 1,
+        "pmid": {
+            "1": {"sentence_index": [8, 8]},
+            "2": {"sentence_index": [0,4]}
+        }
+    },
+    "('disease2', 'phenomenon1')": {
+        "freq": 1,
+        "pmid": {
+            "1": {"sentence_index": [6]}
+        }
+    },
+    "('disease2', 'phenomenon2')": {
+        "freq": 1,
+        "pmid": {
+            "1": {"sentence_index": [1]}
+        }
+    },
+    "('disease3', 'phenomenon1')": {
+        "freq":1,
+        "pmid": {
+            "2": {"sentence_index": [5]}
+        }
+    },
+    "('disease3', 'phenomenon2')": {
+        "freq": 1,
+        "pmid": {
+            "2": {"sentence_index": [5]}
+        }
+    }
+}

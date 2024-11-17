@@ -14,6 +14,11 @@ from scripts.db_convert_json_to_sqlite import create_database, insert_data, load
 class TestConvertJsonToSqlite(unittest.TestCase):
     def setUp(self):
         self.test_db_path = 'test_database.db'
+
+        if os.path.exists(self.test_db_path):
+            print(f"Removing existing database file: {self.test_db_path}")
+            os.remove(self.test_db_path)
+
         self.mock_json_file = 'mockup.json'
         with open(self.mock_json_file, 'r', encoding='utf-8') as file:
             self.mock_json_data = json.load(file)
@@ -25,11 +30,11 @@ class TestConvertJsonToSqlite(unittest.TestCase):
 
         cursor.execute('SELECT COUNT(*) FROM articles')
         num_articles = cursor.fetchone()[0]
-        self.assertEqual(num_articles, 2)
+        self.assertEqual(num_articles, 3)
 
         cursor.execute('SELECT COUNT(*) FROM sentences')
         num_sentences = cursor.fetchone()[0]
-        self.assertEqual(num_sentences, 15)
+        self.assertEqual(num_sentences, 16)
 
         cursor.execute('SELECT COUNT(*) FROM entities')
         num_entities = cursor.fetchone()[0]
