@@ -44,22 +44,6 @@ def create_database(db_path):
         )
     ''')
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS entity_cooccurrences (
-            entity1 INTEGER NOT NULL,
-            entity2 INTEGER NOT NULL,
-            e1_text TEXT NOT NULL,
-            e2_text TEXT NOT NULL,
-            e1_id INTEGER NOT NULL,
-            e2_id INTEGER NOT NULL,
-            sentence_id INTEGER NOT NULL,
-            FOREIGN KEY (sentence_id) REFERENCES sentences(id),
-            FOREIGN KEY (entity1) REFERENCES entities(id),
-            FOREIGN KEY (entity2) REFERENCES entities(id),
-            FOREIGN KEY (e1_id) REFERENCES entity_occurrences(id),
-            FOREIGN KEY (e2_id) REFERENCES entity_occurrences(id)
-        )
-    ''')
-    cursor.execute('''
         CREATE TABLE IF NOT EXISTS processed_files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filename TEXT UNIQUE

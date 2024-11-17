@@ -1,4 +1,5 @@
 import sqlite3
+import json
 
 class EasyNerDB:
     def __init__(self, db_path):
@@ -6,8 +7,43 @@ class EasyNerDB:
         self.conn = sqlite3.connect(self.db_path)
         self.cursor = self.conn.cursor()
 
+    def _ensure_fq_column(self):
+        self.cursor.execute("PRAGMA table_info(entities)")
+        columns = [info[1] for info in self.cursor.fetchall()]
+        if 'fq' not in columns:
+            self.cursor.execute('''
+              s  ALTER TABLE entities
+                ADD COLUMN fq INTEGER DEFAULT 0
+            ''')
+            self.conn.commit()
+
     def __del__(self):
         self.conn.close()
+
+    def get_entity_fqs(self):
+        """
+        Update the frequency of each entity in the entities table.
+        """
+
+        # Ensure the necessary column exist
+        self.cursor.execute("PRAGMA table_info(entities)")
+        columns = [info[1] for info in self.cursor.fetchall()]
+        if 'fq' not in columns:
+            self.cursor.execute('''
+                ALTER TABLE entities
+                ADD COLUMN fq INTEGER DEFAULT 0
+            ''')
+
+        self.cursor.execute('''
+            UPDATE entities
+            SET fq = (
+                SELECT COUNT(*)
+                FROM entity_occurrences
+                WHERE entity_occurrences.entity_id = entities.id
+            )
+        ''')
+        self.conn.commit()
+
 
     def list_all_entities(self):
         self.cursor.execute('SELECT DISTINCT entity FROM entities')
@@ -63,17 +99,16 @@ class EasyNerDB:
             WHERE eo1.entity_id = ? AND eo2.entity_id = ?
         ''', (entity_ids[0], entity_ids[1]))
         results = self.cursor.fetchall()
-        cooccurrences = {}
         for result in results:
             sentence_id, sentence_index, e1_text, e2_text, e1_id, e2_id = result
-            key = (e1_text, e2_text)
-            if key not in cooccurrences:
-                cooccurrences[key] = {"freq": 0, "pmid": {}}
-            cooccurrences[key]["freq"] += 1
-            if sentence_id not in cooccurrences[key]["pmid"]:
-                cooccurrences[key]["pmid"][sentence_id] = {"sentence_index": [], "sentence.id": []}
-            cooccurrences[key]["pmid"][sentence_id]["sentence_index"].append(sentence_index)
-            cooccurrences[key]["pmid"][sentence_id]["sentence.id"].append(sentence_id)
+            # key = (e1_text, e2_text)
+            # if key not in cooccurrences:
+            #     cooccurrences[key] = {"freq": 0, "pmid": {}}
+            # cooccurrences[key]["freq"] += 1
+            # if sentence_id not in cooccurrences[key]["pmid"]:
+            #     cooccurrences[key]["pmid"][sentence_id] = {"sentence_index": [], "sentence.id": []}
+            # # cooccurrences[key]["pmid"][sentence_id]["sentence_index"].append(sentence_index)
+            # # cooccurrences[key]["pmid"][sentence_id]["sentence.id"].append(sentence_id)
             # Insert into entity_cooccurrences table
             self.cursor.execute('''
                 INSERT OR IGNORE INTO entity_cooccurrences (entity1, entity2, e1_text, e2_text, e1_id, e2_id, sentence_id)
@@ -81,6 +116,26 @@ class EasyNerDB:
             ''', (entity_ids[0], entity_ids[1], e1_text, e2_text, e1_id, e2_id, sentence_id))
         self.conn.commit()
         # return cooccurrences
+
+
+    def count_cooccurence(self, entity1_text, entity2_text):
+        """
+        Count the number of cooccurrences of two entities by their text.
+
+        Args:
+            entity1_text (str): The text of the first entity.
+            entity2_text (str): The text of the second entity.
+
+        Returns:
+            int: The number of cooccurrences.
+        """
+        self.cursor.execute('''
+            SELECT COUNT(*)
+            FROM entity_cooccurrences
+            WHERE e1_text = ? AND e2_text = ?
+        ''', (entity1_text, entity2_text))
+        count = self.cursor.fetchone()[0]
+        return count
 
     def get_titles(self):
         """
