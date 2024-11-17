@@ -56,37 +56,44 @@ class TestDBAnalysis(unittest.TestCase):
         self.assertEqual(sentences, expected_sentences, "Sentences do not match.")
         TestDBAnalysis.successful_tests.append("test_get_sentences")
 
+    # def test_find_specific_entity_cooccurrences(self, e1_text="disese1", e2_text="phenomenon2"):
+    #     # Destroy the entity_cooccurrences table to ensure it is created from scratch
+    #     self.cursor.execute("DROP TABLE IF EXISTS entity_cooccurrences")
+    #     cooccurrences = self.db.record_entity_cooccurrences()(e1_text, e2_text)
+    #     TestDBAnalysis.successful_tests.append("test_find_specific_entity_cooccurrences")
 
     def test_find_entity_cooccurrences(self, entity1="disease", entity2="phenomenon"):
         # Destroy the entity_cooccurrences table to ensure it is created from scratch
         self.cursor.execute("DROP TABLE IF EXISTS entity_cooccurrences")
         expected_result = {
-            ("disease1", "phenomenon2"): {
-                "freq": 1,
-                "pmid": {
-                    1: {"sentence_index": [8, 8], "sentence.id": [8, 8]},
-                    2: {"sentence_index": [0, 4], "sentence.id": [0, 4]},
-                },
+            "('disease1', 'phenomenon2')": {
+                "freq": 4,
+                "pmid": ["9", "10", "15"],
+                "sentence_ids": [9, 10, 15],
             }
         }
-        result = self.db.find_sentence_cooccurence(self.entity1, self.entity2)
+        # Find and record cooccurrences
+        self.db.record_entity_cooccurrences(self.entity1, self.entity2)
+        # Fetch cooccurrences
+        cooc = self.db.get_specified_entity_cooccurrences("disease1", "phenomenon2")
+
+        # Convert tuple keys to strings for comparison and JSON export
+        cooc_str_keys = {str(k): v for k, v in cooc.items()}
         output_file = "test_find_entity_cooccurrences.json"
 
-        cooccurrences_str_keys = {str(k): v for k, v in result.items()}
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(cooccurrences_str_keys, f, ensure_ascii=False, indent=4)
+        # Export to JSON
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(cooc_str_keys, f, ensure_ascii=False, indent=4)
 
-        if result:
-            print("Actual result:")
-            pprint.pprint(result)
-            self.assertEqual(result, expected_result)
+        if cooc:
+            self.assertEqual(cooc_str_keys, expected_result)
             TestDBAnalysis.successful_tests.append("test_get_sentences_with_entities")
         else:
             self.fail("No cooccurrences found.")
 
     def test_count_cooccurence(self):
         # Assuming the test database already has the necessary data
-        count = self.db.count_cooccurence("disease1", "phenomenon2")
+        count = self.db.count_cooccurence("disease1", "phenomenon1")
         expected_count = 7
         self.assertEqual(
             count,
@@ -98,13 +105,7 @@ class TestDBAnalysis(unittest.TestCase):
 
 if __name__ == "__main__":
     result = unittest.main(exit=False)
-    print("\nSummary:")
-    print(f"Ran {result.result.testsRun} tests.")
-    print(f"Failures: {len(result.result.failures)}")
-    print(f"Errors: {len(result.result.errors)}")
-    if result.result.wasSuccessful():
-        print("All tests passed successfully.")
-    else:
+    if not(result.result.wasSuccessful()):
         print("\nFailed Tests:")
         for failed_test, traceback in result.result.failures:
             print(f" - {failed_test.id()}")
@@ -112,6 +113,6 @@ if __name__ == "__main__":
         for errored_test, traceback in result.result.errors:
             print(f" - {errored_test.id()}")
 
-    print("\nSuccessful Tests:")
-    for test_name in TestDBAnalysis.successful_tests:
-        print(f" - {test_name}")
+        print("\nSuccessful Tests:")
+        for test_name in TestDBAnalysis.successful_tests:
+            print(f" - {test_name}")

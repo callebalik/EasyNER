@@ -19,9 +19,9 @@ def create_database(db_path):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS sentences (
             id INTEGER PRIMARY KEY,
-            pmid INTEGER,
-            sentence_index INTEGER,
             text TEXT,
+            sentence_index INTEGER,
+            pmid INTEGER,
             FOREIGN KEY(pmid) REFERENCES articles(pmid)
         )
     ''')
@@ -34,10 +34,10 @@ def create_database(db_path):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS entity_occurrences (
             id INTEGER PRIMARY KEY,
+            entity_text TEXT,
+            entity_id INTEGER,
             sentence_id INTEGER,
             sentence_index INTEGER,
-            entity_id INTEGER,
-            entity_text TEXT,
             span TEXT,
             FOREIGN KEY(sentence_id) REFERENCES sentences(id),
             FOREIGN KEY(entity_id) REFERENCES entities(id)
