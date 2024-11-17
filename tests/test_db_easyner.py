@@ -4,6 +4,7 @@ import os
 import sys
 import pprint
 import json
+import csv
 
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -102,10 +103,48 @@ class TestDBAnalysis(unittest.TestCase):
         )
         TestDBAnalysis.successful_tests.append("test_count_cooccurence")
 
+    def test_sum_cooccurences(self):
+        # Destroy the table to ensure it is created from scratch
+        self.cursor.execute("DROP TABLE IF EXISTS coentity_summary")
+
+        # Assuming the test database already has the necessary data
+        self.db.sum_cooccurences()
+        self.cursor.execute("SELECT e1_text, e2_text, fq FROM coentity_summary")
+        coentity_summary = self.cursor.fetchall()
+        print(coentity_summary)
+        expected_summary = [
+            # Add expected summary data here
+            ("disease1", "phenomenon1", 7),
+            ("disease1", "phenomenon2", 4),
+            ("disease2", "phenomenon1", 1),
+            ("disease2", "phenomenon2", 1),
+            ("disease3", "phenomenon1", 1),
+            ("disease3", "phenomenon2", 1),
+        ]
+        self.assertEqual(
+            coentity_summary,
+            expected_summary,
+            "Coentity summary does not match expected values.",
+        )
+        TestDBAnalysis.successful_tests.append("test_sum_cooccurences")
+
+    def test_export_cooccurrences(self):
+        # Assuming the test database already has the necessary data
+        output_file = "test_export_cooccurrences.csv"
+        self.db.export_cooccurrences(output_file)
+
+        with open(output_file, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            self.assertEqual(header, ["entity_1", "entity_2", "fq"])
+            rows = list(reader)
+            self.assertGreater(len(rows), 0)
+
+        TestDBAnalysis.successful_tests.append("test_export_cooccurrences")
 
 if __name__ == "__main__":
     result = unittest.main(exit=False)
-    if not(result.result.wasSuccessful()):
+    if not (result.result.wasSuccessful()):
         print("\nFailed Tests:")
         for failed_test, traceback in result.result.failures:
             print(f" - {failed_test.id()}")

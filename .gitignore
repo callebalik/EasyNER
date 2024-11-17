@@ -14,3 +14,5 @@ dev_easyner_env/**
 tests/test_find_entity_cooccurrences.json
 **.db
 tests/generated_output.json
+tests/test_export_cooccurences.json
+tests/test_export_cooccurrences.csv
