@@ -151,5 +151,17 @@
                 }
             }
         ]
+    },
+    "3": {
+        "title": "Title 3 - Only one sentence",
+        "sentences": [
+            {
+                "text": "This only has 1 sentence without any entities.",
+                "entities": {
+                },
+                "entity_spans": {
+                }
+            }
+        ]
     }
 }
