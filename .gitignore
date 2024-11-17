@@ -11,3 +11,6 @@ dev_easyner_env/**
 **/slurm_job_manager/**/**.slurm
 **/slurm_job_manager/job_batch**/**
 .vscode/**
+tests/test_find_entity_cooccurrences.json
+**.db
+tests/generated_output.json
