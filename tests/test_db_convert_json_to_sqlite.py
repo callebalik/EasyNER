@@ -36,13 +36,21 @@ class TestConvertJsonToSqlite(unittest.TestCase):
         num_sentences = cursor.fetchone()[0]
         self.assertEqual(num_sentences, 16)
 
-        cursor.execute('SELECT COUNT(*) FROM entities')
+        cursor.execute('SELECT COUNT(*) FROM entity_occurrences')
         num_entities = cursor.fetchone()[0]
         self.assertEqual(num_entities, 27)
 
         cursor.execute('SELECT COUNT(*) FROM processed_files WHERE filename = ?', (self.mock_json_file,))
         num_processed_files = cursor.fetchone()[0]
         self.assertEqual(num_processed_files, 1)
+
+        cursor.execute('SELECT sentence_id FROM entity_occurrences LIMIT 1')
+        sentence_id = cursor.fetchone()[0]
+        self.assertIsNotNone(sentence_id)
+
+        cursor.execute('SELECT COUNT(*) FROM entities')
+        num_unique_entities = cursor.fetchone()[0]
+        self.assertGreater(num_unique_entities, 0)
 
         conn.close()
 
