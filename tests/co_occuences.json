@@ -2,7 +2,7 @@
     "('disease1', 'phenomenon1')": {
         "freq": 6,
         "pmid": {
-            "1": {"sentence_index": [0, 2,6,8]},
+            "1": {"sentence_index": [0,2,6,8], "sentence.id": [0,2,6,8]},
             "2": {"sentence_index": [1,5]}
         }
     },
