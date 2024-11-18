@@ -136,6 +136,16 @@ class TestDBAnalysis(unittest.TestCase):
 
         TestDBAnalysis.successful_tests.append("test_export_cooccurrences")
 
+    def test_update_entity_name(self):
+        old_name = "phenomenon"
+        new_name = "phenomea"
+        self.db.update_entity_name(old_name, new_name)
+        self.cursor.execute("SELECT entity FROM entities WHERE entity = ?", (new_name,))
+        updated_entity = self.cursor.fetchone()
+        self.assertIsNotNone(updated_entity, f"Entity {new_name} not found.")
+        self.assertEqual(updated_entity[0], new_name, f"Entity name not updated correctly.")
+        TestDBAnalysis.successful_tests.append("test_update_entity_name")
+
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(TestDBAnalysis('test_get_entity_fqs'))
@@ -146,6 +156,7 @@ def suite():
     suite.addTest(TestDBAnalysis('test_count_cooccurence'))
     suite.addTest(TestDBAnalysis('test_sum_cooccurences'))
     suite.addTest(TestDBAnalysis('test_export_cooccurrences'))
+    suite.addTest(TestDBAnalysis('test_update_entity_name'))
     return suite
 
 if __name__ == "__main__":
@@ -162,3 +173,5 @@ if __name__ == "__main__":
         print("\nSuccessful Tests:")
         for test_name in TestDBAnalysis.successful_tests:
             print(f" - {test_name}")
+
+

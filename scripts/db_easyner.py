@@ -9,17 +9,6 @@ class EasyNerDB:
         self.conn = sqlite3.connect(self.db_path)
         self.cursor = self.conn.cursor()
 
-    def _ensure_fq_column(self):
-        self.cursor.execute("PRAGMA table_info(entities)")
-        columns = [info[1] for info in self.cursor.fetchall()]
-        if "fq" not in columns:
-            self.cursor.execute(
-                """
-              s  ALTER TABLE entities
-                ADD COLUMN fq INTEGER DEFAULT 0
-            """
-            )
-            self.conn.commit()
 
     def __del__(self):
         self.conn.close()
@@ -299,22 +288,25 @@ class EasyNerDB:
             writer.writerow(["entity_1", "entity_2", "fq"])
             writer.writerows(coentity_summary)
 
+    def update_entity_name(self, old_name, new_name):
+        """
+        Update the entity name in the entities table.
+
+        Args:
+            old_name (str): The current name of the entity.
+            new_name (str): The new name of the entity.
+        """
+        self.cursor.execute(
+            "UPDATE entities SET entity = ? WHERE entity = ?", (new_name, old_name)
+        )
+        self.conn.commit()
+
 if __name__ == "__main__":
     db_path = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/database.db"
     db = EasyNerDB(db_path)
 
-    # Example usage of new methods
-    pmid = 123456
-    title = db.get_title(pmid)
-    if title:
-        print(f"Title for PMID {pmid}: {title}")
-    else:
-        print(f"No title found for PMID {pmid}")
 
-    sentences = db.get_sentences()
-    print("\nSentences:")
-    for pmid, sentence_index, text in sentences:
-        print(f"PMID: {pmid}, Sentence Index: {sentence_index}, Text: {text}")
+    db.record_entity_cooccurrences("disease", "phenomena")
 
     entity1 = "Entity1"
     entity2 = "Entity2"
