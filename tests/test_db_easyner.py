@@ -57,12 +57,6 @@ class TestDBAnalysis(unittest.TestCase):
         self.assertEqual(sentences, expected_sentences, "Sentences do not match.")
         TestDBAnalysis.successful_tests.append("test_get_sentences")
 
-    # def test_find_specific_entity_cooccurrences(self, e1_text="disese1", e2_text="phenomenon2"):
-    #     # Destroy the entity_cooccurrences table to ensure it is created from scratch
-    #     self.cursor.execute("DROP TABLE IF EXISTS entity_cooccurrences")
-    #     cooccurrences = self.db.record_entity_cooccurrences()(e1_text, e2_text)
-    #     TestDBAnalysis.successful_tests.append("test_find_specific_entity_cooccurrences")
-
     def test_find_entity_cooccurrences(self, entity1="disease", entity2="phenomenon"):
         # Destroy the entity_cooccurrences table to ensure it is created from scratch
         self.cursor.execute("DROP TABLE IF EXISTS entity_cooccurrences")
@@ -111,7 +105,7 @@ class TestDBAnalysis(unittest.TestCase):
         self.db.sum_cooccurences()
         self.cursor.execute("SELECT e1_text, e2_text, fq FROM coentity_summary")
         coentity_summary = self.cursor.fetchall()
-        print(coentity_summary)
+        # print(coentity_summary)
         expected_summary = [
             # Add expected summary data here
             ("disease1", "phenomenon1", 7),
@@ -142,14 +136,27 @@ class TestDBAnalysis(unittest.TestCase):
 
         TestDBAnalysis.successful_tests.append("test_export_cooccurrences")
 
+def suite():
+    suite = unittest.TestSuite()
+    suite.addTest(TestDBAnalysis('test_get_entity_fqs'))
+    suite.addTest(TestDBAnalysis('test_get_title'))
+    suite.addTest(TestDBAnalysis('test_get_title_not_found'))
+    suite.addTest(TestDBAnalysis('test_get_sentences'))
+    suite.addTest(TestDBAnalysis('test_find_entity_cooccurrences'))
+    suite.addTest(TestDBAnalysis('test_count_cooccurence'))
+    suite.addTest(TestDBAnalysis('test_sum_cooccurences'))
+    suite.addTest(TestDBAnalysis('test_export_cooccurrences'))
+    return suite
+
 if __name__ == "__main__":
-    result = unittest.main(exit=False)
-    if not (result.result.wasSuccessful()):
+    runner = unittest.TextTestRunner()
+    result = runner.run(suite())
+    if not result.wasSuccessful():
         print("\nFailed Tests:")
-        for failed_test, traceback in result.result.failures:
+        for failed_test, traceback in result.failures:
             print(f" - {failed_test.id()}")
         print("\nErrored Tests:")
-        for errored_test, traceback in result.result.errors:
+        for errored_test, traceback in result.errors:
             print(f" - {errored_test.id()}")
 
         print("\nSuccessful Tests:")
