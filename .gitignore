@@ -16,3 +16,5 @@ tests/test_find_entity_cooccurrences.json
 tests/generated_output.json
 tests/test_export_cooccurences.json
 tests/test_export_cooccurrences.csv
+tests/test_database.db-wal
+tests/test_database.db-shm
