@@ -163,5 +163,28 @@
                 }
             }
         ]
+    },
+    "4": {
+        "title": "Title 4 - Same entity text with different labels",
+        "sentences": [
+            {
+                "text": "This has the text typical_disease_text labeled as phenomenon.",
+                "entities": {
+                    "phenomenon": ["typical_disease_text"]
+                },
+                "entity_spans": {
+                    "phenomenon": [[18, 38]]
+                }
+            },
+            {
+                "text": "This has the text typical_disease_text labeled as disease.",
+                "entities": {
+                    "disease": ["typical_disease_text"]
+                },
+                "entity_spans": {
+                    "disease": [[18, 38]]
+                }
+            }
+        ]
     }
 }
