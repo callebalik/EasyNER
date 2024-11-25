@@ -23,17 +23,17 @@ class TestDBAnalysis(unittest.TestCase):
         self.entity2 = "phenomenon"
         self.maxDiff = None
 
-    def test_get_entity_fqs(self):
-        self.db.get_entity_fqs()
+    def test_get_named_entity_fqs(self):
+        self.db.get_named_entity_fqs()
         self.cursor.execute("SELECT entity, fq FROM entities")
         entities = self.cursor.fetchall()
-        expected_entities = [("disease", 15), ("phenomenon", 12)]
+        expected_entities = [("disease", 16), ("phenomenon", 13)]
         self.assertEqual(
             entities,
             expected_entities,
-            "Entity frequencies do not match expected values.",
+            "Named entity frequencies do not match expected values.",
         )
-        TestDBAnalysis.successful_tests.append("test_get_entity_fqs")
+        TestDBAnalysis.successful_tests.append("test_get_named_entity_fqs")
 
     def test_get_title(self):
         pmid = 1
@@ -122,6 +122,7 @@ class TestDBAnalysis(unittest.TestCase):
         )
         TestDBAnalysis.successful_tests.append("test_sum_cooccurences")
 
+
     def test_export_cooccurrences(self):
         # Assuming the test database already has the necessary data
         output_file = "test_export_cooccurrences.csv"
@@ -138,7 +139,7 @@ class TestDBAnalysis(unittest.TestCase):
 
     def test_update_entity_name(self):
         old_name = "phenomenon"
-        new_name = "phenomea"
+        new_name = "PNM"
         self.db.update_entity_name(old_name, new_name)
         self.cursor.execute("SELECT entity FROM entities WHERE entity = ?", (new_name,))
         updated_entity = self.cursor.fetchone()
@@ -146,9 +147,40 @@ class TestDBAnalysis(unittest.TestCase):
         self.assertEqual(updated_entity[0], new_name, f"Entity name not updated correctly.")
         TestDBAnalysis.successful_tests.append("test_update_entity_name")
 
+    def test_count_entity_fq(self):
+        # Destroy the entity_fq table to ensure it is created from scratch
+        self.cursor.execute("DROP TABLE IF EXISTS entity_fq")
+
+        # Assuming the test database already has the necessary data
+        self.db.count_entity_fq()
+        self.cursor.execute("SELECT entity_text, entity_id, fq FROM entity_fq")
+        entity_frequencies = self.cursor.fetchall()
+        # print(entity_frequencies)
+        #  The middle values are the entity IDs, 1 for disease and 2 for phenomenon
+        expected_frequencies = [
+            ("disease1", 1, 9),
+            ("phenomenon1", 2, 6),
+            ("phenomenon2", 2, 4),
+            ("disease2", 1, 3),
+            ("disease3", 1, 2),
+            ("disease4", 1, 1),
+            ("phenomenon3", 2, 1),
+            ("phenomenon4", 2, 1),
+            ('typical_disease_text', 1, 1),
+            ('typical_disease_text', 2, 1)
+        ]
+
+        self.assertEqual(
+            entity_frequencies,
+            expected_frequencies,
+            "Entity frequencies do not match expected values.",
+        )
+        TestDBAnalysis.successful_tests.append("test_count_entity_fq")
+        self.db.export_entity_fq("test_entity_fq.csv", entity_filter="PNM")
+
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(TestDBAnalysis('test_get_entity_fqs'))
+    suite.addTest(TestDBAnalysis('test_get_named_entity_fqs'))
     suite.addTest(TestDBAnalysis('test_get_title'))
     suite.addTest(TestDBAnalysis('test_get_title_not_found'))
     suite.addTest(TestDBAnalysis('test_get_sentences'))
@@ -157,6 +189,7 @@ def suite():
     suite.addTest(TestDBAnalysis('test_sum_cooccurences'))
     suite.addTest(TestDBAnalysis('test_export_cooccurrences'))
     suite.addTest(TestDBAnalysis('test_update_entity_name'))
+    suite.addTest(TestDBAnalysis('test_count_entity_fq'))
     return suite
 
 if __name__ == "__main__":
