@@ -147,6 +147,16 @@ class TestDBAnalysis(unittest.TestCase):
         self.assertEqual(updated_entity[0], new_name, f"Entity name not updated correctly.")
         TestDBAnalysis.successful_tests.append("test_update_entity_name")
 
+        # Revert the changes
+        self.db.update_entity_name(new_name, old_name)
+
+        # Check if the entity name is reverted
+        self.cursor.execute("SELECT entity FROM entities WHERE entity = ?", (old_name,))
+        reverted_entity = self.cursor.fetchone()
+        self.assertIsNotNone(reverted_entity, f"Entity {old_name} not found.")
+        self.assertEqual(reverted_entity[0], old_name, f"Entity name not reverted correctly.")
+
+
     def test_count_entity_fq(self):
         # Destroy the entity_fq table to ensure it is created from scratch
         self.cursor.execute("DROP TABLE IF EXISTS entity_fq")
