@@ -156,6 +156,11 @@ class TestDBAnalysis(unittest.TestCase):
         self.assertIsNotNone(reverted_entity, f"Entity {old_name} not found.")
         self.assertEqual(reverted_entity[0], old_name, f"Entity name not reverted correctly.")
 
+    def test_get_named_entity_id(self, entity="disease"):
+        entity_id = self.db.get_named_entity_id(entity)
+        self.assertEqual(entity_id, 1, "Named entity ID does not match expected value.")
+        TestDBAnalysis.successful_tests.append("test_get_named_entity_id")
+
 
     def test_count_entity_fq(self):
         # Destroy the entity_fq table to ensure it is created from scratch
@@ -188,6 +193,7 @@ class TestDBAnalysis(unittest.TestCase):
         TestDBAnalysis.successful_tests.append("test_count_entity_fq")
         self.db.export_entity_fq("test_entity_fq.csv", entity_filter="PNM")
 
+
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(TestDBAnalysis('test_get_named_entity_fqs'))
@@ -200,6 +206,7 @@ def suite():
     suite.addTest(TestDBAnalysis('test_export_cooccurrences'))
     suite.addTest(TestDBAnalysis('test_update_entity_name'))
     suite.addTest(TestDBAnalysis('test_count_entity_fq'))
+    suite.addTest(TestDBAnalysis('test_get_named_entity_id'))
     return suite
 
 if __name__ == "__main__":

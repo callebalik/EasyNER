@@ -100,6 +100,20 @@ class EasyNerDB:
             )
             entities = self.cursor.fetchall()
             return {entity[0]: entity[1] for entity in entities}
+    def get_named_entity_id(self, named_entity : str):
+
+        """
+        Get the ID of a named entity from the entities table.
+
+        Args:
+            named_entity (str): The named entity to get the ID for.
+
+        Returns:
+            int: The ID of the named entity.
+        """
+        self.cursor.execute("SELECT id FROM entities WHERE entity = ?", (named_entity,))
+        named_entity_id = self.cursor.fetchone()
+        return named_entity_id[0] if named_entity_id else None
 
     def get_titles(self):
         """
@@ -151,17 +165,17 @@ class EasyNerDB:
             """
             CREATE TABLE IF NOT EXISTS entity_cooccurrences (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                entity1 INTEGER NOT NULL,
-                entity2 INTEGER NOT NULL,
                 e1_text TEXT NOT NULL,
                 e2_text TEXT NOT NULL,
+                e1_NE_id INTEGER NOT NULL,
+                e2_NE_id INTEGER NOT NULL,
                 e1_id INTEGER NOT NULL,
                 e2_id INTEGER NOT NULL,
                 sentence_id INTEGER NOT NULL,
                 coentity_summary_id INTEGER,
                 FOREIGN KEY (sentence_id) REFERENCES sentences(id),
-                FOREIGN KEY (entity1) REFERENCES entities(id),
-                FOREIGN KEY (entity2) REFERENCES entities(id),
+                FOREIGN KEY (e1_NE_id) REFERENCES entities(id),
+                FOREIGN KEY (e2_NE_id) REFERENCES entities(id),
                 FOREIGN KEY (e1_id) REFERENCES entity_occurrences(id),
                 FOREIGN KEY (e2_id) REFERENCES entity_occurrences(id),
                 FOREIGN KEY (coentity_summary_id) REFERENCES coentity_summary(id)
@@ -205,7 +219,7 @@ class EasyNerDB:
                 sentence_id, sentence_index, e1_text, e2_text, e1_id, e2_id = result
                 self.cursor.execute(
                     """
-                    INSERT OR IGNORE INTO entity_cooccurrences (entity1, entity2, e1_text, e2_text, e1_id, e2_id, sentence_id)
+                    INSERT OR IGNORE INTO entity_cooccurrences (e1_NE_id, e2_NE_id, e1_text, e2_text, e1_id, e2_id, sentence_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
@@ -564,6 +578,88 @@ class EasyNerDB:
         """
         self.cursor.execute(f"UPDATE {table_name} SET {column_name} = LOWER({column_name})")
         self.conn.commit()
+
+    def drop_entity_cooccurrence(self, entity1_text, entity1_type, entity2_text=None, entity2_type=None):
+        """
+        Delete entity cooccurrences from the entity_cooccurrences table matching entity1_text and entity1_type.
+        If entity2_text and entity2_type are provided, delete only the matching entity pairs.
+        """
+        try:
+            # Get entity IDs for entity type 1
+            entity1_id = self.get_named_entity_id(entity1_type)
+            if entity1_id is None:
+                print(f"Error: Entity ID for {entity1_type} not found.")
+                return
+            print(f'Entity 1 ID: {entity1_id}')
+
+            if entity2_text and entity2_type:
+                entity2_id = self.get_named_entity_id(entity2_type)
+                if entity2_id is None:
+                    print(f"Error: Entity ID for {entity2_type} not found.")
+                    return
+
+                cooccurrences = self.get_specified_entity_cooccurrences(entity1_text, entity2_text)
+                if not cooccurrences:
+                    print(f"Error: No cooccurrences found for {entity1_text} and {entity2_text}.")
+                    return
+
+                for key in cooccurrences.keys():
+                    self.cursor.execute(
+                        "DELETE FROM entity_cooccurrences WHERE e1_NE_id = ? AND e1_text = ? AND e2_NE_id = ? AND e2_text = ?",
+                        (entity1_id, entity1_text, entity2_id, entity2_text)
+                    )
+                    self.cursor.execute(
+                        "UPDATE coentity_summary SET fq = fq - 1 WHERE e1_text = ? AND e2_text = ?",
+                        (entity1_text, entity2_text)
+                    )
+            else:
+                print(f"Deleting all cooccurrences for {entity1_text}... of type {entity1_type} with ID {entity1_id}")
+                self.cursor.execute(
+                    "DELETE FROM entity_cooccurrences WHERE e1_NE_id = ? AND e1_text = ?",
+                    (entity1_id, entity1_text)
+                )
+                self.cursor.execute(
+                    "UPDATE coentity_summary SET fq = fq - 1 WHERE e1_text = ?",
+                    (entity1_text,)
+                )
+
+            self.conn.commit()
+            print(f"Successfully deleted cooccurrences for {entity1_text} of type {entity1_type}. {entity2_text if entity2_text else ''}.")
+        except Exception as e:
+            print(f"Error occurred while deleting cooccurrences: {e}")
+
+    def drop_entities_from_occurrences(self, entity_text, entity_type, delete_cooccurrences=False):
+        """
+        Drop every matching entity_text and entity_type from entity_occurrences.
+
+        Args:
+            entity_text (str): The text of the entity to drop.
+            entity_type (str): The type of the entity to drop.
+        """
+        try:
+            # Get entity ID
+            entity_id = self.get_named_entity_id(entity_type)
+            if entity_id is None:
+                print(f"Error: Entity ID for {entity_type} not found.")
+                return
+
+            # Delete from entity_occurrences table
+            self.cursor.execute(
+                "DELETE FROM entity_occurrences WHERE entity_id = ? AND entity_text = ?",
+                (entity_id, entity_text)
+            )
+            self.conn.commit()
+            print(f"Successfully deleted occurrences of entity {entity_text} of type {entity_type}.")
+
+            if delete_cooccurrences:
+                # Run the drop_entity_cooccurrence method to delete cooccurrences
+                self.drop_entity_cooccurrence(entity_text, entity_type)
+
+        except Exception as e:
+            print(f"Error occurred while deleting entity occurrences: {e}")
+
+    def drop_named_entities(self, named_entity : str):
+        pass
 
 if __name__ == "__main__":
     db_path = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/database6.db"
