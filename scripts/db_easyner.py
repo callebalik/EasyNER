@@ -86,6 +86,7 @@ class EasyNerDB:
         entities = self.cursor.fetchall()
         return [entity[0] for entity in entities]
 
+
     def list_fq_of_entities(self, entity=None):
         if entity:
             self.cursor.execute(
@@ -519,6 +520,50 @@ class EasyNerDB:
             )
             self.conn.commit()
             pbar.update(total)
+
+    def clone_table(self, table_name, clone_name):
+        """
+        Clone a table in the database.
+
+        Args:
+            table_name (str): The name of the table to clone.
+            clone_name (str): The name of the new cloned table.
+        """
+        try:
+            self.cursor.execute(f"CREATE TABLE {clone_name} AS SELECT * FROM {table_name}")
+            self.conn.commit()
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                print(f"Error: Table '{table_name}' does not exist.")
+            else:
+                raise
+
+    def drop_table(self, table_name):
+        """
+        Drop a table from the database.
+
+        Args:
+            table_name (str): The name of the table to drop.
+        """
+        try:
+            self.cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+            print(f"Table '{table_name}' dropped successfully.")
+            self.conn.commit()
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                print(f"Error: Table '{table_name}' does not exist.")
+            else:
+                raise
+    def lowercase_column(self, table_name, column_name):
+        """
+        Lowercase all values in a column of a table. This merges entities with different cases.
+
+        Args:
+            table_name (str): The name of the table.
+            column_name (str): The name of the column.
+        """
+        self.cursor.execute(f"UPDATE {table_name} SET {column_name} = LOWER({column_name})")
+        self.conn.commit()
 
 if __name__ == "__main__":
     db_path = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/database6.db"
