@@ -12,11 +12,30 @@ def read_job_metadata(metadata_file):
         return json.load(f)
 
 
+def get_gpu_usage(job_id):
+    """
+    Retrieves GPU usage details for a job using 'nvidia-smi' via 'jobsh'.
+    """
+    gpu_usage = None
+
+    # Log onto the node running the job and retrieve GPU usage details
+    jobsh_result = subprocess.run(
+        ["jobsh", "-j", job_id, "--", "nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+        stdout=subprocess.PIPE,
+        universal_newlines=True,
+    )
+
+    if jobsh_result.stdout.strip():
+        gpu_usage = jobsh_result.stdout.strip()
+
+    return gpu_usage
+
+
 def get_running_job_details(job_id):
     """
     Retrieves details for running/pending jobs using 'squeue'.
     """
-    result = {"elapsed_time": None, "status": "running/pending"}
+    result = {"elapsed_time": None, "status": "running/pending", "gpu_usage": None}
 
     # Retrieve details from 'squeue'
     squeue_result = subprocess.run(
@@ -28,6 +47,9 @@ def get_running_job_details(job_id):
     if squeue_result.stdout.strip():
         # Elapsed time is given by 'squeue'
         result["elapsed_time"] = squeue_result.stdout.strip()
+
+        # Retrieve GPU usage details
+        result["gpu_usage"] = get_gpu_usage(job_id)
 
     return result
 
@@ -87,6 +109,7 @@ def monitor_jobs(job_metadata, output_file, log_file):
         "Status",
         "Elapsed Time",
         "CPU Usage",
+        "GPU Usage",  # Added GPU Usage column
         "Exit Code",
     ]
 
@@ -125,6 +148,7 @@ def monitor_jobs(job_metadata, output_file, log_file):
                     result.get("status", "UNKNOWN"),
                     result.get("elapsed_time", "N/A"),
                     result.get("cpu_usage", "N/A"),
+                    result.get("gpu_usage", "N/A"),  # Added GPU Usage
                     result.get("exit_code", "N/A"),
                 ]
             )

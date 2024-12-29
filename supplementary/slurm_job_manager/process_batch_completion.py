@@ -48,7 +48,7 @@ def extract_highest_completion_per_batch(err_file, batch_range):
     return batch_completion
 
 
-def process_batch_completion(job_metadata_file, err_dir, output_file):
+def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file):
     """
     Processes jobs from job_metadata.json and writes a single completion log
     summarizing the highest completion percentage for each batch in all jobs.
@@ -57,6 +57,10 @@ def process_batch_completion(job_metadata_file, err_dir, output_file):
     # Read the job metadata
     with open(job_metadata_file, "r") as f:
         job_metadata = json.load(f)
+
+    total_batches = 0
+    total_completed_batches = 0
+    incomplete_batches = []
 
     # Open the output file to write the combined results
     with open(output_file, "w") as f_out:
@@ -104,6 +108,8 @@ def process_batch_completion(job_metadata_file, err_dir, output_file):
                             f_out.write(
                                 f"  Batch {batch}: Highest completion percentage: {percentage}%\n"
                             )
+                        if percentage == "Not Started" or percentage < 100:
+                            incomplete_batches.append((job_name, batch))
                     f_out.write("\n")
 
                     # Update the job metadata with completion status
@@ -117,6 +123,16 @@ def process_batch_completion(job_metadata_file, err_dir, output_file):
             else:
                 print(f"No job ID found for batch {job_key}")
 
+        # Calculate and write the total completion progress bar
+        total_completion_percentage = (total_completed_batches / total_batches) * 100 if total_batches > 0 else 0
+        progress_bar = f"[{'#' * int(total_completion_percentage // 2)}{' ' * (50 - int(total_completion_percentage // 2))}] {total_completion_percentage:.2f}%"
+        f_out.write(f"Total Completion Progress: {progress_bar}\n\n")
+
+    # Save the list of incomplete batches to the rerun file
+    with open(rerun_file, "w") as f_rerun:
+        for job_name, batch in incomplete_batches:
+            f_rerun.write(f"{job_name} Batch {batch}\n")
+
     # Save the updated job metadata back to the file
     with open(job_metadata_file, "w") as f:
         json.dump(job_metadata, f, indent=2)
@@ -124,12 +140,12 @@ def process_batch_completion(job_metadata_file, err_dir, output_file):
     print(f"Job metadata updated with completion status.")
 
 
-def run_completion_logging(metadata_file, err_dir, output_file):
+def run_completion_logging(metadata_file, err_dir, output_file, rerun_file):
     """
     Callable function to run the batch completion logging process programmatically.
     This function can be called from other Python scripts.
     """
-    process_batch_completion(metadata_file, err_dir, output_file)
+    process_batch_completion(metadata_file, err_dir, output_file, rerun_file)
 
 
 if __name__ == "__main__":
@@ -154,8 +170,14 @@ if __name__ == "__main__":
         required=True,
         help="File to save the combined completion summary log",
     )
+    parser.add_argument(
+        "--rerun-file",
+        type=str,
+        required=True,
+        help="File to save the list of incomplete batches",
+    )
 
     args = parser.parse_args()
 
     # Process the jobs and extract highest completion percentages per batch from their .err files
-    process_batch_completion(args.metadata_file, args.err_dir, args.output_file)
+    process_batch_completion(args.metadata_file, args.err_dir, args.output_file, args.rerun_file)

@@ -1,97 +1,130 @@
 {
     "CPU_LIMIT": 16,
-
-  "ignore": {
-    "cord_loader": true,
-    "downloader": true,
-    "text_loader":true,
-    "pubmed_bulk_loader":true,
-    "splitter": true,
-    "ner": true,
-      "analysis": true,
-    "merger": false,
-    "metrics":true,
-    "nel":true,
-    "result_inspection":true
-  },
-  "downloader": {
-    "input_path": "data/Lund-Autophagy-1.txt",
-    "output_path": "results/dataloader/text.json",
-    "batch_size": 100
-  },
-  "cord_loader": {
-    "input_path": "data/metadata.csv",
-    "output_path": "results/dataloader/text.json",
-    "subset":false,
-    "subset_file": ""
-  },
-  "text_loader": {
-    "input_path": "data/freetext.txt",
-    "output_path": "results/dataloader/text.json",
-    "prefix": "freetext"
-  },
-  "pubmed_bulk_loader": {
-    "output_path": "data/pubmed/",
-    "baseline": "24",
-    "subset": true,
-    "subset_range":[0,3],
-    "get_nightly_update_files": false,
-    "update_file_range":[0,0],
-    "count_articles": true,
-    "raw_download_path": ""
-  },
-  "splitter": {
-    "input_path": "results/dataloader/text.json",
-    "output_folder": "results/splitter/",
-    "output_file_prefix": "sentences",
-	  "pubmed_bulk": false,
-	  "file_limit":[0,100],
-    "tokenizer": "spacy",
-    "model_name": "en_core_web_sm",
-    "batch_size": 100
-  },
-  "ner": {
-      "input_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_disease/",
-      "output_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_phenomena/",
-    "output_file_prefix": "ner_phenomena",
-    "model_type": "spacy_phrasematcher",
-    "model_folder": "aitslab",
-    "model_name": "en_core_web_sm",
-      "vocab_path": "/home/x_caoll/EnviDis/vocab/envidis_vocab.txt",
-    "store_tokens":"no",
-    "labels": "",
-    "clear_old_results": true,
-    "article_limit": [-1,0],
-    "entity_type": "phenoma",
-      "multiprocessing":false
-  },
-  "analysis": {
-    "input_path": "results/ner/",
-    "output_path": "results/analysis/",
-    "entity_type":"phenoma",
-    "plot_top_n":50
-  },
-  "merger": {
-    "paths": ["/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_disease/", "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_phenomena/"],
-    "entities": ["disease", "phenoma"],
-    "output_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged",
-    "output_prefix": "merged",
-    "skip_existing": true
-  },
-  "metrics": {
-    "predictions_file":"path/to/predictions/file.txt",
-    "true_file":"path/to/true/annotated/file.txt",
-    "output_file":"results/metrics/path/to/metrics_file.txt",
-    "pred_sep": " ",
-    "true_sep":" "
-  },
-  "nel":{
-    "input_path": "results/text-ner-Lund-Autophagy-1_species/",
-    "output_path": "results/text-nel_Lund_Autophagy-1_species.json"
-  },
-  "result_inspection":{
-    "input_folder": "results/ner/",
-    "output_file": "results/ner_search.txt",
-    "entities": ["tsc", "mtor", "cell", "cells", "rapamycin"]
-  }
+    "ignore": {
+        "cord_loader": true,
+        "downloader": true,
+        "text_loader": true,
+        "pubmed_bulk_loader": true,
+        "splitter": true,
+        "ner": true,
+        "analysis": true,
+        "merger": false,
+        "metrics": true,
+        "nel": true,
+        "result_inspection": true,
+        "co_occurrence": true
+    },
+    "downloader": {
+        "input_path": "data/Lund-Autophagy-1.txt",
+        "output_path": "results/dataloader/text.json",
+        "batch_size": 100
+    },
+    "cord_loader": {
+        "input_path": "data/metadata.csv",
+        "output_path": "results/dataloader/text.json",
+        "subset": false,
+        "subset_file": ""
+    },
+    "text_loader": {
+        "input_path": "data/freetext.txt",
+        "output_path": "results/dataloader/text.json",
+        "prefix": "freetext"
+    },
+    "pubmed_bulk_loader": {
+        "output_path": "data/pubmed/",
+        "baseline": "24",
+        "subset": true,
+        "subset_range": [
+            0,
+            3
+        ],
+        "get_nightly_update_files": false,
+        "update_file_range": [
+            0,
+            0
+        ],
+        "count_articles": true,
+        "raw_download_path": ""
+    },
+    "splitter": {
+        "input_path": "results/dataloader/text.json",
+        "output_folder": "results/splitter/",
+        "output_file_prefix": "sentences",
+        "pubmed_bulk": false,
+        "file_limit": [
+            0,
+            100
+        ],
+        "tokenizer": "spacy",
+        "model_name": "en_core_web_sm",
+        "batch_size": 100
+    },
+    "ner": {
+        "input_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_disease/",
+        "output_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_phenomena3/",
+        "output_file_prefix": "ner_phenomena",
+        "model_type": "spacy_phrasematcher",
+        "model_folder": "aitslab",
+        "model_name": "en_core_web_sm",
+        "vocab_path": "/home/x_caoll/EnviDis/vocab/envidis_vocab_with_plurals.txt",
+        "store_tokens": "yes",
+        "labels": "",
+        "clear_old_results": true,
+        "article_limit": [
+            -1,
+            0
+        ],
+        "entity_type": "phenomenon",
+        "multiprocessing": true
+    },
+    "analysis": {
+        "input_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_phenomena/",
+        "output_path": "results/analysis/",
+        "entity_type": "phenomenon",
+        "plot_top_n": 50
+    },
+    "merger": {
+        "paths": [
+            "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_phenomena3/",
+            "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_disease/"
+        ],
+        "entities": [
+            "phenomenon",
+            "disease"
+        ],
+        "output_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged_plurals_and_word_count",
+        "output_prefix": "pnd_dis"
+    },
+    "metrics": {
+        "predictions_file": "path/to/predictions/file.txt",
+        "true_file": "path/to/true/annotated/file.txt",
+        "output_file": "results/metrics/path/to/metrics_file.txt",
+        "pred_sep": " ",
+        "true_sep": " "
+    },
+    "nel": {
+        "input_path": "results/text-ner-Lund-Autophagy-1_species/",
+        "output_path": "results/text-nel_Lund_Autophagy-1_species.json"
+    },
+    "result_inspection": {
+        "input_folder": "results/ner/",
+        "output_file": "results/ner_search.txt",
+        "entities": [
+            "tsc",
+            "mtor",
+            "cell",
+            "cells",
+            "rapamycin"
+        ]
+    },
+    "co_occurrence": {
+        "input_folder": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged/",
+        "output_path": "results/",
+        "entity1": "disease",
+        "entity2": "phenomenon",
+        "file_range": null,
+        "sentence_level": "too be implemented",
+        "document_level": "too be implemented",
+        "db_path": "results/co_occurrences.db"
+    }
 }

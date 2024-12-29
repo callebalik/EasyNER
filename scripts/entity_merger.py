@@ -14,6 +14,8 @@ import logging
 
 # If no vaild matched file in accodance with 1, 2 dosen't merge file and logs as not merged to results/entity_merger_log
 
+# If there are fields that should be retained but are not present in one set of files, the path to the articles with the fields should be the first in the list of paths in the config.
+
 # Set up logging to file
 logging.basicConfig(
     filename="results/entity_merger_log.txt",
@@ -46,20 +48,21 @@ def process_articles(articles: dict, entity_tag: str):
     """
     process the article to contain tag
     """
-    for art in list(articles):
-        for i, sent in enumerate(articles[art]["sentences"]):
-            if len(sent["entities"]) > 0:
-                articles[art]["sentences"][i]["entities"] = {
-                    entity_tag: articles[art]["sentences"][i]["entities"]
+    for art in articles:  # Iterate directly over the dictionary keys
+        for i, sent in enumerate(articles[art]["sentences"]):  # Use enumerate to get both index and sentence
+            if sent["entities"]:  # Check if there are entities in the sentence
+                # Directly update the sentence using the sent variable for readability
+                sent["entities"] = {
+                    entity_tag: sent["entities"]
                 }
-                articles[art]["sentences"][i]["entity_spans"] = {
-                    entity_tag: articles[art]["sentences"][i]["entity_spans"]
+                sent["entity_spans"] = {
+                    entity_tag: sent["entity_spans"]
                 }
             else:
-                articles[art]["sentences"][i]["entities"] = {}
-                articles[art]["sentences"][i]["entity_spans"] = {}
-    return articles
-
+                # If no entities, set empty dictionaries
+                sent["entities"] = {}
+                sent["entity_spans"] = {}
+    return articles  # Return the updated articles dictionary
 
 def merge_two_articles(articles_1, articles_2):
     """
@@ -197,7 +200,7 @@ if __name__ == "__main__":
         "../../NER_pipeline/results/ner_disease/",
         "../../NER_pipeline/results/ner_phenomena/",
     ]
-    infile_entity_tags = ["disease", "phenomena"]
+    infile_entity_tags = ["disease", "phenomenon"]
     merger_config = {
         "paths": input_folders,
         "entities": infile_entity_tags,
