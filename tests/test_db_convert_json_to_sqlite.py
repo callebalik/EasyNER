@@ -5,7 +5,7 @@ import json
 import unittest
 from glob import glob
 from tqdm import tqdm
-
+import random
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -19,9 +19,20 @@ class TestConvertJsonToSqlite(unittest.TestCase):
             print(f"Removing existing database file: {self.test_db_path}")
             os.remove(self.test_db_path)
 
-        self.mock_json_file = 'mockup.json'
+        self.mock_json_file = 'temp_mockup.json'
         with open(self.mock_json_file, 'r', encoding='utf-8') as file:
             self.mock_json_data = json.load(file)
+
+        # # Add random count values to each sentence
+        # for article_id, article in self.mock_json_data.items():
+        #     for sentence in article['sentences']:
+        #         sentence['token_count'] = random.randint(20, 30)
+        #         sentence['alpha_count'] = random.randint(15, 25)
+        #         sentence['word_count'] = random.randint(18, 28)
+
+        # # save the modified mock json data as a new temp file
+        # with open('temp_mockup.json', 'w', encoding='utf-8') as file:
+        #     json.dump(self.mock_json_data, file)
 
     def test_load_json_to_db(self):
         load_json_to_db([self.mock_json_file], self.test_db_path)
