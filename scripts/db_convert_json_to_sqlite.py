@@ -19,7 +19,10 @@ def create_database(db_path):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS articles (
             pmid INTEGER PRIMARY KEY,
-            title TEXT
+            title TEXT,
+            word_count INTEGER,
+            token_count INTEGER,
+            alpha_count INTEGER
         )
     ''')
     cursor.execute('''
@@ -28,6 +31,9 @@ def create_database(db_path):
             text TEXT,
             sentence_index INTEGER,
             pmid INTEGER,
+            word_count INTEGER,
+            token_count INTEGER,
+            alpha_count INTEGER,
             FOREIGN KEY(pmid) REFERENCES articles(pmid)
         )
     ''')
@@ -78,11 +84,15 @@ def insert_data(conn, data, filename):
         sentences = []
         for sentence_index, sentence in enumerate(article['sentences']):
             text = sentence['text']
-            sentences.append((pmid, sentence_index, text))
+            word_count = sentence['word_count']
+            token_count = sentence['token_count']
+            alpha_count = sentence['alpha_count']
+
+            sentences.append((pmid, sentence_index, text, word_count, token_count, alpha_count))
 
         cursor.executemany('''
-            INSERT INTO sentences (pmid, sentence_index, text)
-            VALUES (?, ?, ?)
+            INSERT INTO sentences (pmid, sentence_index, text, word_count, token_count, alpha_count)
+            VALUES (?, ?, ?, ?, ?, ?)
         ''', sentences)
 
         entities = set()
@@ -232,13 +242,13 @@ def run(data_files, db_path):
         conn.close()
 
 if __name__ == "__main__":
-    input_folder = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged/"
+    input_folder = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged_plurals_and_word_count/"
 
     data_files = sorted(
         glob(f"{input_folder}*.json"),
         key=lambda f: int("".join(filter(str.isdigit, f))),
     )
 
-    db_path = '/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/database6.db'
-    # data_files = data_files[0:30]
+    db_path = '/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/pnm_dis.db'
+    # data_files = data_files[0:20]
     run(data_files, db_path)
