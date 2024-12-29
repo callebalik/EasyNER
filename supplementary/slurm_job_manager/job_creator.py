@@ -3,14 +3,15 @@ import json
 import argparse
 
 
-def generate_slurm_script(start, end, batch_number, setup_script="setup_env.sh"):
+def generate_slurm_script(start, end, batch_number, setup_script="setup_env.sh", job_dir="."):
     """
     Generates and saves a SLURM job script for processing a batch of articles.
     Embeds the setup script content directly into the SLURM job script, skipping the shebang (#!/bin/bash).
     """
     # Define the job name
     job_name = f"batch_{batch_number}"
-
+    error_log_dir = os.path.join(job_dir, "error_logs")
+    output_log_dir = os.path.join(job_dir, "output_logs")
     # Read the content of the setup script (setup_env.sh), skipping the first line if it's a shebang
     with open(setup_script, "r") as f:
         setup_script_lines = f.readlines()
@@ -21,15 +22,16 @@ def generate_slurm_script(start, end, batch_number, setup_script="setup_env.sh")
     else:
         setup_script_content = "".join(setup_script_lines)
 
+
     # Create the SLURM job script with the embedded setup content (without duplicate shebang)
     slurm_script = f"""#!/bin/bash
 #SBATCH -A berzelius-2024-146  # Your project account
-#SBATCH --gpus=0                # Request 2 GPUs across the nodes
+#SBATCH --gpus=1                # At least one GPU required
 #SBATCH --mail-user=tna14col@student.lu.se
 #SBATCH --mail-type=END
 #SBATCH --job-name={job_name}
-#SBATCH --output={job_name}.out
-#SBATCH --error={job_name}.err
+#SBATCH --output={os.path.join(output_log_dir, job_name)}.out
+#SBATCH --error={os.path.join(error_log_dir, job_name)}.err
 #SBATCH --time=20:00:00
 
 # Set the ARTICLE_LIMIT environment variable for this batch
@@ -42,7 +44,7 @@ export ARTICLE_LIMIT="{start}:{end}"
 python main.py
 """
 
-    script_filename = f"{job_name}.slurm"
+    script_filename = os.path.join(job_dir, f"{job_name}.slurm")
 
     # Write the SLURM script to a file
     with open(script_filename, "w") as script_file:
@@ -63,7 +65,7 @@ def load_batches_from_file(batch_file):
     return batches
 
 
-def create_jobs(batch_file, metadata_file, setup_script="setup_env.sh"):
+def create_jobs(batch_file, metadata_file, setup_script="setup_env.sh", job_dir="."):
     """
     Loads the batch intervals from a file, generates SLURM job scripts, and saves metadata.
     """
@@ -74,7 +76,7 @@ def create_jobs(batch_file, metadata_file, setup_script="setup_env.sh"):
     # Generate SLURM scripts for each batch
     for i, (start, end) in enumerate(batches, 1):
         script_filename, job_name = generate_slurm_script(
-            start, end, i, setup_script=setup_script
+            start, end, i, setup_script=setup_script, job_dir=job_dir
         )
 
         # Store metadata for the job, including job name
@@ -115,10 +117,16 @@ if __name__ == "__main__":
         default="setup_env.sh",
         help="Path to the environment setup script",
     )
+    parser.add_argument(
+        "--job-dir",
+        type=str,
+        default=".",
+        help="Directory to save the SLURM job scripts",
+    )
 
     args = parser.parse_args()
 
     # Create the job scripts
-    create_jobs(args.batch_file, args.metadata_file, setup_script=args.setup_script)
+    create_jobs(args.batch_file, args.metadata_file, setup_script=args.setup_script, job_dir=args.job_dir)
 
     print("Job scripts created and metadata saved.")

@@ -12,17 +12,19 @@ def submit_job(script_filename):
 
     # Universal newlines to handle older python versions
     result = subprocess.run(
-        ["sbatch", script_filename], stdout=subprocess.PIPE, universal_newlines=True
+        ["sbatch", script_filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
     )
 
     # Extract the job ID from the output
     output = result.stdout.strip()
-    job_id = output.split()[
-        -1
-    ]  # The job ID is usually the last part of the sbatch output
-    print(f"Submitted {script_filename}, Job ID: {job_id}")
-
-    return job_id
+    error = result.stderr.strip()
+    if result.returncode == 0:
+        job_id = output.split()[-1]  # The job ID is usually the last part of the sbatch output
+        print(f"Submitted {script_filename}, Job ID: {job_id}")
+        return job_id, None
+    else:
+        print(f"Failed to submit {script_filename}, Error: {error}")
+        return None, error
 
 
 def update_metadata_with_job_id(metadata_file, job_ids):
@@ -47,23 +49,32 @@ def update_metadata_with_job_id(metadata_file, job_ids):
     print(f"Job metadata updated with job IDs in {metadata_file}.")
 
 
-def submit_jobs(script_dir):
+def submit_jobs(script_dir, error_log_file="job_submission_errors.json"):
     """
     Submits SLURM job scripts and returns a dictionary of job IDs.
     :param script_dir: Directory where the SLURM job scripts are located.
+    :param error_log_file: File to log errors during job submission.
     :return: Dictionary mapping batch numbers to SLURM job IDs.
     """
     job_ids = {}
+    errors = []
 
     # Iterate over the job scripts in the directory
     for script_filename in os.listdir(script_dir):
         if script_filename.endswith(".slurm"):
-            batch_number = script_filename.split(".")[
-                0
-            ]  # Assuming batch_1.slurm, batch_2.slurm format
+            batch_number = script_filename.split(".")[0]  # Assuming batch_1.slurm, batch_2.slurm format
             full_path = os.path.join(script_dir, script_filename)
-            job_id = submit_job(full_path)
-            job_ids[batch_number] = job_id
+            job_id, error = submit_job(full_path)
+            if job_id:
+                job_ids[batch_number] = job_id
+            if error:
+                errors.append({"batch_number": batch_number, "error": error})
+
+    # Log errors to the error log file
+    if errors:
+        with open(error_log_file, "w") as f:
+            json.dump(errors, f, indent=2)
+        print(f"Errors logged to {error_log_file}")
 
     return job_ids
 
@@ -83,11 +94,17 @@ if __name__ == "__main__":
         type=str,
         help="Path to the job metadata file (JSON format, optional)",
     )
+    parser.add_argument(
+        "--error-log-file",
+        type=str,
+        default="job_submission_errors.json",
+        help="File to log errors during job submission",
+    )
 
     args = parser.parse_args()
 
     # Submit jobs and get job IDs
-    job_ids = submit_jobs(args.script_dir)
+    job_ids = submit_jobs(args.script_dir, args.error_log_file)
 
     # If a metadata file is provided, update the metadata
     if args.metadata_file:
