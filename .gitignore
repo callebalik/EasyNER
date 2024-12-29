@@ -13,3 +13,10 @@ test_export_cooccurrences.csv
 tests/test_database.db-wal
 tests/test_database.db-shm
 tests/test_entity_fq.csv
+*/slurm_job_manager/error_logs/*
+*/slurm_job_manager/output_logs/*
+*/slurm_job_manager/batch_*.*
+supplementary/slurm_job_manager/job_status.txt
+supplementary/slurm_job_manager/job_*.json
+supplementary/slurm_job_manager/batches.json
+supplementary/slurm_job_manager/rerun_batches.log
