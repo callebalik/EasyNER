@@ -24,6 +24,7 @@ from scripts import ner_main
 from scripts import analysis
 from scripts import pubmed_bulk
 from scripts import co_occurence
+from scripts import co_occurence
 
 
 def run_cord_loader(cord_loader_config: dict, ignore: bool):
