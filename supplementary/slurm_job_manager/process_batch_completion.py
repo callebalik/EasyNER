@@ -86,13 +86,18 @@ def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file
                 )
 
                 if batch_completion:
+                    completed_batches = sum(1 for p in batch_completion.values() if p == 100)
+                    total_batches += len(batch_completion)
+                    total_completed_batches += completed_batches
+                    completion_percentage = (completed_batches / len(batch_completion)) * 100
+
                     # Initialize counters for unstarted and in-progress batches
                     unstarted_batches = 0
                     in_progress_batches = 0
                     all_batches_completed = True
 
                     # Write the results to the output file with job name
-                    f_out.write(f"Job {job_name} (ID: {job_id}):\n")
+                    f_out.write(f"Job {job_name} (ID: {job_id}) - {completed_batches}/{len(batch_completion)} ({completion_percentage:.2f}%):\n")
                     for batch, percentage in batch_completion.items():
                         if percentage == "Not Started":
                             unstarted_batches += 1
