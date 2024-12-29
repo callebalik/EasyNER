@@ -24,7 +24,7 @@ def generate_slurm_script(start, end, batch_number, setup_script="setup_env.sh")
     # Create the SLURM job script with the embedded setup content (without duplicate shebang)
     slurm_script = f"""#!/bin/bash
 #SBATCH -A berzelius-2024-146  # Your project account
-#SBATCH --gpus=0                # Request 2 GPUs across the nodes
+#SBATCH --gpus=1                # One GPU seems to be minimum for a job to be submitted
 #SBATCH --mail-user=tna14col@student.lu.se
 #SBATCH --mail-type=END
 #SBATCH --job-name={job_name}
