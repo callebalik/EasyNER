@@ -116,6 +116,10 @@ def process_job_errors(job_metadata_file, err_dir, output_dir):
             err_file = os.path.join(err_dir, f"{job_name}.err")
             output_file = os.path.join(output_dir, f"{job_name}_error.log")
 
+            if not os.path.exists(err_file):
+                print(f"Job {job_name} (ID: {job_id}) not started yet")
+                return
+
             print(f"Processing error log for Job {job_name} (ID: {job_id})...")
 
             # Extract errors and the last batch status from the .err file
