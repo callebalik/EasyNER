@@ -142,10 +142,21 @@ def run_entity_merger(merger_config: dict):
     for entity, files in file_lists.items():
         logging.info(f"{len(files)} files found for entity {entity}")
 
-    max_files = max([len(files) for files in file_lists.values()])
+
+    # Check the START_FILE_NUMBER environment variable
+    start_merge_number = int(os.getenv("START_MERGE_NBR", 0))
+    stop_merge_number = int(os.getenv("STOP_MERGE_NBR", 0))
+    logging.info(f"START_FILE_NUMBER: {start_merge_number}")
+
+    if stop_merge_number > 0:
+        max_files = stop_merge_number
+        logging.info(f"STOP_FILE_NUMBER: {stop_merge_number}")
+    else:
+        max_files = max([len(files) for files in file_lists.values()])
 
     # Merge files by matching their batch numbers
-    for i in trange(max_files):
+
+    for i in trange(start_merge_number, max_files):
         processed_paths = []
         batch_no = None
         for entity, files in file_lists.items():
@@ -175,9 +186,9 @@ def run_entity_merger(merger_config: dict):
 
             # Skip merging if the output file already exists and skip_existing is True
             if skip_existing and os.path.exists(output_file):
-                logging.info(f"Skipping batch {i} as {output_file} already exists.")
+                logging.warning(f"Skipping batch {i} as {output_file} already exists.")
                 continue
-            
+
             logging.info(f"Merging files: {processed_paths}")
             entity_merger(
                 paths=processed_paths, entities=entities, output_file=output_file
