@@ -39,6 +39,9 @@ class EasyNerDB:
         if self.conn:
             self.conn.close()
 
+    def close(self):
+        self.conn.close()
+
     def get_tables(self):
         self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = self.cursor.fetchall()
