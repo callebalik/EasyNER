@@ -93,7 +93,8 @@
             "disease"
         ],
         "output_path": "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged_plurals_and_word_count",
-        "output_prefix": "pnd_dis"
+        "output_prefix": "pnd_dis",
+        "skip_existing": true
     },
     "metrics": {
         "predictions_file": "path/to/predictions/file.txt",
