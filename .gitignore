@@ -20,3 +20,8 @@ supplementary/slurm_job_manager/job_status.txt
 supplementary/slurm_job_manager/job_*.json
 supplementary/slurm_job_manager/batches.json
 supplementary/slurm_job_manager/rerun_batches.log
+supplementary/slurm_job_manager/job_scripts/merge/*
+supplementary/slurm_job_manager/job_scripts/merge_backwards.slurm
+supplementary/slurm_job_manager/job_scripts/merge.err
+supplementary/slurm_job_manager/job_scripts/merge.out
+supplementary/slurm_job_manager/job_scripts/merge.slurm
