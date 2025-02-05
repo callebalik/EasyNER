@@ -93,6 +93,26 @@ class EasyNerDB:
             self.conn.backup(backup_conn)
         print(f"Database backed up to {backup_path}")
 
+    def optimize_db_performance_parameters(self):
+        # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA synchronous = OFF")
+        self.conn.execute("PRAGMA journal_size_limit = 6144000")
+        self.conn.execute("PRAGMA temp_store = MEMORY")
+
+    def optimize_db_performance_for_write(self):
+        # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA synchronous = OFF")
+        self.conn.execute("PRAGMA journal_size_limit = 6144000")
+        self.conn.execute("PRAGMA temp_store = MEMORY")
+
+    def optimize_db_performance_for_read(self):
+        # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
+        self.conn.execute("PRAGMA journal_mode = MEMORY")
+        self.conn.execute("PRAGMA synchronous = OFF")
+        self.conn.execute("PRAGMA journal_size_limit = 6144000")
+        self.conn.execute("PRAGMA temp_store = MEMORY")
 
     def get_named_entity_fqs(self):
         """
