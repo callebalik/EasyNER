@@ -18,6 +18,7 @@ def verify_sentences_table(conn):
         for row in rows:
             print(row)
 
+
 def update_null_columns(conn):
     """
     Update null values in word_count, token_count, and alpha_count columns in the articles table.
@@ -53,9 +54,10 @@ def calc_article_counts(conn, batch_size=1000):
     null_articles = cursor.fetchone()[0]
 
     if null_articles == 0:
-        logging.info("All articles have word_count, token_count, and alpha_count calculated")
+        logging.info(
+            "All articles have word_count, token_count, and alpha_count calculated"
+        )
         return
-
 
     cursor.execute("SELECT COUNT(*) FROM articles")
     total_articles = cursor.fetchone()[0]
@@ -86,10 +88,12 @@ def calc_article_counts(conn, batch_size=1000):
                     FROM articles
                     LIMIT ? OFFSET ?
                 )
-                """, (batch_size, offset)
+                """,
+                (batch_size, offset),
             )
             conn.commit()
             pbar.update(batch_size)
+
 
 def get_entity_occurrences_with_article_id(conn) -> pd.DataFrame:
     """
@@ -110,12 +114,14 @@ def get_entity_occurrences_with_article_id(conn) -> pd.DataFrame:
 
     return df
 
+
 def get_article_entities(conn, batch=1000) -> pd.DataFrame:
     """
     Retries all entities for a given article
     """
 
-def add_pmid_to_entity_occurrences(conn, batch=800000):
+
+def add_pmid_to_entity_occurrences(conn, batch=100000):
     """
     Add the article ID (pmid) to each entity occurrence in the database.
 
@@ -125,10 +131,8 @@ def add_pmid_to_entity_occurrences(conn, batch=800000):
     """
     cursor = conn.cursor()
 
-
-
-
-
+    cursor.execute("SELECT COUNT(*) FROM entity_occurrences")
+    total_entity_occurrences = cursor.fetchone()[0]
 
     # Make sure the column exists
     cursor.execute("PRAGMA table_info(entity_occurrences)")
@@ -136,18 +140,9 @@ def add_pmid_to_entity_occurrences(conn, batch=800000):
     if not any(column[1] == "pmid" for column in columns):
         cursor.execute("ALTER TABLE entity_occurrences ADD COLUMN pmid INTEGER")
 
-    # Check if any entity occurrences have a null pmid
-    cursor.execute("SELECT COUNT(*) FROM entity_occurrences WHERE pmid IS NULL")
-    null_pmid = cursor.fetchone()[0]
-
-    if null_pmid == 0:
-        logging.info("All entity occurrences have a pmid")
-        return
-
-    cursor.execute("SELECT COUNT(*) FROM entity_occurrences")
-    total_entity_occurrences = cursor.fetchone()[0]
-
-    with tqdm(total=total_entity_occurrences, desc="Adding pmid to entity occurrences") as pbar:
+    with tqdm(
+        total=total_entity_occurrences, desc="Adding pmid to entity occurrences"
+    ) as pbar:
         for offset in range(0, total_entity_occurrences, batch):
             cursor.execute(
                 """
@@ -163,18 +158,11 @@ def add_pmid_to_entity_occurrences(conn, batch=800000):
                     FROM entity_occurrences
                     LIMIT ? OFFSET ?
                 )
-                """, (batch, offset)
+                """,
+                (batch, offset),
             )
             conn.commit()
             pbar.update(batch)
-        # Create index for the pmid column if it does not exist
-        cursor.execute("PRAGMA index_list(entity_occurrences)")
-        indexes = cursor.fetchall()
-
-        if not any(index[1] == "entity_occurrences_pmid_index" for index in indexes):
-            print(f"Succesfully added pmid to all entity occurences...")
-            print(f"No index for entity occurence pmid found, creating index")
-            cursor.execute("CREATE INDEX entity_occurrences_pmid_index ON entity_occurrences(pmid)")
 
 
 def update_db_with_entity_occurrence_term_fq(conn, batch_size=10000):
@@ -184,8 +172,6 @@ def update_db_with_entity_occurrence_term_fq(conn, batch_size=10000):
     Args:
     conn (sqlite3.Connection): A SQLite database connection.
     """
-
-    print("------ Updating term frequency for entity occurrences ------")
     cursor = conn.cursor()
 
     # Add the term frequency column to the entity occurrences table
@@ -197,30 +183,12 @@ def update_db_with_entity_occurrence_term_fq(conn, batch_size=10000):
     if not any(column[1] == "tf" for column in columns):
         cursor.execute("ALTER TABLE entity_occurrences ADD COLUMN tf REAL")
 
-    # Check if any entity occurrences have a null tf
-    cursor.execute("SELECT COUNT(*) FROM entity_occurrences WHERE tf IS NULL")
-    null_tf = cursor.fetchone()[0]
-
-    if null_tf == 0:
-        logging.info("All entity occurrences have a term frequency")
-        print("All entity occurrences have a term frequency. Exiting...")
-        return
-
-    # Create indexes for the entity_occurrences table if they do not exist
-    cursor.execute("PRAGMA index_list(entity_occurrences)")
-    indexes = cursor.fetchall()
-    if not any(index[1] == "entity_occurrences_pmid_index" for index in indexes):
-        print(f"No index for entity occurence pmid found, creating index")
-        cursor.execute("CREATE INDEX entity_occurrences_pmid_index ON entity_occurrences(pmid)")
-
     # Get all unique pmids
     cursor.execute("SELECT DISTINCT pmid FROM entity_occurrences")
     pmids = [row[0] for row in cursor.fetchall()]
 
     # Split the list of pmids into batches
-    pmid_batches = [
-        pmids[i : i + batch_size] for i in range(0, len(pmids), batch_size)
-    ]
+    pmid_batches = [pmids[i : i + batch_size] for i in range(0, len(pmids), batch_size)]
 
     with tqdm(total=len(pmid_batches), desc="Updating term frequency") as pbar:
         for pmid_batch in pmid_batches:
@@ -231,15 +199,15 @@ def update_db_with_entity_occurrence_term_fq(conn, batch_size=10000):
                 FROM entity_occurrences eo
                 JOIN articles a ON eo.pmid = a.pmid
                 WHERE eo.pmid IN ({})
-                AND eo.intra_doc_fq IS NULL
-                """.format(",".join("?" * len(pmid_batch))),
-                pmid_batch
+                """.format(
+                    ",".join("?" * len(pmid_batch))
+                ),
+                pmid_batch,
             )
             entities = cursor.fetchall()
 
             # Calculate number of times the entity occurs in its document for each entity occurrence
             for entity in entities:
-                # First, update intra_doc_fq
                 cursor.execute(
                     """
                     UPDATE entity_occurrences
@@ -249,23 +217,18 @@ def update_db_with_entity_occurrence_term_fq(conn, batch_size=10000):
                         WHERE eo.entity_text = entity_occurrences.entity_text
                         AND eo.entity_id = entity_occurrences.entity_id
                         AND eo.pmid = entity_occurrences.pmid
+                    ),
+                    tf = (
+                        SELECT intra_doc_fq * 1.0 / ?
                     )
                     WHERE id = ?
-                    """, (entity[0],)
-                )
-
-                # Then, update tf based on the updated intra_doc_fq
-                cursor.execute(
-                    """
-                    UPDATE entity_occurrences
-                    SET tf = intra_doc_fq * 1.0 / ?
-                    WHERE id = ?
-                    """, (entity[4], entity[0])
+                    """,
+                    (entity[4], entity[0]),
                 )
 
             conn.commit()
             pbar.update(1)
-    print("------ Finished updating term frequency for entity occurrences ------")
+
 
 def calc_entity_term_fq(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -284,6 +247,7 @@ def calc_entity_term_fq(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return df
+
 
 def update_tf_idf(conn, batch_size=10000):
     """
@@ -313,7 +277,7 @@ def update_tf_idf(conn, batch_size=10000):
     if not nbr_of_articles or nbr_of_articles < 1:
         raise ValueError("No articles found in the database")
 
-    # print(f"Number of articles: {nbr_of_articles}")
+    print(f"Number of articles: {nbr_of_articles}")
 
     # Get the total number of rows in entity_occurrences
     cursor.execute("SELECT COUNT(*) FROM entity_occurrences")
@@ -322,16 +286,21 @@ def update_tf_idf(conn, batch_size=10000):
     # Process in batches
     for offset in tqdm(range(0, total_rows, batch_size), desc="Updating TF-IDF"):
         # Read a batch of entity_occurrences
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT eo.id, eo.entity_text, eo.entity_id, eo.pmid, eo.tf, ef.doc_fq
             FROM entity_occurrences eo
             JOIN entity_fq ef ON eo.entity_text = ef.entity_text AND eo.entity_id = ef.entity_id
             LIMIT ? OFFSET ?
-        """, (batch_size, offset))
+        """,
+            (batch_size, offset),
+        )
         rows = cursor.fetchall()
 
         # Create a DataFrame from the batch
-        df = pd.DataFrame(rows, columns=["id", "entity_text", "entity_id", "pmid", "tf", "doc_fq"])
+        df = pd.DataFrame(
+            rows, columns=["id", "entity_text", "entity_id", "pmid", "tf", "doc_fq"]
+        )
 
         # df(t) = N(t)
         # where
@@ -343,23 +312,26 @@ def update_tf_idf(conn, batch_size=10000):
         df["idf"] = np.log(nbr_of_articles / df["doc_fq"])
 
         # Example calculation for one row
-        # print(f"TF: {df['tf'].iloc[0]}")
-        # print(f"IDF: {df['idf'].iloc[0]}")
-        # print(f"TF-IDF: {df['tf'].iloc[0] * df['idf'].iloc[0]}")
-
+        print(f"TF: {df['tf'].iloc[0]}")
+        print(f"IDF: {df['idf'].iloc[0]}")
+        print(f"TF-IDF: {df['tf'].iloc[0] * df['idf'].iloc[0]}")
 
         # Calculate the TF-IDF score
         df["tf_idf"] = df["tf"] * df["idf"]
 
         # Update the tf_idf values in the database
         for _, row in df.iterrows():
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE entity_occurrences
                 SET tf_idf = ?, inter_doc_fq = ?, idf = ?
                 WHERE id = ?
-            """, (row["tf_idf"], row["doc_fq"], row["idf"], row["id"]))
+            """,
+                (row["tf_idf"], row["doc_fq"], row["idf"], row["id"]),
+            )
 
         conn.commit()
+
 
 def get_number_of_articles(conn) -> int:
     """
@@ -577,17 +549,18 @@ def count_document_cooccurence_fq(df: pd.DataFrame) -> pd.DataFrame:
         df["entity_1_tf_idf"] * df["entity_2_tf_idf"] * df["fq"]
     )
 
-    df["weighted_fq_additative"] = (
-        df["entity_1_tf_idf"] + df["entity_2_tf_idf"]
-    )
+    df["weighted_fq_additative"] = df["entity_1_tf_idf"] + df["entity_2_tf_idf"]
 
     # Group by pmid, entity_1_text, entity_2_text, and aggregate the frequency and weighted frequency
     cooccurrence_df = (
         df.groupby(["pmid", "entity_1_text", "entity_2_text"])
-        .agg(fq=("fq", "sum"), weighted_fq=(weighted_fq_multiplication, "sum"), weighted_fq_additative=("weighted_fq_additative", "sum"))
+        .agg(
+            fq=("fq", "sum"),
+            weighted_fq=(weighted_fq_multiplication, "sum"),
+            weighted_fq_additative=("weighted_fq_additative", "sum"),
+        )
         .reset_index()
     )
-
 
     return cooccurrence_df
 
@@ -620,19 +593,24 @@ def calc_weighted_fqs(conn, batch_size=1000) -> None:
     total_rows = cursor.fetchone()[0]
 
     # Process in batches
-    for offset in tqdm(range(0, total_rows, batch_size), desc="Calculating weighted frequencies"):
+    for offset in tqdm(
+        range(0, total_rows, batch_size), desc="Calculating weighted frequencies"
+    ):
         # Read a batch of entity_cooccurrences from coentity_summary table
         cursor.execute(
             """
             SELECT id, e1_text, e2_text, fq, e1_tf_idf, e2_tf_idf
             FROM coentity_summary
             LIMIT ? OFFSET ?
-            """, (batch_size, offset)
+            """,
+            (batch_size, offset),
         )
         rows = cursor.fetchall()
 
         # Create a DataFrame from the batch
-        df = pd.DataFrame(rows, columns=["id", "e1_text", "e2_text", "fq", "e1_tf_idf", "e2_tf_idf"])
+        df = pd.DataFrame(
+            rows, columns=["id", "e1_text", "e2_text", "fq", "e1_tf_idf", "e2_tf_idf"]
+        )
         print(df)
 
         # Convert e1_tf_idf and e2_tf_idf from list format to numeric values
@@ -653,7 +631,86 @@ def calc_weighted_fqs(conn, batch_size=1000) -> None:
                 UPDATE entity_cooccurrences
                 SET weighted_fq = ?
                 WHERE id = ?
-                """, (row["weighted_fq"], row["id"])
+                """,
+                (row["weighted_fq"], row["id"]),
             )
 
         conn.commit()
+
+
+def get_all_entity_occurrences(conn, batch_size=200000) -> pd.DataFrame:
+    """
+    Get all entity occurrences from the entity_occurrences table.
+
+    Returns:
+        A dataframe containing all entity occurrences.
+    """
+
+
+    cursor = conn.cursor()
+
+    # Enshure necessary columns exist
+    cursor.execute("PRAGMA table_info(entity_occurrences)")
+    columns = cursor.fetchall()
+    if not any(column[1] == "intra_doc_fq" for column in columns):
+        cursor.execute("ALTER TABLE entity_occurrences ADD COLUMN intra_doc_fq INTEGER")
+    if not any(column[1] == "tf" for column in columns):
+        cursor.execute("ALTER TABLE entity_occurrences ADD COLUMN tf REAL")
+    if not any(column[1] == "inter_doc_fq" for column in columns):
+        cursor.execute("ALTER TABLE entity_occurrences ADD COLUMN inter_doc_fq INTEGER")
+    if not any(column[1] == "tf_idf" for column in columns):
+        cursor.execute("ALTER TABLE entity_occurrences ADD COLUMN tf_idf REAL")
+    if not any(column[1] == "idf" for column in columns):
+        cursor.execute("ALTER TABLE entity_occurrences ADD COLUMN idf REAL")
+
+    offset = 0
+    entity_occurrences_df = pd.DataFrame(
+        columns=[
+            "id",
+            "sentence_id",
+            "sentence_index",
+            "entity_text",
+            "entity_id",
+            "intra_doc_fq",
+            "tf_idf",
+        ]
+    )
+
+    # Get the total number of rows in entity_occurrences
+    cursor.execute("SELECT COUNT(*) FROM entity_occurrences")
+    total_rows = cursor.fetchone()[0]
+
+    with tqdm(total=total_rows, desc="Fetching entity occurrences") as pbar:
+        while True:
+            cursor.execute(
+                """
+                    SELECT eo.id, eo.sentence_id, eo.sentence_index, eo.entity_text, eo.entity_id, eo.intra_doc_fq, eo.tf_idf
+                    FROM entity_occurrences eo
+                    LIMIT ? OFFSET ?
+                    """,
+                (batch_size, offset),
+            )
+            entity_occurrences = cursor.fetchall()
+            if not entity_occurrences:
+                break
+
+            df = pd.DataFrame(
+                entity_occurrences,
+                columns=[
+                    "id",
+                    "sentence_id",
+                    "sentence_index",
+                    "entity_text",
+                    "entity_id",
+                    "doc_fq",
+                    "tf_idf",
+                ],
+            )
+            entity_occurrences_df = pd.concat([entity_occurrences_df, df], ignore_index=True)
+            offset += batch_size
+            pbar.update(len(entity_occurrences))
+            # Dump to CSV for inspection
+
+    return entity_occurrences_df
+
+
