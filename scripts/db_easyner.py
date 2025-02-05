@@ -3,7 +3,8 @@ import json
 import csv
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
-
+import pandas as pd
+import logging
 # ...existing code...
 
 
@@ -311,7 +312,7 @@ class EasyNerDB:
             tf_idf = fq * (total_documents / document_frequency)
             print(f"{entity}: TF-IDF = {tf_idf}")
 
-    def record_entity_cooccurrences(self, *entities, batch_size=1000):
+    def record_entity_cooccurrences(self, *entities, batch_size=100000):
         """
         Record co-occurrences of entities in the database.
 
@@ -329,17 +330,11 @@ class EasyNerDB:
             """
             CREATE TABLE IF NOT EXISTS entity_cooccurrences (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                e1_text TEXT NOT NULL,
-                e2_text TEXT NOT NULL,
-                e1_NE_id INTEGER NOT NULL,
-                e2_NE_id INTEGER NOT NULL,
                 e1_id INTEGER NOT NULL,
                 e2_id INTEGER NOT NULL,
                 sentence_id INTEGER NOT NULL,
                 coentity_summary_id INTEGER,
                 FOREIGN KEY (sentence_id) REFERENCES sentences(id),
-                FOREIGN KEY (e1_NE_id) REFERENCES entities(id),
-                FOREIGN KEY (e2_NE_id) REFERENCES entities(id),
                 FOREIGN KEY (e1_id) REFERENCES entity_occurrences(id),
                 FOREIGN KEY (e2_id) REFERENCES entity_occurrences(id),
                 FOREIGN KEY (coentity_summary_id) REFERENCES coentity_summary(id)
@@ -359,48 +354,286 @@ class EasyNerDB:
 
         print(f"Matching entity IDs: {entity_ids[0]} and {entity_ids[1]}")
 
-        # Fetch the cooccurrences and count them in Python
-        print(":--Fetching cooccurrences------------")
+        offset = 0
+        while True:
+            # Retrieve batch of distinct sentence ids
+            self.cursor.execute(
+                f"""
+                SELECT DISTINCT sentence_id
+                FROM entity_occurrences
+                ORDER BY sentence_id
+                LIMIT {batch_size} OFFSET {offset}
+                """
+            )
+            sentence_ids = self.cursor.fetchall()
+            if not sentence_ids:
+                break
+
+            sentence_ids = [sid[0] for sid in sentence_ids]
+            max_sid = max(sentence_ids)
+            min_sid = min(sentence_ids)
+            print(f"Processing sentences with IDs between {min_sid} and {max_sid}")
+            # Fetch entity occurrences for the batch of sentences
+            self.cursor.execute(
+                f"""
+                SELECT eo1.sentence_id, eo1.id AS e1_id, eo2.id AS e2_id
+                FROM entity_occurrences eo1
+                JOIN entity_occurrences eo2 ON eo1.sentence_id = eo2.sentence_id
+                WHERE eo1.entity_id = ? AND eo2.entity_id = ? AND eo1.sentence_id IN ({','.join('?' * len(sentence_ids))})
+                """,
+                (entity_ids[0], entity_ids[1], *sentence_ids)
+            )
+            cooccurrences = self.cursor.fetchall()
+            total = len(cooccurrences)
+
+            with tqdm(total=total, desc="Recording entity cooccurrences") as pbar:
+                for cooccurrence in cooccurrences:
+                    sentence_id, e1_id, e2_id = cooccurrence
+                    self.cursor.execute(
+                        """
+                        INSERT OR IGNORE INTO entity_cooccurrences (e1_id, e2_id, sentence_id)
+                        VALUES (?, ?, ?)
+                        """,
+                        (
+                            e1_id,
+                            e2_id,
+                            sentence_id,
+                        ),
+                    )
+                    pbar.update(1)
+
+            offset += len(sentence_ids)
+
         self.cursor.execute(
             """
-            SELECT eo1.sentence_id, eo1.sentence_index, eo1.entity_text AS e1_text, eo2.entity_text AS e2_text, eo1.id AS e1_id, eo2.id AS e2_id
-            FROM entity_occurrences eo1
-            JOIN entity_occurrences eo2 ON eo1.sentence_id = eo2.sentence_id
-            WHERE eo1.entity_id = ? AND eo2.entity_id = ?
-            """,
-            (entity_ids[0], entity_ids[1]),
-        )
-        cooccurrences = self.cursor.fetchall()
-        total = len(cooccurrences)
-
-        with tqdm(total=total, desc="Recording entity cooccurrences") as pbar:
-            for cooccurrence in cooccurrences:
-                sentence_id, sentence_index, e1_text, e2_text, e1_id, e2_id = cooccurrence
-                self.cursor.execute(
-                    """
-                    INSERT OR IGNORE INTO entity_cooccurrences (e1_NE_id, e2_NE_id, e1_text, e2_text, e1_id, e2_id, sentence_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        entity_ids[0],
-                        entity_ids[1],
-                        e1_text,
-                        e2_text,
-                        e1_id,
-                        e2_id,
-                        sentence_id,
-                    ),
-                )
-                pbar.update(1)
-
-        self.cursor.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_entity_cooccurrences_texts ON entity_cooccurrences (e1_text, e2_text)
+            CREATE INDEX IF NOT EXISTS idx_entity_cooccurrences_ids ON entity_cooccurrences (e1_id, e2_id)
         """
         )
         self.cursor.execute('PRAGMA index_list("entity_cooccurrences")')
 
         self.conn.commit()
+
+    def record_entity_cooccurrences(self, *entities, batch_size=100000):
+        """
+        Record co-occurrences of entities in the database.
+
+        Args:
+            entities (str): The entity types to find co-occurrences for.
+            batch_size (int): The number of rows to process in each batch.
+
+        ToDo: Implement with any number of entities
+        ToDo: Filter out where spans are the same
+        """
+
+        print("-------------Recording entity cooccurrences--------------")
+
+        self.cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS entity_cooccurrences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                e1_id INTEGER NOT NULL,
+                e2_id INTEGER NOT NULL,
+                coentity_summary_id INTEGER,
+                FOREIGN KEY (sentence_id) REFERENCES sentences(id),
+                FOREIGN KEY (e1_id) REFERENCES entity_occurrences(id),
+                FOREIGN KEY (e2_id) REFERENCES entity_occurrences(id),
+                FOREIGN KEY (coentity_summary_id) REFERENCES coentity_summary(id)
+            )
+        """
+        )
+        self.conn.commit()
+
+        # Get entity IDs
+        entity_ids = []
+        for entity in entities:
+            self.cursor.execute("SELECT id FROM entities WHERE entity = ?", (entity,))
+            entity_id = self.cursor.fetchone()
+            if not entity_id:
+                return {}
+            entity_ids.append(entity_id[0])
+
+        print(f"Matching entity IDs: {entity_ids[0]} and {entity_ids[1]}")
+
+        offset = 0
+        while True:
+            # Retrieve batch of distinct sentence ids
+            self.cursor.execute(
+                f"""
+                SELECT DISTINCT sentence_id
+                FROM entity_occurrences
+                ORDER BY sentence_id
+                LIMIT {batch_size} OFFSET {offset}
+                """
+            )
+            sentence_ids = self.cursor.fetchall()
+            if not sentence_ids:
+                break
+
+            sentence_ids = [sid[0] for sid in sentence_ids]
+            max_sid = max(sentence_ids)
+            min_sid = min(sentence_ids)
+            print(f"Processing sentences with IDs between {min_sid} and {max_sid}")
+
+            self.cur
+
+            # Fetch entity occurrences for the batch of sentences
+            self.cursor.execute(
+                f"""
+                SELECT eo1.sentence_id, eo1.id AS e1_id, eo2.id AS e2_id
+                FROM entity_occurrences eo1
+                JOIN entity_occurrences eo2 ON eo1.sentence_id = eo2.sentence_id
+                WHERE eo1.entity_id = ? AND eo2.entity_id = ? AND eo1.sentence_id IN ({','.join('?' * len(sentence_ids))})
+                """,
+                (entity_ids[0], entity_ids[1], *sentence_ids)
+            )
+            cooccurrences = self.cursor.fetchall()
+            total = len(cooccurrences)
+
+            with tqdm(total=total, desc="Recording entity cooccurrences") as pbar:
+                for cooccurrence in cooccurrences:
+                    sentence_id, e1_id, e2_id = cooccurrence
+                    self.cursor.execute(
+                        """
+                        INSERT OR IGNORE INTO entity_cooccurrences (e1_id, e2_id, sentence_id)
+                        VALUES (?, ?, ?)
+                        """,
+                        (
+                            e1_id,
+                            e2_id,
+                            sentence_id,
+                        ),
+                    )
+                    pbar.update(1)
+
+            offset += len(sentence_ids)
+
+        self.cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_entity_cooccurrences_ids ON entity_cooccurrences (e1_id, e2_id)
+        """
+        )
+        self.cursor.execute('PRAGMA index_list("entity_cooccurrences")')
+
+        self.conn.commit()
+
+    def record_entity_cooccurences_in_batches(self, entities, batch_size=1000):
+        print("-------------Recording entity cooccurrences--------------")
+
+        self.cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS entity_cooccurrences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                e1_id INTEGER NOT NULL,
+                e2_id INTEGER NOT NULL,
+                sentence_id INTEGER NOT NULL,
+                coentity_summary_id INTEGER,
+                FOREIGN KEY (sentence_id) REFERENCES sentences(id),
+                FOREIGN KEY (e1_id) REFERENCES entity_occurrences(id),
+                FOREIGN KEY (e2_id) REFERENCES entity_occurrences(id),
+                FOREIGN KEY (coentity_summary_id) REFERENCES coentity_summary(id)
+            )
+        """
+        )
+        self.conn.commit()
+
+        # Get entity IDs
+        entity_ids = []
+        for entity in entities:
+            self.cursor.execute("SELECT id FROM entities WHERE entity = ?", (entity,))
+            entity_id = self.cursor.fetchone()
+            if not entity_id:
+                return {}
+            entity_ids.append(entity_id[0])
+
+        print(f"Matching entity IDs: {entity_ids[0]} and {entity_ids[1]}")
+
+        # Fetch sentences in batches
+        batch_size = 1000
+        offset = 0
+        cooccurrences_df = pd.DataFrame(columns=['e1_id', 'e2_id', 'sentence_id'])
+
+        while True:
+            print(":--Fetching sentences------------")
+            self.cursor.execute(
+                """
+                SELECT id FROM sentences
+                LIMIT ? OFFSET ?
+                """,
+                (batch_size, offset),
+            )
+            sentences = self.cursor.fetchall()
+            if not sentences:
+                break
+
+            sentence_ids = [sentence[0] for sentence in sentences]
+
+            # Fetch entity occurrences for the batch of sentences
+            self.cursor.execute(
+                """
+                SELECT eo.sentence_id, eo.sentence_index, eo.entity_text, eo.entity_id, eo.id
+                FROM entity_occurrences eo
+                WHERE eo.sentence_id IN ({})
+                """.format(','.join('?' * len(sentence_ids))),
+                sentence_ids,
+            )
+            entity_occurrences = self.cursor.fetchall()
+
+            # Create a DataFrame from the entity occurrences
+            df = pd.DataFrame(entity_occurrences, columns=['sentence_id', 'sentence_index', 'entity_text', 'entity_id', 'id'])
+
+            # Find cooccurrences within the batch
+            for sentence_id in df['sentence_id'].unique():
+                sentence_df = df[df['sentence_id'] == sentence_id]
+                for i, row1 in sentence_df.iterrows():
+                    for j, row2 in sentence_df.iterrows():
+                        if row1['entity_id'] == entity_ids[0] and row2['entity_id'] == entity_ids[1]:
+                            cooccurrences_df = cooccurrences_df.append({
+                                'e1_id': entity_ids[0],
+                                'e2_id': entity_ids[1],
+                                'sentence_id': sentence_id
+                            }, ignore_index=True)
+
+            # Insert cooccurrences into the database in larger batches
+            if len(cooccurrences_df) >= batch_size:
+                with tqdm(total=len(cooccurrences_df), desc="Recording entity cooccurrences") as pbar:
+                    for _, cooccurrence in cooccurrences_df.iterrows():
+                        self.cursor.execute(
+                            """
+                            INSERT OR IGNORE INTO entity_cooccurrences (e1_id, e2_id, sentence_id)
+                            VALUES (?, ?, ?)
+                            """,
+                            (
+                                cooccurrence['e1_id'],
+                                cooccurrence['e2_id'],
+                                cooccurrence['sentence_id'],
+                            ),
+                        )
+                        pbar.update(1)
+                self.conn.commit()
+                cooccurrences_df = pd.DataFrame(columns=['e1_id', 'e2_id', 'sentence_id'])
+
+            offset += batch_size
+
+        # Insert any remaining cooccurrences
+        if not cooccurrences_df.empty:
+            with tqdm(total=len(cooccurrences_df), desc="Recording entity cooccurrences") as pbar:
+                for _, cooccurrence in cooccurrences_df.iterrows():
+                    self.cursor.execute(
+                        """
+                        INSERT OR IGNORE INTO entity_cooccurrences (e1_id, e2_id, sentence_id)
+                        VALUES (?, ?, ?)
+                        """,
+                        (
+                            cooccurrence['e1_id'],
+                            cooccurrence['e2_id'],
+                            cooccurrence['sentence_id'],
+                        ),
+                    )
+                    pbar.update(1)
+            self.conn.commit()
+
+        print("Finished recording entity cooccurrences.")
+        logging.debug(f"Total cooccurrences recorded: {len(cooccurrences_df)}")
 
     def get_specified_entity_cooccurrences(self, e1_text, e2_text):
         """
@@ -947,6 +1180,7 @@ class EasyNerDB:
 
     def drop_named_entities(self, named_entity: str):
         pass
+
 
 
 if __name__ == "__main__":
