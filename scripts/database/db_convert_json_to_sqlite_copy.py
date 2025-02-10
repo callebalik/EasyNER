@@ -169,7 +169,7 @@ def insert_data(conn, data, json_file, progress_bar=None):
                 continue
 
         cursor.execute(
-            "INSERT OR REPLACE INTO source_files (file_name, inserted_at) VALUES (?, datetime('now'))",
+            "INSERT OR REPLACE INTO source_files (file_name, import_date) VALUES (?, datetime('now'))",
             (json_file,),
         )
         conn.commit()

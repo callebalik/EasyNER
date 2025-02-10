@@ -66,5 +66,6 @@ CREATE TABLE coentity_summary (
 CREATE TABLE source_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     file_name TEXT UNIQUE,
-    file_size INTEGER
+    file_size INTEGER,
+    import_date DATETIME
 );
