@@ -1,27 +1,78 @@
 import sys
 import os
+import logging
+import json
 
 from db_statistics import DBStatistics
 from db_data_exchanger import DBDataExchanger
+from db_analysis import DBAnalysis
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import sqlite3
 
 
 class DBMain:
-    def __init__(self, db_path="database.db"):
+    def __init__(self, db_path: str = None, config_path: str ="../../config.json"):
         """
         Initialize the database handler.
 
         :param db_path: Path to the SQLite database file.
         """
-        if not os.path.exists(db_path):
-            print(f"Database {db_path} does not exist.")
-            schema_path = input("Please provide the path to the schema file: ")
-            self.create_db(db_path, schema_path)
-        self.conn = sqlite3.connect(db_path)
+        self._setup_logging()
+        self.config = self._load_config(config_path)
+
+        # Resolve db_path relative to project root (config.json directory)
+        project_root = os.path.dirname(os.path.abspath(config_path))
+        if db_path is not None:
+            self.db_path = db_path
+        else:
+            self.db_path = self.config.get("db_path", "database.db")
+        
+        # Ensure db_path is absolute
+        if not os.path.isabs(self.db_path):
+            self.db_path = os.path.join(project_root, self.db_path)
+
+        # Create Database if not present. 
+        # Resolve sql schema, defaulting to schema path if user doesn't provide one after prompt
+        if not os.path.exists(self.db_path):
+            print(f"Database {self.db_path} does not exist. Creating database...")
+            self.schema_path = input("Please provide the path to the schema file, or press <Enter> to use the default schema path defined in config: ")
+            if self.schema_path == "":
+                self.schema_path = self.config.get("schema_path")
+            self.create_db(self.db_path, self.schema_path)
+        self.conn = sqlite3.connect(self.db_path)
         self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
-        print(f"Connected to database {db_path}")
+        self.logger.info(f"Connected to database {self.db_path}")
+
+    def _load_config(self, config_path):
+        """Load the JSON configuration file."""
+        if not os.path.isabs(config_path):
+            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), config_path)
+        with open(config_path, "r") as f:
+            config = json.load(f).get("database", {})
+            # Test integrity of the configuration
+            if "db_path" not in config:
+                raise ValueError("Database configuration must contain 'db_path' key.")
+            if "schema_path" not in config:
+                raise ValueError("Database configuration does not contain schema_path' key.")
+        self.logger.info(f"Configuration loaded from {config_path}")
+        return config
+
+    def _setup_logging(self):
+        """Configure logging to save to db.log in the database directory."""
+        log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'db.log')
+        
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()  # Also output to console
+            ]
+        )
+        
+        self.logger = logging.getLogger('EasyNerDB')
+        self.logger.info(f'Logging initialized. Log file: {log_file}')
 
     def __del__(self):
         """
@@ -31,6 +82,12 @@ class DBMain:
             self.conn.close()
 
 
+    def close(self):
+        """
+        Explicitly close the database connection.
+        """
+        if hasattr(self, "conn"):
+            self.conn.close()
 
     def empty_database(self):
         """
@@ -41,10 +98,11 @@ class DBMain:
             print("Operation cancelled.")
             return
         self.cursor.execute("PRAGMA foreign_keys = OFF;")
-        for table in self.tables()["tables"]:
+        for table in self.tables["tables"]:
             self.cursor.execute(f"DELETE FROM {table};")
         self.cursor.execute("PRAGMA foreign_keys = ON;")
         self.conn.commit()
+        self.cursor.execute("VACUUM;")
 
     def execute(self, query, args=None):
         """
@@ -54,11 +112,15 @@ class DBMain:
         :param args: Optional arguments for the SQL query.
         :return: The result of the query.
         """
-        if args is None:
-            self.cursor.execute(query)
-        else:
-            self.cursor.execute(query, args)
-        return self.cursor.fetchall()
+        try:
+            if args is None:
+                self.cursor.execute(query)
+            else:
+                self.cursor.execute(query, args)
+            return self.cursor.fetchall()
+        except Exception as e:
+            self.logger.error(f"Error executing query: {query} with args: {args}. Exception: {e}")
+            raise
 
     def commit(self):
         """
@@ -145,7 +207,8 @@ class DBMain:
             return []
         columns = [desc[0] for desc in self.cursor.description]
         return [{columns[i]: row[i] for i in range(len(columns))} for row in rows]
-
+    
+    @property
     def tables(self):
         """
         Get information about the database.
@@ -274,7 +337,41 @@ class DBMain:
         self.conn.commit()
         schema_conn.close()
 
+    @property
+    def is_locked(self) -> bool:
+        """
+        Check if the database is locked.
 
+        :return: True if the database is locked, False otherwise.
+        """
+        try:
+            self.conn.execute("PRAGMA wal_checkpoint;")
+            return False
+        except sqlite3.OperationalError:
+            return True
+
+    def clear_connections(self):
+        """
+        Attempt to clear any pending transactions and unlock the database
+        by forcing a WAL checkpoint and closing the connection.
+        Use with caution.
+        """
+        try:
+            # Try committing any pending changes
+            self.conn.commit()
+        except Exception as e:
+            print(f"Error committing pending transactions: {e}")
+
+        try:
+            # Force a write-ahead log checkpoint
+            self.conn.execute("PRAGMA wal_checkpoint(FULL);")
+            self.conn.commit()
+        except Exception as e:
+            print(f"Error executing WAL checkpoint: {e}")
+        finally:
+            # Close the connection cleanly
+            self.conn.close()
+            print("Database connection closed and unlocked.")
 
     @classmethod
     def create_db(self, db_path, schema_path):
@@ -294,9 +391,9 @@ class DBMain:
         print(f"Database created at {db_path} using schema from {schema_path}")
 
 
-class EasyNerDBHandler(DBMain, DBStatistics, DBDataExchanger):
+class EasyNerDBHandler(DBMain, DBStatistics, DBDataExchanger, DBAnalysis):
     """
     A class that combines the main database functionality with statistics functionality.
     """
-
-    pass
+    def __init__(self):
+        DBMain.__init__(self)
