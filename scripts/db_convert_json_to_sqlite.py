@@ -241,14 +241,18 @@ def run(data_files, db_path):
         conn = sqlite3.connect(db_path)
         conn.close()
 
+
 if __name__ == "__main__":
-    input_folder = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged_plurals_and_word_count/"
+    # input_folder = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged_plurals_and_word_count/"
+    data_dir = "/lunarc/nobackup/projects/snic2020-6-41/carl"
+    input_folder = f"{data_dir}/ner_merged_plurals_and_word_count/"
 
     data_files = sorted(
         glob(f"{input_folder}*.json"),
         key=lambda f: int("".join(filter(str.isdigit, f))),
     )
 
-    db_path = '/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/pnm_dis.db'
+    # db_path = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/pnm_dis.db"
+    db_path = f"{data_dir}/pubmed_abstracts2.db"
     # data_files = data_files[0:20]
     run(data_files, db_path)
