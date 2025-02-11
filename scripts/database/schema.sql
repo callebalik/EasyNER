@@ -7,14 +7,14 @@ CREATE TABLE documents (
 );
 
 CREATE TABLE sentences (
-    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     text TEXT,
     sentence_index INTEGER,
+    document_id INTEGER NOT NULL,
     word_count INTEGER,
     token_count INTEGER,
     alpha_count INTEGER,
-    document_id INTEGER NOT NULL,
     FOREIGN KEY (document_id) REFERENCES documents (id)
+    PRIMARY KEY (document_id, sentence_index)
 );
 
 CREATE TABLE named_entities (
