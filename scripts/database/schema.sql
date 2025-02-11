@@ -29,6 +29,7 @@ CREATE TABLE entity_occurrences (
     span_end INTEGER,
     entity_id INTEGER NOT NULL,
     sentence_id INTEGER NOT NULL,
+    summary_id INTEGER,
     intra_doc_fq INTEGER,
     tf REAL,
     inter_doc_fq INTEGER,
@@ -36,6 +37,14 @@ CREATE TABLE entity_occurrences (
     idf REAL,
     FOREIGN KEY (sentence_id) REFERENCES sentences (id),
     FOREIGN KEY (entity_id) REFERENCES named_entities (id)
+    FOREIGN KEY (summary_id) REFERENCES entity_occurrence_summary (id)
+);
+
+CREATE TABLE entity_occurrences_summary (
+    id INTEGER PRIMARY KEY NOT NULL,
+    normalized_entity_text TEXT,
+    fq_sentence_level INTEGER,
+    fq_document_level INTEGER,
 );
 
 CREATE TABLE entity_cooccurrences (
