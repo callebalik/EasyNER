@@ -12,6 +12,53 @@ class DBStatistics:
         return self.cursor.fetchone()[0]
 
     @property
+    def total_source_size(self):
+        """
+        Get the total size of the source files in bytes.
+        Source files sizes are stored in MB in the database.
+
+        :return: The total size of the source files in bytes.
+        """
+        self.cursor.execute("SELECT SUM(file_size) FROM source_files;")
+        mb_size = self.cursor.fetchone()[0] or 0
+        return mb_size * 1024 * 1024  # Convert MB to bytes
+
+    @property
+    def compression_ratio(self):
+        """
+        Get the compression ratio of the database file compared to source files.
+
+        :return: The compression ratio of the database file.
+        """
+        source_size = self.total_source_size
+        if source_size == 0:
+            return 0.0
+        return self.size / source_size
+
+    def _format_size(self, size_bytes):
+        """
+        Convert size in bytes to human readable format.
+
+        :param size_bytes: Size in bytes
+        :return: String with formatted size
+        """
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size_bytes < 1024 or unit == 'TB':
+                return f"{size_bytes:.2f} {unit}"
+            size_bytes /= 1024
+
+    @property
+    def info_compression(self):
+        """
+        Summary of the compression ratio of the database file compared to source files.
+        """
+        db_size = self._format_size(self.size)
+        source_size = self._format_size(self.total_source_size)  # Already in bytes
+        print(f"Database size: {db_size}")
+        print(f"Total source file size: {source_size}")
+        print(f"Compression ratio: {self.compression_ratio:.2f}")
+
+    @property
     def document_count(self):
         """
         Get the total number of documents in the database.
