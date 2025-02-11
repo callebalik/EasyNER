@@ -26,12 +26,11 @@ console_handler.setFormatter(formatter)
 logging.getLogger().addHandler(console_handler)
 
 
-def insert_data(conn, data, json_file, progress_bar=None):
+def insert_data(conn, data, json_file, progress_bar=None, batch_size=1000):
     """
     Insert data from a JSON file into the SQLite database.
     """
     cursor = conn.cursor()
-    batch_size = 100  # Process sentences in batches of 100
     try:
         # Set pragmas for better write performance
         cursor.execute("PRAGMA synchronous = OFF")
@@ -44,6 +43,7 @@ def insert_data(conn, data, json_file, progress_bar=None):
         cursor.execute("BEGIN TRANSACTION;")
 
         inserted = 0
+        sentence_id_cache = {}
         for doc_id, document in data.items():
             try:
                 title = document["title"]
@@ -93,15 +93,19 @@ def insert_data(conn, data, json_file, progress_bar=None):
                     if not sentence.get("entities"):
                         continue  # Skip if no entities in this sentence
                         
-                    cursor.execute(
-                        "SELECT id FROM sentences WHERE document_id = ? AND sentence_index = ?",
-                        (doc_id, sentence_index),
-                    )
-                    result = cursor.fetchone()
-                    if not result:
-                        logging.error(f"Could not find sentence_id for document {doc_id}, sentence {sentence_index}")
-                        continue
-                    sentence_id = result[0]
+                    if (doc_id, sentence_index) in sentence_id_cache:
+                        sentence_id = sentence_id_cache[(doc_id, sentence_index)]
+                    else:
+                        cursor.execute(
+                            "SELECT id FROM sentences WHERE document_id = ? AND sentence_index = ?",
+                            (doc_id, sentence_index),
+                        )
+                        result = cursor.fetchone()
+                        if not result:
+                            logging.error(f"Could not find sentence_id for document {doc_id}, sentence {sentence_index}")
+                            continue
+                        sentence_id = result[0]
+                        sentence_id_cache[(doc_id, sentence_index)] = sentence_id
                     
                     for entity, entity_texts in sentence["entities"].items():
                         cursor.execute("SELECT id FROM named_entities WHERE named_entity = ?", (entity,))
@@ -189,12 +193,20 @@ def insert_data(conn, data, json_file, progress_bar=None):
         cursor.execute("PRAGMA count_changes = ON")
 
 
-def process_json_file(json_file, queue, processed_files, stop_event, progress_bar):
+def process_json_file(json_file, queue, processed_files, stop_event, progress_bar, db_path):
     """
     Process a JSON file and add its data to the queue if it has not been processed.
     """
+    if stop_event.is_set():
+        return
+    
+    # Create a connection for each thread to prevent SQLite locking issues
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
     try:
-        if stop_event.is_set():
+        cursor.execute("SELECT file_name FROM source_files WHERE file_name = ?", (json_file,))
+        if cursor.fetchone():
             return
         if json_file in processed_files:
             return
@@ -205,6 +217,8 @@ def process_json_file(json_file, queue, processed_files, stop_event, progress_ba
         progress_bar.update(1)
     except Exception as e:
         logging.error(f"Error processing file {json_file}: {e}")
+    finally:
+        conn.close()
 
 
 def db_writer(queue, db_path, stop_event):
@@ -216,37 +230,69 @@ def db_writer(queue, db_path, stop_event):
     cursor.execute("PRAGMA journal_mode=WAL;")  # Enable Write-Ahead Logging
     cursor.execute("PRAGMA synchronous=NORMAL;")  # Reduce synchronous mode
     cursor.execute("PRAGMA cache_size=10000;")  # Increase cache size
-    
     progress_bar = tqdm(total=0, desc=f"Writing documents to {db_path}")  # Start with 0, will update dynamically
     
-    while not stop_event.is_set() or not queue.empty():
-        try:
-            item = queue.get(timeout=1)
-            if item is None:
-                break
-                
-            json_file, data, doc_count = item
-            progress_bar.total += doc_count  # Update total with new documents
-            progress_bar.refresh()
-            
+    try:
+        while not stop_event.is_set() or not queue.empty():
             try:
-                insert_data(conn, data, json_file, progress_bar)
-            except sqlite3.Error as e:
-                logging.error(f"SQLite error while inserting data from {json_file}: {e}")
-                conn.rollback()
-            except Exception as e:
-                logging.error(f"Unexpected error while inserting data from {json_file}: {e}", exc_info=True)
-                conn.rollback()
-        except Empty:
-            continue
-        except Exception as e:
-            logging.error(f"Error in db_writer queue processing: {e}", exc_info=True)
-            continue
-            
-    if progress_bar:
-        progress_bar.close()
-    conn.close()
+                item = queue.get(timeout=1)
+                if item is None:
+                    break
 
+                json_file, data, doc_count = item
+                progress_bar.total += doc_count  # Update total with new documents
+                progress_bar.refresh()
+                
+                try:
+                    insert_data(conn, data, json_file, progress_bar)
+                except sqlite3.Error as e:
+                    logging.error(f"SQLite error while inserting data from {json_file}: {e}")
+                    conn.rollback()
+                except Exception as e:
+                    logging.error(f"Unexpected error while inserting data from {json_file}: {e}", exc_info=True)
+                    conn.rollback()
+            except Empty:
+                continue
+            except Exception as e:
+                logging.error(f"Error in db_writer queue processing: {e}", exc_info=True)
+                continue
+    except KeyboardInterrupt:
+        logging.info("Db_writer interrupted by user. Rolling back and exiting...")
+        conn.rollback()
+    finally:
+        if progress_bar:
+            progress_bar.close()
+        try:
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        conn.close()
+
+
+def get_processed_files(db_path, json_files):
+    """
+    Get a set of processed files from the SQLite database.
+    """
+    # Load the list of processed files into memory
+    logging.info("Loading list of processed files...")
+    start_time = time.time()
+    # Open a connection to the database
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT file_name FROM source_files")
+        processed_files = set(row[0] for row in cursor.fetchall())
+    finally:
+        conn.close()
+    logging.info(
+        f"Loaded {len(processed_files)} processed files in {time.time() - start_time:.2f} seconds"
+    )
+
+    files_to_process = [
+        json_file for json_file in json_files if json_file not in processed_files
+    ]
+
+    return files_to_process, processed_files
 
 def load_json_to_db(json_files, db_path, max_workers=4, chunk_size=20, queue_size=2):
     """
@@ -261,31 +307,15 @@ def load_json_to_db(json_files, db_path, max_workers=4, chunk_size=20, queue_siz
     """
     queue = Queue(maxsize=queue_size)  # Smaller queue size to prevent memory buildup
     stop_event = Event()
-    processed_files = set()
 
-    # Ensure the database and tables are created
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    # Load the list of processed files into memory
-    logging.info("Loading list of processed files...")
-    start_time = time.time()
-    cursor.execute("SELECT file_name FROM source_files")
-    processed_files = set(row[0] for row in cursor.fetchall())
-    conn.close()
-    logging.info(
-        f"Loaded {len(processed_files)} processed files in {time.time() - start_time:.2f} seconds"
-    )
-
-    files_to_process = [
-        json_file for json_file in json_files if json_file not in processed_files
-    ]
+    files_to_process, processed_files = get_processed_files(db_path, json_files)
 
     if not files_to_process:
         logging.info("All files are already processed. Exiting...")
         return
 
     logging.info(f"Total files to process: {len(files_to_process)}")
+
     writer_thread = Thread(
         target=db_writer, args=(queue, db_path, stop_event)  # Removed total_files parameter
     )
@@ -308,6 +338,7 @@ def load_json_to_db(json_files, db_path, max_workers=4, chunk_size=20, queue_siz
                             processed_files,
                             stop_event,
                             progress_bar,
+                            db_path
                         )
                     )
             for future in as_completed(futures):
@@ -320,8 +351,11 @@ def load_json_to_db(json_files, db_path, max_workers=4, chunk_size=20, queue_siz
         for future in futures:
             future.cancel()
     finally:
+        stop_event.set()
         queue.put(None)
         writer_thread.join()
+        for future in futures:
+            future.result()  # Ensure all futures are completed
 
 
 def get_total_json_size(json_files):
@@ -353,13 +387,11 @@ def run(data_files, db_path):
         compare_sizes(data_files, db_path)
     except KeyboardInterrupt:
         logging.info("Process interrupted by user. Exiting...")
-    finally:
-        # Ensure the database connection is closed
-        conn = sqlite3.connect(db_path)
-        conn.close()
 
 
 if __name__ == "__main__":
+    import cProfile
+    import pstats
     data_dir = "/lunarc/nobackup/projects/snic2020-6-41/carl"
     input_folder = f"{data_dir}/ner_merged_plurals_and_word_count/"
 
@@ -371,4 +403,13 @@ if __name__ == "__main__":
     # db_path = f"{data_dir}/pubmed_abstracts2.db"
     script_dir = os.path.dirname(os.path.abspath(__file__))
     db_path = os.path.join(script_dir, "database.db")
+
+    profiler = cProfile.Profile()
+    profiler.enable()
     run(data_files[5:10], db_path)
+    profiler.disable()
+    
+    
+    stats = pstats.Stats(profiler).sort_stats("cumulative")
+    stats.dump_stats("profiling_results.txt")  # Optional: dump to file for later analysis
+    # stats.print_stats(100)  # Print top functions by cumulative time
