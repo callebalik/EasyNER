@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+    <h1>EasyNer Database Overview</h1>
+    
+    <div class="table-grid">
+        {% for table_name, info in tables.items() %}
+            <div class="table-card">
+                <h3>{{ table_name }}</h3>
+                <p>Rows: {{ info.row_count }}</p>
+                <details>
+                    <summary>Columns ({{ info.columns|length }})</summary>
+                    <ul>
+                        {% for column in info.columns %}
+                            <li>{{ column }}</li>
+                        {% endfor %}
+                    </ul>
+                </details>
+            </div>
+        {% endfor %}
+    </div>
+{% endblock %}
