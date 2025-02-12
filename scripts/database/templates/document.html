@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}Document {{ document.id }}{% endblock %}
+
+{% block content %}
+    <div class="document-title">
+        <h1>{{ document.title }}</h1>
+        <div>Word count: {{ document.word_count }}</div>
+    </div>
+
+    <div class="document-content">
+        {% for sentence in content %}
+            <div class="sentence" id="sentence-{{ sentence.index }}">
+                {% set text = sentence.text %}
+                {% if sentence.entities %}
+                    {% set offset = 0 %}
+                    {% for entity in sentence.entities|sort(attribute='start') %}
+                        {{ text[offset:entity.start]|safe }}
+                        <span class="entity" 
+                              data-entity-text="{{ entity.text }}">
+                            {{ text[entity.start:entity.end]|safe }}
+                        </span>
+                        {% set offset = entity.end %}
+                    {% endfor %}
+                    {{ text[offset:]|safe }}
+                {% else %}
+                    {{ text|safe }}
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        document.querySelectorAll('.entity').forEach(entity => {
+            entity.addEventListener('mouseover', (e) => {
+                const info = document.createElement('div');
+                info.className = 'entity-info';
+                info.textContent = `Entity: ${e.target.dataset.entityText}`;
+                e.target.appendChild(info);
+            });
+            entity.addEventListener('mouseout', (e) => {
+                const info = e.target.querySelector('.entity-info');
+                if (info) info.remove();
+            });
+        });
+    </script>
+{% endblock %}
