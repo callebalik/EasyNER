@@ -1,47 +1,66 @@
 {% extends 'base.html' %}
 
-{% block title %}Document {{ document.id }}{% endblock %}
+{% block title %}{{ document.title }}{% endblock %}
 
 {% block content %}
     <div class="document-title">
         <h1>{{ document.title }}</h1>
-        <div>Word count: {{ document.word_count }}</div>
+        <div class="document-meta">
+            <span>Document ID: {{ document.id }}</span>
+            <span>Words: {{ document.word_count }}</span>
+        </div>
     </div>
 
     <div class="document-content">
         {% for sentence in content %}
             <div class="sentence" id="sentence-{{ sentence.index }}">
-                {% set text = sentence.text %}
                 {% if sentence.entities %}
+                    {% set text = sentence.text %}
                     {% set offset = 0 %}
                     {% for entity in sentence.entities|sort(attribute='start') %}
                         {{ text[offset:entity.start]|safe }}
                         <span class="entity" 
-                              data-entity-text="{{ entity.text }}">
+                              data-entity-text="{{ entity.text }}"
+                              title="{{ entity.text }}">
                             {{ text[entity.start:entity.end]|safe }}
                         </span>
                         {% set offset = entity.end %}
                     {% endfor %}
                     {{ text[offset:]|safe }}
                 {% else %}
-                    {{ text|safe }}
+                    {{ sentence.text|safe }}
                 {% endif %}
             </div>
         {% endfor %}
     </div>
+{% endblock %}
 
-    <script>
-        document.querySelectorAll('.entity').forEach(entity => {
-            entity.addEventListener('mouseover', (e) => {
-                const info = document.createElement('div');
-                info.className = 'entity-info';
-                info.textContent = `Entity: ${e.target.dataset.entityText}`;
-                e.target.appendChild(info);
-            });
-            entity.addEventListener('mouseout', (e) => {
-                const info = e.target.querySelector('.entity-info');
-                if (info) info.remove();
-            });
-        });
-    </script>
+{% block head %}
+<style>
+    .document-meta {
+        color: #666;
+        margin-bottom: 2rem;
+    }
+    .document-meta span {
+        margin-right: 1rem;
+    }
+    .document-content {
+        line-height: 1.8;
+    }
+    .sentence {
+        margin-bottom: 1.5rem;
+        padding: 0.5rem;
+    }
+    .entity {
+        cursor: pointer;
+        padding: 2px 4px;
+        margin: 0 2px;
+        border-radius: 3px;
+        background-color: #e3f2fd;
+        border: 1px solid #90caf9;
+    }
+    .entity:hover {
+        background-color: #bbdefb;
+    }
+</style>
 {% endblock %}

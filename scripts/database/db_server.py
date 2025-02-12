@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, g, render_template
+from flask import Flask, jsonify, g, render_template, request
 from db_main import EasyNerDBHandler
 import os
 
@@ -151,9 +151,20 @@ def get_document(doc_id):
 def view_document(doc_id):
     try:
         db = get_db()
+        # Add debug logging
+        db.logger.debug(f"Attempting to retrieve document {doc_id}")
+        
+        # Verify document exists first
+        db.execute("SELECT COUNT(*) FROM documents WHERE id = ?", (doc_id,))
+        count = db.fetchone()[0]
+        if count == 0:
+            db.logger.warning(f"Document {doc_id} does not exist in database")
+            return render_template('error.html', message="Document not found"), 404
+            
         doc_details = db.get_document_details(doc_id)
         if not doc_details:
-            return render_template('error.html', message="Document not found"), 404
+            db.logger.error(f"Document {doc_id} exists but could not be retrieved")
+            return render_template('error.html', message="Error retrieving document"), 500
         
         doc_content = db.get_document_as_html(doc_id)
         return render_template('document.html', 
@@ -163,12 +174,65 @@ def view_document(doc_id):
         db.logger.error(f"Error viewing document {doc_id}: {e}")
         return render_template('error.html', message="Internal server error"), 500
 
+@app.route("/documents")
+def list_documents():
+    try:
+        db = get_db()
+        page = int(request.args.get('page', 1))
+        query = request.args.get('query', '')
+        doc_id = request.args.get('doc_id', '')
+        per_page = 30
+        offset = (page - 1) * per_page
+
+        params = []
+        conditions = []
+
+        if query:
+            conditions.append("title LIKE ?")
+            params.append(f'%{query}%')
+        
+        if doc_id:
+            conditions.append("id = ?")
+            params.append(doc_id)
+
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+        else:
+            where_clause = ""
+
+        sql = f"""
+            SELECT id, title, word_count 
+            FROM documents 
+            {where_clause}
+            ORDER BY id 
+            LIMIT ? OFFSET ?
+        """
+        params.extend([per_page + 1, offset])
+
+        documents = db.execute(sql, params)
+        has_more = len(documents) > per_page
+        documents = documents[:per_page]  # Trim to per_page items
+
+        return render_template('documents.html',
+                             documents=[dict(zip(['id', 'title', 'word_count'], doc)) for doc in documents],
+                             page=page,
+                             query=query,
+                             doc_id=doc_id,
+                             has_more=has_more)
+    except Exception as e:
+        db.logger.error(f"Error loading documents page: {e}")
+        return render_template('error.html', message="Error loading documents"), 500
+
 if __name__ == "__main__":
     try:
         # Initialize database before running the server
         db = init_db()
-        db.logger.info("Starting Flask server...")
-        app.run(host="127.0.0.1", port=8008, debug=False, use_reloader=False, threaded=False)
+        db.logger.info("Starting Flask server in debug mode with reloader...")
+        app.run(host="127.0.0.1", 
+                port=8008, 
+                debug=True,  # Enable debug mode
+                use_reloader=True,  # Enable automatic reloader
+                threaded=True)  # Enable threading for better development experience
     except Exception as e:
         if hasattr(g, 'db'):
             g.db.logger.error(f"Server error: {e}")
