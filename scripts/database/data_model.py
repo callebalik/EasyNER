@@ -22,7 +22,7 @@ class NamedEntity:
         self.entity_text = entity_text
         self.named_entity = entity_id
         self.span_start = span_start
-        self.span_end = span_end + 1 # Adjust to follow Python slicing convention of [start:end) i.e. exclusive end
+        self.span_end = span_end # Adjust to follow Python slicing convention of [start:end) i.e. exclusive end
         self.document_id = document_id
         self.sentence_index = sentence_index
         self.summary_id = summary_id
@@ -76,7 +76,7 @@ class Sentence:
             if entity.span_start >= entity.span_end:
                 raise ValueError("Span start must be less than span end.")
             if entity.entity_text != self.text[entity.span_start : entity.span_end]:
-                raise ValueError(f"Entity text: {entity.entity_text} must match the text span {self.text[entity.span_start : entity.span_end]} of the sentence.")
+                raise ValueError(f"Entity text: [{entity.entity_text}] must match the text span [{self.text[entity.span_start : entity.span_end]}] of the sentence.")
 
 
 class Document:

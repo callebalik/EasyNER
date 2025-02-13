@@ -1,4 +1,13 @@
+import sqlite3
+import logging
+
 class DBStatistics:
+
+    def __init__(self, connection: sqlite3.Connection, cursor: sqlite3.Cursor, logger: logging.Logger):
+        self.connection = connection
+        self.cursor = connection.cursor()
+        self.logger = logger
+
     @property
     def size(self):
         """
