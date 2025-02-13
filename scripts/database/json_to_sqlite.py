@@ -378,8 +378,7 @@ def json_to_sqlite(
 
 
 if __name__ == "__main__":
-    db = EasyNerDBHandler(db_path="/lunarc/nobackup/projects/snic2020-6-41/carl/test_eo_sentence_ref.db"
-    )
+    db = EasyNerDBHandler()
     if "import_data_path" not in db.config:
         raise ValueError("Database does not 'data_path' key.")
     data_dir = db.config["import_data_path"]

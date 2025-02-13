@@ -2,18 +2,11 @@ import sys
 import os
 import logging
 import json
-
-from db_statistics import DBStatistics
-from db_data_exchanger import DBDataExchanger
-from db_analysis import DBAnalysis
-from db_data_cleaner import DBDataCleaner
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import sqlite3
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-
-class DBMain:
+class EasyNerDBHandler:
     def __init__(self, db_path: str = None, config_path: str ="../../config.json"):
         """
         Initialize the database handler.
@@ -47,10 +40,23 @@ class DBMain:
         self.name = os.path.basename(self.db_path)
         self._setup_logging()
 
+        # Connect to the database
+        self.logger.info(f"Connecting to database {self.name}")
         self.conn = sqlite3.connect(self.db_path)
-        self.conn.row_factory = sqlite3.Row  # Configure the connection to return sqlite3.Row objects
         self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
-        self.logger.info(f"Connected to database {self.db_path}")
+        self.logger.info(f"Connected to database {self.db_path} and created cursor")
+
+        # Initialize components
+        # Import here to avoid circular dependencies and ensure all components are initialized before use
+        from db_data_exchanger import DBDataExchanger 
+        from db_data_cleaner import DBDataCleaner
+        from db_analysis import DBAnalysis
+        from db_statistics import DBStatistics
+
+        self.data_exchanger = DBDataExchanger(self.conn, self.cursor, self.logger)
+        self.data_cleaner = DBDataCleaner(self.conn, self.cursor, self.logger, self.data_exchanger)
+        self.analysis = DBAnalysis(self.conn, self.cursor, self.logger)
+        self.statistics = DBStatistics(self.conn, self.cursor, self.logger)
         
     def _load_config(self, config_path):
         """Load the JSON configuration file."""
@@ -73,37 +79,40 @@ class DBMain:
         """Configure logging to save to db.log in the database directory."""
         
         self.logger = logging.getLogger('EasyNerDB')
+        # Set the logger level to DEBUG to capture all messages
+        self.logger.setLevel(logging.DEBUG)
+        if not self.logger.handlers:
+            log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs/" + self.name + ".log")
+            error_log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs/db_error.log")
 
-        log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs/" + self.name + ".log")
-        error_log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs/db_error.log")
+            # Ensure the logs directory exists
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
-        # Ensure the logs directory exists
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+            
+            # Create file handler for logging
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(logging.DEBUG)
+            file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(file_formatter)
 
-        # Create file handler for logging
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(file_formatter)
+            # Create console handler for logging
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.INFO)
+            console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            console_handler.setFormatter(console_formatter)
 
-        # Create console handler for logging
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(console_formatter)
+            # Create separate error file handler for logging errors
+            error_file_handler = logging.FileHandler(error_log_file)
+            error_file_handler.setLevel(logging.ERROR)
+            error_file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            error_file_handler.setFormatter(error_file_formatter)
 
-        # Create separate error file handler for logging errors
-        error_file_handler = logging.FileHandler(error_log_file)
-        error_file_handler.setLevel(logging.ERROR)
-        error_file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        error_file_handler.setFormatter(error_file_formatter)
-
-        # Add handlers to the logger
-        self.logger.addHandler(file_handler)
-        self.logger.addHandler(console_handler)
-        self.logger.addHandler(error_file_handler)
-                
-        self.logger.info(f'Logging initialized. Log file: {log_file}')
+            # Add handlers to the logger
+            self.logger.addHandler(file_handler)
+            self.logger.addHandler(console_handler)
+            self.logger.addHandler(error_file_handler)
+                    
+            self.logger.info(f'Logging initialized. Log file: {log_file}')
 
     def __del__(self):
         """
@@ -251,21 +260,6 @@ class DBMain:
         tables = self.fetchall()
         tables = [table[0] for table in tables]
         return {"tables": tables}
-
-    def bulk_insert(self, insert_query, data):
-        """
-        Inserts many rows into the database in a single transaction.
-
-        :param insert_query: SQL insert statement with placeholders.
-        :param data: An iterable of tuples containing the data rows.
-        """
-        try:
-            self.conn.execute("BEGIN TRANSACTION;")
-            self.cursor.executemany(insert_query, data)
-            self.conn.commit()
-        except Exception as e:
-            self.conn.rollback()
-            raise e
 
     def optimize_db_performance_parameters(self):
         # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
@@ -420,12 +414,3 @@ class DBMain:
         conn.commit()
         conn.close()
         print(f"Database created at {db_path} using schema from {schema_path}")
-
-
-class EasyNerDBHandler(DBMain, DBStatistics, DBDataExchanger, DBAnalysis, DBDataCleaner):
-    """
-    A class that combines the main database functionality with statistics, data exchange,
-    analysis and data cleaning functionality.
-    """
-    def __init__(self, db_path: str = None):
-        DBMain.__init__(self, db_path = db_path)

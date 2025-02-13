@@ -1,8 +1,15 @@
 import logging
 import os
 from datetime import datetime
+import sqlite3
 
 class DBAnalysis:
+
+    def __init__(self, conn: sqlite3.Connection, cursor: sqlite3.Cursor, logger: logging.Logger):
+        self.conn = conn
+        self.cursor = cursor
+        self.logger = logger
+        
     def calc_document_counts(self, batch_size=100000):
         """
         Calculate word count, token count, and alphabetic character count for each document in batches.
@@ -282,3 +289,84 @@ class DBAnalysis:
         output_path = self.export_documents_to_json(doc_ids, output_path, metadata)
         self.logger.info(f"Exported {len(doc_ids)} problematic documents to {output_path}")
         return output_path
+
+
+    def count_entity_occurrences(self) -> None:
+        """
+        Summaries the fq of unique TABLE entity_occurrences and records in entity_occurrences_summary, adds reference to summary table in entity_occurrences['summary_id']
+        
+        
+        Pre-processing to link entities to the correct summary entity text
+            - Normalize entity_text to lowercase
+            - Remove leading and trailing whitespace
+            - Remove leading punctuation
+            - Remove trailing - and 's
+
+        Rules for unique entity:
+        - entity_text is unique
+
+        fq_uniq_documents
+        """
+
+        # Normalize entity_text and create a unique summary for each entity
+        self.cursor.execute(
+            """
+            WITH normalized_entities AS (
+                SELECT 
+                    id,
+                    LOWER(TRIM(BOTH ' ' FROM entity_text)) AS normalized_text
+                FROM entity_occurrences
+            ),
+            unique_entities AS (
+                SELECT DISTINCT normalized_text
+                FROM normalized_entities
+            )
+            INSERT INTO entity_occurrences_summary (entity_text)
+            SELECT normalized_text
+            FROM unique_entities
+            ON CONFLICT (entity_text) DO NOTHING
+            """
+        )
+        self.conn.commit()
+
+        # Update entity_occurrences with the reference to the summary table
+        self.cursor.execute(
+            """
+            UPDATE entity_occurrences
+            SET summary_id = subquery.summary_id
+            FROM (
+                SELECT 
+                    eo.id AS entity_id,
+                    eos.id AS summary_id
+                FROM entity_occurrences eo
+                JOIN entity_occurrences_summary eos
+                ON LOWER(TRIM(BOTH ' ' FROM eo.entity_text)) = eos.entity_text
+            ) AS subquery
+            WHERE entity_occurrences.id = subquery.entity_id
+            """
+        )
+        self.conn.commit()
+
+    def count_entity_inter_document_fq(self) -> None:
+        """
+        Count the number of unique documents that contain each entity.  
+        Record the count in TABLE entity_occurrences_summary[]'fq_uniq_documents'].
+        This is done by using the entity_occurrences table reference to the entity_occurrences_summary table, and counting the number of unique documents that contain each entity.
+        """
+        
+        # Count the number of unique documents that contain each entity
+        self.cursor.execute(
+            """
+            UPDATE entity_occurrences_summary
+            SET fq_uniq_documents = subquery.unique_docs
+            FROM (
+                SELECT 
+                    entity_id,
+                    COUNT(DISTINCT document_id) as unique_docs
+                FROM entity_occurrences
+                GROUP BY entity_id
+            ) as subquery
+            WHERE entity_occurrences_summary.id = subquery.entity_id
+            """
+        )
+        self.conn.commit()
