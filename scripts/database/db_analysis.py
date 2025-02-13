@@ -290,83 +290,254 @@ class DBAnalysis:
         self.logger.info(f"Exported {len(doc_ids)} problematic documents to {output_path}")
         return output_path
 
+    def find_overlapping_entities(self) -> None:
+        """
+        Find entities in the same sentence where span_start and span_end overlap between the two entities.
+        Record into new column of TABLE entity_occurrences [overlap: boolean].
+        
+        This method:
+        1. Adds an 'overlap' column if it doesn't exist
+        2. Sets all overlap values to FALSE initially
+        3. Identifies pairs of entities that overlap within the same sentence
+        4. Updates the overlap flag for all overlapping entities
+        """
+        try:
+            # Add overlap column if it doesn't exist
+            self.cursor.execute("""
+                SELECT COUNT(*) 
+                FROM pragma_table_info('entity_occurrences') 
+                WHERE name='overlap'
+            """)
+            if self.cursor.fetchone()[0] == 0:
+                self.logger.info("Adding 'overlap' column to entity_occurrences table...")
+                self.cursor.execute("""
+                    ALTER TABLE entity_occurrences 
+                    ADD COLUMN overlap BOOLEAN DEFAULT FALSE
+                """)
+            else:
+                # Reset all overlap flags to FALSE
+                self.cursor.execute("""
+                    UPDATE entity_occurrences 
+                    SET overlap = FALSE
+                """)
 
-    def count_entity_occurrences(self) -> None:
+            self.logger.info("Finding overlapping entities...")
+            
+            # Find overlapping entities within the same sentence
+            # Two entities overlap if:
+            # - They are in the same document and sentence
+            # - One entity's span intersects with another's span
+            # - They are different entities (different IDs)
+            self.cursor.execute("""
+                WITH overlapping_pairs AS (
+                    SELECT DISTINCT
+                        e1.id as id1,
+                        e2.id as id2
+                    FROM entity_occurrences e1
+                    JOIN entity_occurrences e2 ON 
+                        e1.document_id = e2.document_id AND
+                        e1.sentence_index = e2.sentence_index AND
+                        e1.id < e2.id AND
+                        NOT (
+                            e1.span_end <= e2.span_start OR
+                            e2.span_end <= e1.span_start
+                        )
+                )
+                UPDATE entity_occurrences
+                SET overlap = TRUE
+                WHERE id IN (
+                    SELECT id1 FROM overlapping_pairs
+                    UNION
+                    SELECT id2 FROM overlapping_pairs
+                )
+            """)
+
+            # Get statistics about overlapping entities
+            self.cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_entities,
+                    SUM(CASE WHEN overlap THEN 1 ELSE 0 END) as overlapping_entities,
+                    COUNT(DISTINCT document_id) as affected_documents,
+                    COUNT(DISTINCT sentence_index) as affected_sentences
+                FROM entity_occurrences
+                WHERE overlap = TRUE
+            """)
+            stats = self.cursor.fetchone()
+            
+            self.conn.commit()
+            self.logger.info(f"Found {stats[1]} overlapping entities across {stats[2]} documents and {stats[3]} sentences")
+            
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Error while finding overlapping entities: {e}")
+            raise
+
+    def count_entity_cooccurrences(self, level: str = "document"):
+        pass
+
+    def count_named_entity_fq(self):
+        """
+        Counts the frequency of each named entity in the entity_occurrences table
+        and updates the 'fq' column in the named_entities table.
+        """
+        try:
+            self.logger.info("Counting named entity frequencies...")
+            self.cursor.execute(
+                """
+                UPDATE named_entities
+                SET fq = (
+                    SELECT COUNT(*)
+                    FROM entity_occurrences
+                    WHERE entity_occurrences.entity_id = named_entities.id
+                )
+                """
+            )
+            self.conn.commit()
+            self.logger.info("Named entity frequencies updated in named_entities table.")
+        except sqlite3.Error as e:
+            self.logger.error(f"Error counting named entity frequencies: {e}")
+
+    def count_entity_occurrences(self, batch_size=10000) -> None:
         """
         Summaries the fq of unique TABLE entity_occurrences and records in entity_occurrences_summary, adds reference to summary table in entity_occurrences['summary_id']
-        
+        For each entity_occurence record a reference to the linked normalized entity in entity_occurrences_summary in column [summary_id].
         
         Pre-processing to link entities to the correct summary entity text
             - Normalize entity_text to lowercase
             - Remove leading and trailing whitespace
             - Remove leading punctuation
-            - Remove trailing - and 's
+            - Remove trailing 's
 
         Rules for unique entity:
         - entity_text is unique
 
-        fq_uniq_documents
+        Args:
+            batch_size (int): Number of records to process in each batch for memory efficiency
         """
-
-        # Normalize entity_text and create a unique summary for each entity
-        self.cursor.execute(
-            """
-            WITH normalized_entities AS (
+        try:
+            self.logger.info("Starting entity occurrences summarization...")
+            
+            # Recreate entity_occurrences_summary table to ensure proper constraints
+            self.cursor.execute("DROP TABLE IF EXISTS entity_occurrences_summary")
+            self.cursor.execute("""
+                CREATE TABLE entity_occurrences_summary (
+                    id INTEGER PRIMARY KEY NOT NULL,
+                    normalized_entity_text TEXT UNIQUE NOT NULL,
+                    uniq_documents INTEGER,
+                    fq INTEGER
+                )
+            """)
+            
+            # Drop temporary table if it exists
+            self.cursor.execute("DROP TABLE IF EXISTS temp_normalized_entities")
+            
+            # Create a temporary table for normalized texts using SQLite string functions
+            self.cursor.execute("""
+                CREATE TEMPORARY TABLE temp_normalized_entities AS
                 SELECT 
                     id,
-                    LOWER(TRIM(BOTH ' ' FROM entity_text)) AS normalized_text
+                    TRIM(
+                        LOWER(
+                            CASE 
+                                -- Remove trailing 's or 's
+                                WHEN entity_text LIKE '%''s' THEN SUBSTR(entity_text, 1, LENGTH(entity_text) - 2)
+                                WHEN entity_text LIKE '%''s' THEN SUBSTR(entity_text, 1, LENGTH(entity_text) - 2)
+                                ELSE entity_text 
+                            END
+                        )
+                    ) as normalized_entity_text
                 FROM entity_occurrences
-            ),
-            unique_entities AS (
-                SELECT DISTINCT normalized_text
-                FROM normalized_entities
-            )
-            INSERT INTO entity_occurrences_summary (entity_text)
-            SELECT normalized_text
-            FROM unique_entities
-            ON CONFLICT (entity_text) DO NOTHING
-            """
-        )
-        self.conn.commit()
+                WHERE entity_text IS NOT NULL
+            """)
 
-        # Update entity_occurrences with the reference to the summary table
-        self.cursor.execute(
-            """
-            UPDATE entity_occurrences
-            SET summary_id = subquery.summary_id
-            FROM (
+            # Remove leading non-alphanumeric characters using a separate update
+            self.cursor.execute("""
+                WITH RECURSIVE
+                strip_leading(id, txt, n) AS (
+                    SELECT id, normalized_entity_text, 1
+                    FROM temp_normalized_entities
+                    UNION ALL
+                    SELECT id, SUBSTR(txt, 2), n + 1
+                    FROM strip_leading
+                    WHERE LENGTH(txt) > 0 
+                    AND SUBSTR(txt, 1, 1) NOT GLOB '[A-Za-z0-9]*'
+                )
+                UPDATE temp_normalized_entities
+                SET normalized_entity_text = (
+                    SELECT txt
+                    FROM strip_leading s
+                    WHERE s.id = temp_normalized_entities.id
+                    AND (
+                        LENGTH(s.txt) = 0 
+                        OR SUBSTR(s.txt, 1, 1) GLOB '[A-Za-z0-9]*'
+                    )
+                    LIMIT 1
+                )
+            """)
+
+            # Insert summaries into entity_occurrences_summary
+            self.cursor.execute("""
+                INSERT INTO entity_occurrences_summary (normalized_entity_text, uniq_documents, fq)
                 SELECT 
-                    eo.id AS entity_id,
-                    eos.id AS summary_id
+                    ne.normalized_entity_text,
+                    COUNT(DISTINCT eo.document_id) as uniq_documents,
+                    COUNT(*) as fq
+                FROM temp_normalized_entities ne
+                JOIN entity_occurrences eo ON eo.id = ne.id
+                GROUP BY ne.normalized_entity_text
+                ON CONFLICT(normalized_entity_text) DO UPDATE SET
+                    uniq_documents = excluded.uniq_documents,
+                    fq = excluded.fq
+            """)
+
+            # Update summary_id references in batches using executemany
+            # First, get all entity mappings
+            self.cursor.execute("""
+                SELECT eo.id, s.id as summary_id
                 FROM entity_occurrences eo
-                JOIN entity_occurrences_summary eos
-                ON LOWER(TRIM(BOTH ' ' FROM eo.entity_text)) = eos.entity_text
-            ) AS subquery
-            WHERE entity_occurrences.id = subquery.entity_id
-            """
-        )
-        self.conn.commit()
+                JOIN temp_normalized_entities ne ON ne.id = eo.id
+                JOIN entity_occurrences_summary s ON s.normalized_entity_text = ne.normalized_entity_text
+            """)
+            
+            mappings = self.cursor.fetchall()
+            total_records = len(mappings)
+            self.logger.info(f"Updating summary_id references for {total_records} records in batches of {batch_size}")
 
-    def count_entity_inter_document_fq(self) -> None:
-        """
-        Count the number of unique documents that contain each entity.  
-        Record the count in TABLE entity_occurrences_summary[]'fq_uniq_documents'].
-        This is done by using the entity_occurrences table reference to the entity_occurrences_summary table, and counting the number of unique documents that contain each entity.
-        """
-        
-        # Count the number of unique documents that contain each entity
-        self.cursor.execute(
-            """
-            UPDATE entity_occurrences_summary
-            SET fq_uniq_documents = subquery.unique_docs
-            FROM (
+            # Process in batches
+            for i in range(0, total_records, batch_size):
+                batch = mappings[i:i + batch_size]
+                self.cursor.executemany(
+                    "UPDATE entity_occurrences SET summary_id = ? WHERE id = ?",
+                    [(summary_id, eo_id) for eo_id, summary_id in batch]
+                )
+                self.conn.commit()
+                self.logger.debug(f"Processed {min(i + batch_size, total_records)}/{total_records} records")
+
+            # Drop temporary table
+            self.cursor.execute("DROP TABLE temp_normalized_entities")
+
+            # Get statistics
+            self.cursor.execute("""
                 SELECT 
-                    entity_id,
-                    COUNT(DISTINCT document_id) as unique_docs
-                FROM entity_occurrences
-                GROUP BY entity_id
-            ) as subquery
-            WHERE entity_occurrences_summary.id = subquery.entity_id
-            """
-        )
-        self.conn.commit()
+                    COUNT(*) as total_summaries,
+                    AVG(fq) as avg_frequency,
+                    SUM(fq) as total_occurrences,
+                    AVG(uniq_documents) as avg_documents
+                FROM entity_occurrences_summary
+            """)
+            stats = self.cursor.fetchone()
+
+            self.conn.commit()
+            self.logger.info(
+                f"Entity occurrences summarization complete:\n"
+                f"- Total unique normalized entities: {stats[0]}\n"
+                f"- Average frequency per entity: {stats[1]:.2f}\n"
+                f"- Total occurrences: {stats[2]}\n"
+                f"- Average documents per entity: {stats[3]:.2f}"
+            )
+
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Error summarizing entity occurrences: {e}")
+            raise
+

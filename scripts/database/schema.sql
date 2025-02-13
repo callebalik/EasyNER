@@ -19,15 +19,15 @@ CREATE TABLE sentences (
 
 CREATE TABLE named_entities (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    named_entity TEXT UNIQUE
+    named_entity TEXT UNIQUE,
+    fq INT
 );
 
 CREATE TABLE entity_occurrences_summary (
     id INTEGER PRIMARY KEY NOT NULL,
-    normalized_entity_text TEXT,
-    fq_uniq_documents INTEGER,
-    fq_sentence_level INTEGER,
-    fq_document_level INTEGER
+    normalized_entity_text TEXT UNIQUE NOT NULL,
+    uniq_documents INTEGER,
+    fq INTEGER
 );
 
 CREATE TABLE entity_occurrences (

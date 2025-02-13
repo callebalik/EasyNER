@@ -131,7 +131,7 @@ def batch_insert(
         elif table == "sentences":
             stmt = "INSERT INTO sentences VALUES (?, ?, ?, ?, ?, ?)"
         elif table == "named_entities":
-            stmt = "INSERT OR IGNORE INTO named_entities VALUES (?, ?)"
+            stmt = "INSERT OR IGNORE INTO named_entities VALUES (?, ?, ?)"
         elif table == "entity_occurrences":
             stmt = "INSERT INTO entity_occurrences VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
@@ -217,7 +217,7 @@ def insert_data(
             sentences.clear()
 
             # Then named entities
-            named_entities_rows = [(v, k) for k, v in named_entities.items()]
+            named_entities_rows = [(v, k, None) for k, v in named_entities.items()]
             batch_insert(cursor, "named_entities", named_entities_rows, batch_size, logger)
             named_entities.clear()
 
