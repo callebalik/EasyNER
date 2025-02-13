@@ -51,7 +51,6 @@ class DBMain:
         self.conn.row_factory = sqlite3.Row  # Configure the connection to return sqlite3.Row objects
         self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
         self.logger.info(f"Connected to database {self.db_path}")
-        self.conn.enable_load_extension(True) 
         
     def _load_config(self, config_path):
         """Load the JSON configuration file."""
