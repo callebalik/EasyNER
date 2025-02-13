@@ -9,49 +9,7 @@
 {% endblock %}
 
 {% block head %}
-<style>
-    .document-meta {
-        color: #666;
-        margin-bottom: 2rem;
-    }
-    .document-meta span {
-        margin-right: 1rem;
-    }
-    .document-content {
-        line-height: 1.8;
-    }
-    .sentence {
-        margin-bottom: 1.5rem;
-        padding: 0.5rem;
-    }
-    .entity {
-        cursor: pointer;
-        padding: 2px 4px;
-        margin: 0 2px;
-        border-radius: 3px;
-        background-color: #e3f2fd;
-        border: 1px solid #90caf9;
-    }
-    .entity:hover {
-        background-color: #bbdefb;
-    }
-    .entity-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 2rem;
-    }
-    .entity-table th, .entity-table td {
-        border: 1px solid #ddd;
-        padding: 8px;
-    }
-    .entity-table th {
-        background-color: #f2f2f2;
-        text-align: left;
-    }
-    .highlighted-entity {
-        background-color: #ffeb3b !important;
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const entityElements = document.querySelectorAll('.entity');

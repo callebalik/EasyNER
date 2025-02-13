@@ -1,0 +1,62 @@
+/* Styling for base layout */
+body { 
+    font-family: Arial, sans-serif; 
+    margin: 0;
+    padding: 20px;
+    line-height: 1.6;
+}
+.container { 
+    max-width: 1200px; 
+    margin: 0 auto; 
+}
+.nav {
+    background: #2196f3;
+    padding: 1rem;
+    margin: -20px -20px 2rem -20px;
+    color: white;
+}
+.nav a {
+    color: white;
+    text-decoration: none;
+    margin-right: 1rem;
+    padding: 0.5rem;
+}
+.nav a:hover {
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+}
+.table-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+.table-card {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 1rem;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.table-card h3 {
+    margin-top: 0;
+    color: #2196f3;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.5rem;
+}
+details summary {
+    cursor: pointer;
+    color: #666;
+    margin: 1rem 0;
+}
+details ul {
+    margin: 0;
+    padding-left: 1.5rem;
+    color: #666;
+}
+h1, h2 {
+    color: #333;
+}
+h2 {
+    margin: 2rem 0 1rem;
+}
