@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Entity Occurrences{% endblock %}
+
+{% block content %}
+<div class="entities-container">
+    <div class="filter-section">
+        <h2>Filter Occurrences</h2>
+        <form method="GET" action="{{ url_for('list_entities') }}">
+            <div class="form-group">
+                <label>Entity Text:</label>
+                <input type="text" name="query" value="{{ query }}" placeholder="Search by entity text...">
+            </div>
+            <div class="form-group">
+                <label>Document ID:</label>
+                <input type="number" name="doc_id" value="{{ doc_id }}" min="1">
+            </div>
+            <div class="form-group">
+                <label>Entity Type:</label>
+                <select name="type">
+                    <option value="">All Types</option>
+                    {% for entity in entity_types %}
+                    <option value="{{ entity.id }}" {% if type == entity.id %}selected{% endif %}>{{ entity.named_entity }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit">Apply Filters</button>
+        </form>
+    </div>
+
+    <div class="entities-table">
+        <h2>Entity Occurrences</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>
+                        <a href="{{ url_for('list_entities', sort='entity_text', order=next_order, query=query, doc_id=doc_id, type=type) }}" 
+                           class="sort-header {% if sort == 'entity_text' %}sorted-{{ order }}{% endif %}">
+                            Entity Text
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ url_for('list_entities', sort='named_entity', order=next_order, query=query, doc_id=doc_id, type=type) }}"
+                           class="sort-header {% if sort == 'named_entity' %}sorted-{{ order }}{% endif %}">
+                            Type
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ url_for('list_entities', sort='document_id', order=next_order, query=query, doc_id=doc_id, type=type) }}"
+                           class="sort-header {% if sort == 'document_id' %}sorted-{{ order }}{% endif %}">
+                            Document
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ url_for('list_entities', sort='sentence_index', order=next_order, query=query, doc_id=doc_id, type=type) }}"
+                           class="sort-header {% if sort == 'sentence_index' %}sorted-{{ order }}{% endif %}">
+                            Sentence
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ url_for('list_entities', sort='tf_idf', order=next_order, query=query, doc_id=doc_id, type=type) }}"
+                           class="sort-header {% if sort == 'tf_idf' %}sorted-{{ order }}{% endif %}">
+                            TF-IDF
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ url_for('list_entities', sort='intra_doc_fq', order=next_order, query=query, doc_id=doc_id, type=type) }}"
+                           class="sort-header {% if sort == 'intra_doc_fq' %}sorted-{{ order }}{% endif %}">
+                            Frequency
+                        </a>
+                    </th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entity in entities %}
+                <tr>
+                    <td>{{ entity.entity_text }}</td>
+                    <td>{{ entity.named_entity }}</td>
+                    <td>{{ entity.document_id }}</td>
+                    <td>{{ entity.sentence_index }}</td>
+                    <td>{{ "%.3f"|format(entity.tf_idf) }}</td>
+                    <td>{{ entity.intra_doc_fq }}</td>
+                    <td>
+                        <a href="{{ url_for('show_document', doc_id=entity.document_id) }}" class="action-link">View Document</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="{{ url_for('list_entities', page=page-1, query=query, doc_id=doc_id, type=type, sort=sort, order=order) }}" class="pagination-link">Previous</a>
+            {% endif %}
+            <span class="page-info">Page {{ page }}</span>
+            {% if has_more %}
+            <a href="{{ url_for('list_entities', page=page+1, query=query, doc_id=doc_id, type=type, sort=sort, order=order) }}" class="pagination-link">Next</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
