@@ -574,3 +574,90 @@ class DBAnalysis:
             self.logger.error(f"Error summarizing entity occurrences: {e}")
             raise
 
+    def count_entity_intra_doc_fq(self) -> None: 
+        """
+        For each entity, calculate the frequency of the entity within each document.
+        This is done by using the summary_id column in entity_occurrences to group by document_id and summary_id.
+        Summary_id refers to the normalized entity in entity_occurrences_summary. 
+        Results are stored in entity_occurrences with the column 'intra_doc_fq'.
+        """
+        try:
+            self.logger.info("Calculating intra-document frequencies for entities...")
+
+            # Update intra-document frequencies
+            self.cursor.execute("""
+                WITH doc_entity_counts AS (
+                    SELECT 
+                        document_id,
+                        summary_id,
+                        COUNT(*) as freq
+                    FROM entity_occurrences
+                    WHERE summary_id IS NOT NULL
+                    GROUP BY document_id, summary_id
+                )
+                UPDATE entity_occurrences
+                SET intra_doc_fq = (
+                    SELECT freq
+                    FROM doc_entity_counts
+                    WHERE doc_entity_counts.document_id = entity_occurrences.document_id
+                    AND doc_entity_counts.summary_id = entity_occurrences.summary_id
+                )
+                WHERE summary_id IS NOT NULL
+            """)
+
+            # Get statistics about the update
+            self.cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_entities,
+                    COUNT(DISTINCT document_id) as unique_documents,
+                    COUNT(DISTINCT summary_id) as unique_entities,
+                    AVG(intra_doc_fq) as avg_frequency,
+                    MAX(intra_doc_fq) as max_frequency
+                FROM entity_occurrences
+                WHERE intra_doc_fq IS NOT NULL
+            """)
+            stats = self.cursor.fetchone()
+
+            self.conn.commit()
+            
+            self.logger.info(
+                f"Intra-document frequency calculation complete:\n"
+                f"- Total entity occurrences processed: {stats[0]:,}\n"
+                f"- Unique documents: {stats[1]:,}\n"
+                f"- Unique normalized entities: {stats[2]:,}\n"
+                f"- Average intra-doc frequency: {stats[3]:.2f}\n"
+                f"- Maximum intra-doc frequency: {stats[4]}"
+            )
+
+            # Sample some high-frequency entities for inspection
+            self.cursor.execute("""
+                SELECT 
+                    e.document_id,
+                    e.entity_text,
+                    n.named_entity as entity_type,
+                    s.normalized_entity_text,
+                    e.intra_doc_fq
+                FROM entity_occurrences e
+                JOIN entity_occurrences_summary s ON s.id = e.summary_id
+                JOIN named_entities n ON n.id = s.entity_id
+                WHERE e.intra_doc_fq > ?
+                GROUP BY e.document_id, e.summary_id
+                ORDER BY e.intra_doc_fq DESC
+                LIMIT 5
+            """, (stats[3] * 2,))  # Show entities with frequency > 2x average
+            
+            high_freq = self.cursor.fetchall()
+            if high_freq:
+                self.logger.info("\nSample high-frequency entities:")
+                for doc_id, text, type_, norm_text, freq in high_freq:
+                    self.logger.info(
+                        f"Document {doc_id}: '{text}' ({type_})\n"
+                        f"  Normalized: '{norm_text}'\n"
+                        f"  Frequency: {freq}"
+                    )
+
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Error calculating intra-document frequencies: {e}")
+            raise
+
