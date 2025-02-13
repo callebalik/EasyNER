@@ -223,7 +223,7 @@ def list_documents():
 def show_document(doc_id):
     db = get_db()
     
-    document = db.get_document(doc_id)
+    document = db.data_exchanger.get_document(doc_id)
     if not document:
         return "Document not found", 404
 
