@@ -31,3 +31,4 @@ supplementary/slurm_job_manager/job_scripts/merge.out
 supplementary/slurm_job_manager/job_scripts/merge.slurm
 scripts/database/*.log
 scripts/database/*.db*
+scripts/database/logs/*
