@@ -2,10 +2,30 @@ from flask import Flask, jsonify, g, render_template, request
 from db_main import EasyNerDBHandler
 import os
 from data_model import Document, Sentence, NamedEntity
+import sass
 
 # Set template directory to current directory/templates
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
 app = Flask(__name__, template_folder=template_dir)
+
+# Compile SCSS to CSS on server load
+def compile_scss():
+    scss_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/styles.scss')
+    css_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/styles.css')
+    partials_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/partials')
+    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+    with open(scss_file, 'r') as f:
+        scss_content = f.read()
+    css_content = sass.compile(string=scss_content, include_paths=[static_dir])
+    with open(css_file, 'w') as f:
+        f.write(css_content)
+
+compile_scss()
+
+# Serve static CSS file
+@app.route('/static/styles.css')
+def styles():
+    return app.send_static_file('styles.css')
 
 def get_db():
     if 'db' not in g:

@@ -1,0 +1,14 @@
+/* Styling for table elements */
+.entity-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 2rem;
+}
+.entity-table th, .entity-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+.entity-table th {
+    background-color: #f2f2f2;
+    text-align: left;
+}

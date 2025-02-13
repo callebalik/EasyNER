@@ -1,0 +1,28 @@
+/* Styling for document content */
+.document-content {
+    line-height: 1.8;
+    margin-bottom: 0.5rem;
+}
+.sentence {
+    margin-bottom: 1rem;
+}
+
+p.sentence {
+    margin: 0;
+
+    span.sentence-nbr {
+        opacity: 0.2;
+        font-size: 0.8em;
+        color: #666;
+    }
+
+    &:hover {
+        opacity: 1;
+    }
+
+}
+
+span.sentence-text {
+    font-size: 0.9em;
+}
+
