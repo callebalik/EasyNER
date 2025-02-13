@@ -22,3 +22,4 @@ supplementary/slurm_job_manager/batches.json
 supplementary/slurm_job_manager/rerun_batches.log
 scripts/database/*.log
 scripts/database/*.db*
+scripts/database/logs/*
