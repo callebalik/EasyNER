@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, g, render_template, request
 from db_main import EasyNerDBHandler
 import os
+from data_model import Document, Sentence, NamedEntity
 
 # Set template directory to current directory/templates
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
@@ -126,54 +127,6 @@ def get_tables():
         db.logger.error(f"Error getting table information: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/document/<int:doc_id>")
-def get_document(doc_id):
-    try:
-        db = get_db()
-        # Get document details
-        doc_details = db.get_document_details(doc_id)
-        if not doc_details:
-            db.logger.info(f"Document {doc_id} not found")
-            return jsonify({"error": "Document not found"}), 404
-        
-        # Get document content with entities
-        doc_content = db.get_document_as_html(doc_id)
-        
-        return jsonify({
-            "document": doc_details,
-            "content": doc_content
-        })
-    except Exception as e:
-        db.logger.error(f"Error processing request for document {doc_id}: {e}")
-        return jsonify({"error": "Internal server error"}), 500
-
-@app.route("/view/document/<int:doc_id>")
-def view_document(doc_id):
-    try:
-        db = get_db()
-        # Add debug logging
-        db.logger.debug(f"Attempting to retrieve document {doc_id}")
-        
-        # Verify document exists first
-        db.execute("SELECT COUNT(*) FROM documents WHERE id = ?", (doc_id,))
-        count = db.fetchone()[0]
-        if count == 0:
-            db.logger.warning(f"Document {doc_id} does not exist in database")
-            return render_template('error.html', message="Document not found"), 404
-            
-        doc_details = db.get_document_details(doc_id)
-        if not doc_details:
-            db.logger.error(f"Document {doc_id} exists but could not be retrieved")
-            return render_template('error.html', message="Error retrieving document"), 500
-        
-        doc_content = db.get_document_as_html(doc_id)
-        return render_template('document.html', 
-                             document=doc_details, 
-                             content=doc_content)
-    except Exception as e:
-        db.logger.error(f"Error viewing document {doc_id}: {e}")
-        return render_template('error.html', message="Internal server error"), 500
-
 @app.route("/documents")
 def list_documents():
     try:
@@ -223,13 +176,23 @@ def list_documents():
         db.logger.error(f"Error loading documents page: {e}")
         return render_template('error.html', message="Error loading documents"), 500
 
+@app.route('/document/<int:doc_id>')
+def show_document(doc_id):
+    db = get_db()
+    
+    document = db.get_document(doc_id)
+    if not document:
+        return "Document not found", 404
+
+    return render_template('document.html', document=document, content=document.to_html())
+
 if __name__ == "__main__":
     try:
         # Initialize database before running the server
         db = init_db()
         db.logger.info("Starting Flask server in debug mode with reloader...")
         app.run(host="127.0.0.1", 
-                port=8008, 
+                port=5000, 
                 debug=True,  # Enable debug mode
                 use_reloader=True,  # Enable automatic reloader
                 threaded=True)  # Enable threading for better development experience
