@@ -1,107 +1,74 @@
-# from data_model import document, sentences, entities
-
 from typing import List, Dict, Any
-class DBDataExchanger:
+import sqlite3
+from data_model import Document, Sentence, NamedEntity
 
+class DBDataExchanger:
     @property
     def source_files(self):
         """
         Get dictionary of source files in the database.
         """
-        self.cursor.execute("SELECT * FROM source_files;")
-        return self.cursor.fetchall()
-
-    def get_entity_occurrence(self, eo_id):
-        """
-        Get entity occurrences by entity ID.
-        """
-        self.cursor.execute(
-            "SELECT * FROM entity_occurrences WHERE id = ?", (eo_id,)
-        )
-        return self.cursor.fetchone()
-    
-        
-    def get_document(self, doc_id: int) -> Dict[str, Any]:
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
-        document = cursor.fetchone()
-        return dict(document) if document else None
-
-    def get_sentences(self, doc_id: int) -> List[Dict[str, Any]]:
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM sentences WHERE document_id = ?", (doc_id,))
-        sentences = cursor.fetchall()
-        return [dict(sentence) for sentence in sentences]
-
-    def get_entities(self, doc_id: int, sentence_index: int) -> List[Dict[str, Any]]:
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT * FROM entity_occurrences 
-            WHERE document_id = ? AND sentence_index = ?
-        """, (doc_id, sentence_index))
-        entities = cursor.fetchall()
-        return [dict(entity) for entity in entities]
-
-    def get_document_as_html(self, doc_id: int) -> str:
-        document = self.get_document(doc_id)
-        if not document:
-            return ""
-
-        sentences = self.get_sentences(doc_id)
-        html_content = f"<h1>{document['title']}</h1>"
-
-        for sentence in sentences:
-            entities = self.get_entities(doc_id, sentence['sentence_index'])
-            sentence_text = sentence['text']
-            for entity in entities:
-                entity_text = entity['entity_text']
-                sentence_text = sentence_text.replace(entity_text, f"<b>{entity_text}</b>")
-            html_content += f"<p>{sentence_text}</p>"
-
-        return html_content
-
-
-    def get_document_details(self, doc_id):
-        """
-        Get document details including title and basic metrics.
-        """
-        # Debug log the query
-        query = "SELECT id, title, word_count FROM documents WHERE id = ?"
-        self.logger.debug(f"Executing query: {query} with doc_id: {doc_id}")
-        
         try:
-            # Use direct cursor execution for better error tracking
-            self.cursor.execute(query, (doc_id,))
-            row = self.cursor.fetchone()
-            
-            if row:
-                # Convert tuple to dict manually to ensure correct mapping
-                result = {
-                    'id': row[0],
-                    'title': row[1],
-                    'word_count': row[2]
-                }
-                self.logger.info(f"Retrieved document {doc_id}: {result['title']}")
-                return result
-            else:
-                # Log the full query result for debugging
-                self.logger.warning(f"Document {doc_id} not found. Query returned no results.")
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"Error retrieving document {doc_id}: {e}")
-            raise
+            self.cursor.execute("SELECT * FROM source_files;")
+            return self.cursor.fetchall()
+        except sqlite3.Error as e:
+            self.logger.error(f"Error fetching source files: {e}")
+            return []
 
-    def get_sentences(self, doc_id):
-        """
-        Get sentences by document ID.
-        """
-        self.cursor.execute(
-            "SELECT * FROM sentences WHERE document_id = ?", (doc_id,)
-        )
-        return self.cursor.fetchall()
-    
-    def get_entities(self, doc_id: int = None, sentence_index: int = None, like: str = None):
+    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Helper function to convert a sqlite3.Row object to a dictionary."""
+        if row:
+            return dict(zip(row.keys(), row))
+        return None
+
+    def get_document(self, doc_id: int) -> Document:
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
+            document_row = cursor.fetchone()
+            document_dict = self._row_to_dict(document_row)
+            if not document_dict:
+                return None
+
+            sentences = self.get_sentences(doc_id)
+            document_dict['sentences'] = sentences
+            return Document(**document_dict)
+        except sqlite3.Error as e:
+            self.logger.error(f"Error fetching document {doc_id}: {e}")
+            return None
+
+    def get_sentences(self, doc_id: int) -> List[Sentence]:
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM sentences WHERE document_id = ?", (doc_id,))
+            sentences = cursor.fetchall()
+            sentence_objects = []
+            for sentence_row in sentences:
+                sentence_dict = self._row_to_dict(sentence_row)
+                entities = self.get_entities(doc_id, sentence_dict['sentence_index'])
+                sentence_dict['entities'] = entities
+                sentence_objects.append(Sentence(**sentence_dict))
+            return sentence_objects
+        except sqlite3.Error as e:
+            self.logger.error(f"Error fetching sentences for document {doc_id}: {e}")
+            return []
+
+    def get_entities(self, doc_id: int, sentence_index: int) -> List[NamedEntity]:
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM entity_occurrences 
+                WHERE document_id = ? AND sentence_index = ?
+                """, (doc_id, sentence_index)
+            )
+            entities = cursor.fetchall()
+            return [NamedEntity(**self._row_to_dict(entity)) for entity in entities]
+        except sqlite3.Error as e:
+            self.logger.error(f"Error fetching entities for document {doc_id}, sentence {sentence_index}: {e}")
+            return []
+
+    def search_entities(self, doc_id: int = None, sentence_index: int = None, like: str = None):
         """
         Build and execute a query filtering by optional parameters.
         """
@@ -122,15 +89,23 @@ class DBDataExchanger:
         if conditions:
             query += " WHERE " + " OR ".join(conditions)
     
-        self.cursor.execute(query, params)
-        return self.cursor.fetchall()    
-    
+        try:
+            self.cursor.execute(query, params)
+            return self.cursor.fetchall()
+        except sqlite3.Error as e:
+            self.logger.error(f"Error searching entities: {e}")
+            return []
 
-    def save_docs_as_json(doc_ids : list[int], path) -> None:
-        pass
-    
-    def export_doc_as_json(doc_id) -> str:
-        pass
+    def get_entity_occurrence(self, eo_id):
+        """
+        Get entity occurrences by entity ID.
+        """
+        try:
+            self.cursor.execute(
+                "SELECT * FROM entity_occurrences WHERE id = ?", (eo_id,)
+            )
+            return self.cursor.fetchone()
+        except sqlite3.Error as e:
+            self.logger.error(f"Error fetching entity occurrence {eo_id}: {e}")
+            return None
 
-
-  
