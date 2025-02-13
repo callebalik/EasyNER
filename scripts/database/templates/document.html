@@ -3,35 +3,8 @@
 {% block title %}{{ document.title }}{% endblock %}
 
 {% block content %}
-    <div class="document-title">
-        <h1>{{ document.title }}</h1>
-        <div class="document-meta">
-            <span>Document ID: {{ document.id }}</span>
-            <span>Words: {{ document.word_count }}</span>
-        </div>
-    </div>
-
     <div class="document-content">
-        {% for sentence in content %}
-            <div class="sentence" id="sentence-{{ sentence.index }}">
-                {% if sentence.entities %}
-                    {% set text = sentence.text %}
-                    {% set offset = 0 %}
-                    {% for entity in sentence.entities|sort(attribute='start') %}
-                        {{ text[offset:entity.start]|safe }}
-                        <span class="entity" 
-                              data-entity-text="{{ entity.text }}"
-                              title="{{ entity.text }}">
-                            {{ text[entity.start:entity.end]|safe }}
-                        </span>
-                        {% set offset = entity.end %}
-                    {% endfor %}
-                    {{ text[offset:]|safe }}
-                {% else %}
-                    {{ sentence.text|safe }}
-                {% endif %}
-            </div>
-        {% endfor %}
+        {{ document.to_html()|safe }}
     </div>
 {% endblock %}
 
@@ -62,5 +35,42 @@
     .entity:hover {
         background-color: #bbdefb;
     }
+    .entity-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 2rem;
+    }
+    .entity-table th, .entity-table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+    }
+    .entity-table th {
+        background-color: #f2f2f2;
+        text-align: left;
+    }
+    .highlighted-entity {
+        background-color: #ffeb3b !important;
+    }
 </style>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const entityElements = document.querySelectorAll('.entity');
+        const entityRows = document.querySelectorAll('.entity-table tr[data-entity-id]');
+
+        entityRows.forEach(row => {
+            row.addEventListener('mouseover', function() {
+                const entityId = this.getAttribute('data-entity-id');
+                document.querySelectorAll(`.entity[data-entity-id='${entityId}']`).forEach(el => {
+                    el.classList.add('highlighted-entity');
+                });
+            });
+            row.addEventListener('mouseout', function() {
+                const entityId = this.getAttribute('data-entity-id');
+                document.querySelectorAll(`.entity[data-entity-id='${entityId}']`).forEach(el => {
+                    el.classList.remove('highlighted-entity');
+                });
+            });
+        });
+    });
+</script>
 {% endblock %}
