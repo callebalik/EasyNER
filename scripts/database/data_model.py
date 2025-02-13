@@ -22,7 +22,7 @@ class NamedEntity:
         self.entity_text = entity_text
         self.named_entity = entity_id
         self.span_start = span_start
-        self.span_end = span_end
+        self.span_end = span_end + 1 # Adjust to follow Python slicing convention of [start:end) i.e. exclusive end
         self.document_id = document_id
         self.sentence_index = sentence_index
         self.summary_id = summary_id
@@ -31,6 +31,8 @@ class NamedEntity:
         self.inter_doc_fq = inter_doc_fq
         self.tf_idf = tf_idf
         self.idf = idf
+
+
 
 
 class Sentence:
@@ -43,6 +45,7 @@ class Sentence:
         token_count: int,
         alpha_count: int,
         entities: Optional[List[NamedEntity]] = None,
+        validate_entities: bool = True,
     ):
         self.text = text
         self.sentence_index = sentence_index
@@ -50,7 +53,30 @@ class Sentence:
         self.word_count = word_count
         self.token_count = token_count
         self.alpha_count = alpha_count
+
         self.entities = entities if entities is not None else []
+        if validate_entities:
+            self.validate_entities()
+
+
+    def validate_entities(self):
+        """
+        1. Ensure that span_start and span_end are non-negative.
+        2. Ensure that span_start and span_end are within the bounds of the sentence.
+        3. Ensure that span_start is less than span_end.
+        4. Ensure that the entity text matches text[span_start->span_end] of the sentence.
+
+        """
+
+        for entity in self.entities:
+            if entity.span_start < 0 or entity.span_end < 0:
+                raise ValueError("Span start and end must be non-negative.")
+            if entity.span_start >= len(self.text) or entity.span_end >= len(self.text):
+                raise ValueError("Span start and end must be within the bounds of the sentence.")
+            if entity.span_start >= entity.span_end:
+                raise ValueError("Span start must be less than span end.")
+            if entity.entity_text != self.text[entity.span_start : entity.span_end]:
+                raise ValueError(f"Entity text: {entity.entity_text} must match the text span {self.text[entity.span_start : entity.span_end]} of the sentence.")
 
 
 class Document:
@@ -94,7 +120,7 @@ class Document:
         </div>
         """
         for sentence in self.sentences:
-            html += f"<p><b>Sentence {sentence.sentence_index}:</b> {self._highlight_entities(sentence)}</p>"
+            html += f"<p class='sentence'><span class='sentence-nbr'>Sentence {sentence.sentence_index}:</span> <span class='sentence-text'>{self._highlight_entities(sentence)}</span></p>"
         html += self._generate_entity_table()
         return html
 
@@ -103,14 +129,14 @@ class Document:
         entities = sorted(sentence.entities, key=lambda e: e.span_start)
         offset = 0
         for entity in entities:
+            open_tag = f"<span class='entity' data-entity-id='{entity.id}'>"
+            close_tag = "</span>"
             start = entity.span_start + offset
             end = entity.span_end + offset
             text = (
-                text[:start]
-                + f"<span class='entity' data-entity-id='{entity.id}'>{text[start:end]}</span>"
-                + text[end:]
+                text[:start] + open_tag + text[start:end] + close_tag + text[end:]
             )
-            offset += len("<span class='entity' data-entity-id=''></span>")
+            offset += len(open_tag) + len(close_tag)
         return text
 
     def _generate_entity_table(self) -> str:

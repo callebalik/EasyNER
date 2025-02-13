@@ -54,6 +54,13 @@ def init_db():
         db.logger.info("Flask application initialized")
         return db
 
+def get_available_entities(db):
+    try:
+        return db.execute("SELECT id, named_entity FROM named_entities ORDER BY named_entity")
+    except Exception as e:
+        db.logger.error(f"Error fetching entities: {e}")
+        return []
+
 @app.route("/")
 def home():
     try:
@@ -154,6 +161,7 @@ def list_documents():
         page = int(request.args.get('page', 1))
         query = request.args.get('query', '')
         doc_id = request.args.get('doc_id', '')
+        selected_entities = request.args.getlist('entities')
         per_page = 30
         offset = (page - 1) * per_page
 
@@ -161,37 +169,52 @@ def list_documents():
         conditions = []
 
         if query:
-            conditions.append("title LIKE ?")
+            conditions.append("d.title LIKE ?")
             params.append(f'%{query}%')
         
         if doc_id:
-            conditions.append("id = ?")
+            conditions.append("d.id = ?")
             params.append(doc_id)
 
-        if conditions:
-            where_clause = "WHERE " + " AND ".join(conditions)
-        else:
-            where_clause = ""
-
-        sql = f"""
-            SELECT id, title, word_count 
-            FROM documents 
-            {where_clause}
-            ORDER BY id 
-            LIMIT ? OFFSET ?
+        # Base query
+        sql = """
+            SELECT DISTINCT d.id, d.title, d.word_count 
+            FROM documents d
         """
+
+        # Add entity filtering - using EXISTS for each entity to ensure ALL are present
+        if selected_entities:
+            for entity_id in selected_entities:
+                sql_condition = f"""
+                EXISTS (
+                    SELECT 1 FROM entity_occurrences eo{entity_id} 
+                    JOIN named_entities ne{entity_id} ON eo{entity_id}.entity_id = ne{entity_id}.id
+                    WHERE eo{entity_id}.document_id = d.id AND ne{entity_id}.id = ?
+                )"""
+                conditions.append(sql_condition)
+                params.append(entity_id)
+
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+
+        sql += " ORDER BY d.id LIMIT ? OFFSET ?"
         params.extend([per_page + 1, offset])
 
         documents = db.execute(sql, params)
         has_more = len(documents) > per_page
         documents = documents[:per_page]  # Trim to per_page items
 
+        # Get available entities for the filter
+        entities = get_available_entities(db)
+
         return render_template('documents.html',
                              documents=[dict(zip(['id', 'title', 'word_count'], doc)) for doc in documents],
                              page=page,
                              query=query,
                              doc_id=doc_id,
-                             has_more=has_more)
+                             has_more=has_more,
+                             entities=entities,
+                             selected_entities=selected_entities)
     except Exception as e:
         db.logger.error(f"Error loading documents page: {e}")
         return render_template('error.html', message="Error loading documents"), 500
