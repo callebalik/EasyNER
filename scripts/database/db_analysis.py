@@ -417,29 +417,32 @@ class DBAnalysis:
         try:
             self.logger.info("Starting entity occurrences summarization...")
             
-            # Recreate entity_occurrences_summary table to ensure proper constraints
+            # Recreate entity_occurrences_summary table with entity_id
             self.cursor.execute("DROP TABLE IF EXISTS entity_occurrences_summary")
             self.cursor.execute("""
                 CREATE TABLE entity_occurrences_summary (
                     id INTEGER PRIMARY KEY NOT NULL,
-                    normalized_entity_text TEXT UNIQUE NOT NULL,
+                    normalized_entity_text TEXT NOT NULL,
+                    entity_id INTEGER NOT NULL,
                     uniq_documents INTEGER,
-                    fq INTEGER
+                    fq INTEGER,
+                    UNIQUE(normalized_entity_text, entity_id),
+                    FOREIGN KEY (entity_id) REFERENCES named_entities (id)
                 )
             """)
             
             # Drop temporary table if it exists
             self.cursor.execute("DROP TABLE IF EXISTS temp_normalized_entities")
             
-            # Create a temporary table for normalized texts using SQLite string functions
+            # Create a temporary table for normalized texts
             self.cursor.execute("""
                 CREATE TEMPORARY TABLE temp_normalized_entities AS
                 SELECT 
                     id,
+                    entity_id,
                     TRIM(
                         LOWER(
                             CASE 
-                                -- Remove trailing 's or 's
                                 WHEN entity_text LIKE '%''s' THEN SUBSTR(entity_text, 1, LENGTH(entity_text) - 2)
                                 WHEN entity_text LIKE '%''s' THEN SUBSTR(entity_text, 1, LENGTH(entity_text) - 2)
                                 ELSE entity_text 
@@ -450,14 +453,14 @@ class DBAnalysis:
                 WHERE entity_text IS NOT NULL
             """)
 
-            # Remove leading non-alphanumeric characters using a separate update
+            # Remove leading non-alphanumeric characters
             self.cursor.execute("""
                 WITH RECURSIVE
-                strip_leading(id, txt, n) AS (
-                    SELECT id, normalized_entity_text, 1
+                strip_leading(id, entity_id, txt, n) AS (
+                    SELECT id, entity_id, normalized_entity_text, 1
                     FROM temp_normalized_entities
                     UNION ALL
-                    SELECT id, SUBSTR(txt, 2), n + 1
+                    SELECT id, entity_id, SUBSTR(txt, 2), n + 1
                     FROM strip_leading
                     WHERE LENGTH(txt) > 0 
                     AND SUBSTR(txt, 1, 1) NOT GLOB '[A-Za-z0-9]*'
@@ -475,28 +478,30 @@ class DBAnalysis:
                 )
             """)
 
-            # Insert summaries into entity_occurrences_summary
+            # Insert summaries into entity_occurrences_summary considering entity_id
             self.cursor.execute("""
-                INSERT INTO entity_occurrences_summary (normalized_entity_text, uniq_documents, fq)
+                INSERT INTO entity_occurrences_summary (normalized_entity_text, entity_id, uniq_documents, fq)
                 SELECT 
                     ne.normalized_entity_text,
+                    ne.entity_id,
                     COUNT(DISTINCT eo.document_id) as uniq_documents,
                     COUNT(*) as fq
                 FROM temp_normalized_entities ne
                 JOIN entity_occurrences eo ON eo.id = ne.id
-                GROUP BY ne.normalized_entity_text
-                ON CONFLICT(normalized_entity_text) DO UPDATE SET
+                GROUP BY ne.normalized_entity_text, ne.entity_id
+                ON CONFLICT(normalized_entity_text, entity_id) DO UPDATE SET
                     uniq_documents = excluded.uniq_documents,
                     fq = excluded.fq
             """)
 
-            # Update summary_id references in batches using executemany
-            # First, get all entity mappings
+            # Update summary_id references
             self.cursor.execute("""
                 SELECT eo.id, s.id as summary_id
                 FROM entity_occurrences eo
                 JOIN temp_normalized_entities ne ON ne.id = eo.id
-                JOIN entity_occurrences_summary s ON s.normalized_entity_text = ne.normalized_entity_text
+                JOIN entity_occurrences_summary s 
+                    ON s.normalized_entity_text = ne.normalized_entity_text 
+                    AND s.entity_id = ne.entity_id
             """)
             
             mappings = self.cursor.fetchall()
@@ -516,25 +521,53 @@ class DBAnalysis:
             # Drop temporary table
             self.cursor.execute("DROP TABLE temp_normalized_entities")
 
-            # Get statistics
+            # Get statistics with entity type information
             self.cursor.execute("""
                 SELECT 
                     COUNT(*) as total_summaries,
                     AVG(fq) as avg_frequency,
                     SUM(fq) as total_occurrences,
-                    AVG(uniq_documents) as avg_documents
+                    AVG(uniq_documents) as avg_documents,
+                    COUNT(DISTINCT entity_id) as unique_entity_types
                 FROM entity_occurrences_summary
             """)
             stats = self.cursor.fetchone()
 
+            # Get per-entity-type statistics
+            self.cursor.execute("""
+                SELECT 
+                    ne.named_entity as entity_type,
+                    COUNT(*) as total_variants,
+                    AVG(eos.fq) as avg_frequency,
+                    SUM(eos.fq) as total_occurrences,
+                    AVG(eos.uniq_documents) as avg_documents
+                FROM entity_occurrences_summary eos
+                JOIN named_entities ne ON ne.id = eos.entity_id
+                GROUP BY eos.entity_id, ne.named_entity
+                ORDER BY total_occurrences DESC
+            """)
+            type_stats = self.cursor.fetchall()
+
             self.conn.commit()
+            
             self.logger.info(
                 f"Entity occurrences summarization complete:\n"
                 f"- Total unique normalized entities: {stats[0]}\n"
+                f"- Unique entity types: {stats[4]}\n"
                 f"- Average frequency per entity: {stats[1]:.2f}\n"
                 f"- Total occurrences: {stats[2]}\n"
-                f"- Average documents per entity: {stats[3]:.2f}"
+                f"- Average documents per entity: {stats[3]:.2f}\n"
+                f"\nBreakdown by entity type:"
             )
+            
+            for type_stat in type_stats:
+                self.logger.info(
+                    f"\n{type_stat[0]}:\n"
+                    f"  - Unique variants: {type_stat[1]}\n"
+                    f"  - Average frequency: {type_stat[2]:.2f}\n"
+                    f"  - Total occurrences: {type_stat[3]}\n"
+                    f"  - Average documents: {type_stat[4]:.2f}"
+                )
 
         except sqlite3.Error as e:
             self.conn.rollback()
