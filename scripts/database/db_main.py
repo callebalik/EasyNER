@@ -6,9 +6,11 @@ import json
 from db_statistics import DBStatistics
 from db_data_exchanger import DBDataExchanger
 from db_analysis import DBAnalysis
+from db_data_cleaner import DBDataCleaner
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import sqlite3
+
 
 
 class DBMain:
@@ -18,18 +20,19 @@ class DBMain:
 
         :param db_path: Path to the SQLite database file.
         """
-        self._setup_logging()
         self.config = self._load_config(config_path)
-
-        # Resolve db_path relative to project root (config.json directory)
-        project_root = os.path.dirname(os.path.abspath(config_path))
+        
+        
         if db_path is not None:
             self.db_path = db_path
         else:
-            self.db_path = self.config.get("db_path", "database.db")
+            print("WARNING: Using No database path provided, continuing with database path provided in config")
+            self.db_path = self.config.get("db_path")
         
-        # Ensure db_path is absolute
+        # Ensure db_path is absolute otherwise resolve it relative to the script
         if not os.path.isabs(self.db_path):
+            # Resolve db_path relative to project root (config.json directory)
+            project_root = os.path.dirname(os.path.abspath(config_path))
             self.db_path = os.path.join(project_root, self.db_path)
 
         # Create Database if not present. 
@@ -40,38 +43,67 @@ class DBMain:
             if self.schema_path == "":
                 self.schema_path = self.config.get("schema_path")
             self.create_db(self.db_path, self.schema_path)
+
+        self.name = os.path.basename(self.db_path)
+        self._setup_logging()
+
         self.conn = sqlite3.connect(self.db_path)
+        self.conn.row_factory = sqlite3.Row  # Configure the connection to return sqlite3.Row objects
         self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
         self.logger.info(f"Connected to database {self.db_path}")
-
+        self.conn.enable_load_extension(True) 
+        
     def _load_config(self, config_path):
         """Load the JSON configuration file."""
         if not os.path.isabs(config_path):
             config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), config_path)
-        with open(config_path, "r") as f:
-            config = json.load(f).get("database", {})
-            # Test integrity of the configuration
-            if "db_path" not in config:
-                raise ValueError("Database configuration must contain 'db_path' key.")
-            if "schema_path" not in config:
-                raise ValueError("Database configuration does not contain schema_path' key.")
-        self.logger.info(f"Configuration loaded from {config_path}")
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f).get("database", {})
+                # Test integrity of the configuration
+                if "db_path" not in config:
+                    raise ValueError("Database configuration must contain 'db_path' key.")
+                if "schema_path" not in config:
+                    raise ValueError("Database configuration does not contain 'schema_path' key.")
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            raise ValueError(f"Error loading configuration file: {e}")
+            
         return config
 
     def _setup_logging(self):
         """Configure logging to save to db.log in the database directory."""
-        log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'db.log')
-        
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()  # Also output to console
-            ]
-        )
         
         self.logger = logging.getLogger('EasyNerDB')
+
+        log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs/" + self.name + ".log")
+        error_log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs/db_error.log")
+
+        # Ensure the logs directory exists
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+        # Create file handler for logging
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(file_formatter)
+
+        # Create console handler for logging
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(console_formatter)
+
+        # Create separate error file handler for logging errors
+        error_file_handler = logging.FileHandler(error_log_file)
+        error_file_handler.setLevel(logging.ERROR)
+        error_file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        error_file_handler.setFormatter(error_file_formatter)
+
+        # Add handlers to the logger
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
+        self.logger.addHandler(error_file_handler)
+                
         self.logger.info(f'Logging initialized. Log file: {log_file}')
 
     def __del__(self):
@@ -391,9 +423,10 @@ class DBMain:
         print(f"Database created at {db_path} using schema from {schema_path}")
 
 
-class EasyNerDBHandler(DBMain, DBStatistics, DBDataExchanger, DBAnalysis):
+class EasyNerDBHandler(DBMain, DBStatistics, DBDataExchanger, DBAnalysis, DBDataCleaner):
     """
-    A class that combines the main database functionality with statistics functionality.
+    A class that combines the main database functionality with statistics, data exchange,
+    analysis and data cleaning functionality.
     """
-    def __init__(self):
-        DBMain.__init__(self)
+    def __init__(self, db_path: str = None):
+        DBMain.__init__(self, db_path = db_path)
