@@ -73,6 +73,27 @@
     .search-group input[type="number"] {
         width: 100px;
     }
+    .entity-filters {
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-radius: 4px;
+    }
+    .entity-filters h3 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1rem;
+        color: #666;
+    }
+    .entity-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .entity-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
 </style>
 {% endblock %}
 
@@ -98,6 +119,22 @@
                        value="{{ doc_id if doc_id else '' }}"
                        min="1">
             </div>
+            {% if entities %}
+            <div class="entity-filters">
+                <h3>Filter by entities:</h3>
+                <div class="entity-list">
+                    {% for entity_id, entity_name in entities %}
+                    <label class="entity-checkbox">
+                        <input type="checkbox" 
+                               name="entities" 
+                               value="{{ entity_id }}"
+                               {% if entity_id|string in selected_entities %}checked{% endif %}>
+                        {{ entity_name }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
             <button type="submit">Search</button>
         </form>
     </div>
@@ -119,7 +156,7 @@
     </div>
 
     {% if has_more %}
-        <a href="/documents?page={{ page + 1 }}{% if query %}&query={{ query }}{% endif %}" 
+        <a href="/documents?page={{ page + 1 }}{% if query %}&query={{ query }}{% endif %}{% if doc_id %}&doc_id={{ doc_id }}{% endif %}{% for entity in selected_entities %}&entities={{ entity }}{% endfor %}" 
            class="load-more">
             Load more documents
         </a>
