@@ -120,34 +120,59 @@ class DBDataExchanger:
         doc_id: int = None,
         sentence_index: int = None,
         like: str = None,
+        sort_by: str = 'tf_idf',
+        sort_order: str = 'desc'
     ):
         """
         Build and execute a query filtering by optional parameters.
+        
+        Args:
+            type: Filter by entity type
+            doc_id: Filter by document ID
+            sentence_index: Filter by sentence index
+            like: Search entity text using LIKE
+            sort_by: Column to sort by
+            sort_order: Sort direction ('asc' or 'desc')
         """
-        query = "SELECT * FROM entity_occurrences"
-        conditions = []
+        query = """
+            SELECT eo.*, ne.named_entity 
+            FROM entity_occurrences eo
+            JOIN named_entities ne ON ne.id = eo.entity_id
+            WHERE 1=1
+        """
         params = []
+        
         if type is not None:
-            conditions.append("entity_id = ?")
-            params.append(self.get_named_entity_id(type))
+            query += " AND entity_id = ?"
+            params.append(type)
         if doc_id is not None:
-            conditions.append("document_id = ?")
+            query += " AND document_id = ?"
             params.append(doc_id)
         if sentence_index is not None:
-            conditions.append("sentence_index = ?")
+            query += " AND sentence_index = ?"
             params.append(sentence_index)
         if like is not None:
-            conditions.append("entity_text LIKE ?")
+            query += " AND entity_text LIKE ?"
             params.append(f"%{like}%")
 
-        if conditions:
-            query += " WHERE " + " OR ".join(conditions)
+        # Map front-end sort columns to actual database columns
+        sort_columns = {
+            'entity_text': 'eo.entity_text',
+            'named_entity': 'ne.named_entity',
+            'document_id': 'eo.document_id',
+            'sentence_index': 'eo.sentence_index',
+            'tf_idf': 'eo.tf_idf',
+            'intra_doc_fq': 'eo.intra_doc_fq'
+        }
+
+        # Add ORDER BY clause using the mapped column
+        sort_column = sort_columns.get(sort_by, 'eo.tf_idf')
+        sort_direction = 'DESC' if sort_order.lower() == 'desc' else 'ASC'
+        query += f" ORDER BY {sort_column} {sort_direction}"
 
         try:
             self.cursor.execute(query, params)
-            # Fetch column names from cursor description
             columns = [col[0] for col in self.cursor.description]
-            # Convert rows to dictionaries
             rows = [dict(zip(columns, row)) for row in self.cursor.fetchall()]
             return rows
         except sqlite3.Error as e:

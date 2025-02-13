@@ -219,6 +219,108 @@ def list_documents():
         db.logger.error(f"Error loading documents page: {e}")
         return render_template('error.html', message="Error loading documents"), 500
 
+@app.route("/named-entities")
+def list_named_entities():
+    try:
+        db = get_db()
+        page = int(request.args.get('page', 1))
+        query = request.args.get('query', '')
+        min_freq = request.args.get('min_freq', 0)
+        per_page = 30
+        offset = (page - 1) * per_page
+
+        sql = """
+            SELECT ne.id, ne.named_entity, 
+                   eos.fq_document_level, 
+                   eos.fq_sentence_level
+            FROM named_entities ne
+            LEFT JOIN entity_occurrences_summary eos ON eos.id = ne.id
+            WHERE 1=1
+        """
+        params = []
+
+        if query:
+            sql += " AND ne.named_entity LIKE ?"
+            params.append(f'%{query}%')
+
+        if min_freq:
+            sql += " AND eos.fq_document_level >= ?"
+            params.append(int(min_freq))
+
+        sql += " ORDER BY eos.fq_document_level DESC LIMIT ? OFFSET ?"
+        params.extend([per_page + 1, offset])
+
+        entities = db.execute(sql, params)
+        has_more = len(entities) > per_page
+        entities = entities[:per_page]
+
+        return render_template('named_entities.html',
+                             entities=[dict(zip(['id', 'named_entity', 'fq_document_level', 'fq_sentence_level'], entity)) 
+                                     for entity in entities],
+                             page=page,
+                             query=query,
+                             min_freq=min_freq,
+                             has_more=has_more)
+    except Exception as e:
+        db.logger.error(f"Error loading named entities page: {e}")
+        return render_template('error.html', message="Error loading named entities"), 500
+
+@app.route("/entities")
+def list_entities():
+    try:
+        db = get_db()
+        page = int(request.args.get('page', 1))
+        query = request.args.get('query', '')
+        doc_id = request.args.get('doc_id')
+        entity_type = request.args.get('type')
+        sort = request.args.get('sort', 'tf_idf')
+        order = request.args.get('order', 'desc')
+        per_page = 30
+        offset = (page - 1) * per_page
+        
+        # Get all entity types for the filter dropdown
+        entity_types = db.execute("SELECT id, named_entity FROM named_entities ORDER BY named_entity")
+        
+        # Use enhanced search_entities with sorting
+        entities_data = db.data_exchanger.search_entities(
+            type=entity_type if entity_type else None,
+            doc_id=int(doc_id) if doc_id else None,
+            like=query if query else None,
+            sort_by=sort,
+            sort_order=order
+        )
+        
+        # Handle pagination
+        total_results = len(entities_data)
+        has_more = total_results > (offset + per_page)
+        paginated_data = entities_data[offset:offset + per_page]
+        
+        # Convert to NamedEntity objects
+        entities = []
+        for entity_data in paginated_data:
+            entity_type_name = entity_data.pop('named_entity')
+            entity = NamedEntity(**entity_data)
+            entity.named_entity = entity_type_name
+            entities.append(entity)
+
+        # Calculate next sort order
+        next_order = 'asc' if order == 'desc' else 'desc'
+
+        return render_template('entities.html',
+                             entities=entities,
+                             entity_types=[dict(zip(['id', 'named_entity'], et)) for et in entity_types],
+                             page=page,
+                             query=query,
+                             doc_id=doc_id,
+                             type=entity_type,
+                             sort=sort,
+                             order=order,
+                             next_order=next_order,
+                             has_more=has_more)
+    except Exception as e:
+        db.logger.error(f"Error loading entities page: {e}")
+        return render_template('error.html', message="Error loading entities"), 500
+
 @app.route('/document/<int:doc_id>')
 def show_document(doc_id):
     db = get_db()

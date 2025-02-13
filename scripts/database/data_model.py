@@ -55,6 +55,8 @@ class Sentence:
         self.alpha_count = alpha_count
 
         self.entities = entities if entities is not None else []
+        self.validation_errors = []
+
         if validate_entities:
             self.validate_entities()
 
@@ -70,13 +72,29 @@ class Sentence:
 
         for entity in self.entities:
             if entity.span_start < 0 or entity.span_end < 0:
-                raise ValueError("Span start and end must be non-negative.")
-            if entity.span_start >= len(self.text) or entity.span_end >= len(self.text):
-                raise ValueError("Span start and end must be within the bounds of the sentence.")
-            if entity.span_start >= entity.span_end:
-                raise ValueError("Span start must be less than span end.")
-            if entity.entity_text != self.text[entity.span_start : entity.span_end]:
-                raise ValueError(f"Entity text: [{entity.entity_text}] must match the text span [{self.text[entity.span_start : entity.span_end]}] of the sentence.")
+                self.validation_errors.append({
+                    "entity_id": entity.id,
+                    "error": "Span start and end must be non-negative",
+                    "entity": entity
+                })
+            elif entity.span_start >= len(self.text) or entity.span_end >= len(self.text):
+                self.validation_errors.append({
+                    "entity_id": entity.id,
+                    "error": "Span out of bounds",
+                    "entity": entity
+                })
+            elif entity.span_start >= entity.span_end:
+                self.validation_errors.append({
+                    "entity_id": entity.id,
+                    "error": "Invalid span range",
+                    "entity": entity
+                })
+            elif entity.entity_text != self.text[entity.span_start : entity.span_end]:
+                self.validation_errors.append({
+                    "entity_id": entity.id,
+                    "error": f"Text mismatch: '{entity.entity_text}' vs '{self.text[entity.span_start : entity.span_end]}'",
+                    "entity": entity
+                })
 
 
 class Document:
@@ -108,19 +126,35 @@ class Document:
                 print(f"  Entity: {entity.named_entity}")
 
     def to_html(self) -> str:
+        has_errors = any(sentence.validation_errors for sentence in self.sentences)
+        
         html = f"""
         <div class="document-title">
             <h1>{self.title}</h1>
             <div class="document-meta">
-            <span>Document ID: {self.id}</span>
-            <span>Words: {self.word_count}</span>
-            <span>Tokens: {self.token_count}</span>
-            <span>Alpha: {self.alpha_count}</span>
+                <span>Document ID: {self.id}</span>
+                <span>Words: {self.word_count}</span>
+                <span>Tokens: {self.token_count}</span>
+                <span>Alpha: {self.alpha_count}</span>
             </div>
         </div>
         """
+        
+        if has_errors:
+            html += """
+            <div class="validation-warning">
+                <p>⚠️ Some entities have validation errors. These are highlighted in red.</p>
+            </div>
+            """
+            
         for sentence in self.sentences:
-            html += f"<p class='sentence'><span class='sentence-nbr'>Sentence {sentence.sentence_index}:</span> <span class='sentence-text'>{self._highlight_entities(sentence)}</span></p>"
+            html += f"""
+            <p class='sentence'>
+                <span class='sentence-nbr'>Sentence {sentence.sentence_index}:</span>
+                <span class='sentence-text'>{self._highlight_entities(sentence)}</span>
+            </p>
+            """
+            
         html += self._generate_entity_table()
         return html
 
@@ -139,10 +173,46 @@ class Document:
             offset += len(open_tag) + len(close_tag)
         return text
 
+    def _get_error_message(self, entity_id: int, sentence: Sentence) -> str:
+        """Get error message for entity if it exists."""
+        for error in sentence.validation_errors:
+            if error["entity_id"] == entity_id:
+                return error["error"]
+        return ""
+    
     def _generate_entity_table(self) -> str:
-        html = "<table class='entity-table'><thead><tr><th>ID</th><th>Text</th><th>Type</th><th>Start</th><th>End</th></tr></thead><tbody>"
+        html = """
+        <table class='entity-table'>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Text</th>
+                    <th>Type</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
+        
         for sentence in self.sentences:
+            error_ids = {err["entity_id"] for err in sentence.validation_errors}
             for entity in sentence.entities:
-                html += f"<tr data-entity-id='{entity.id}'><td>{entity.id}</td><td>{entity.entity_text}</td><td>{entity.named_entity}</td><td>{entity.span_start}</td><td>{entity.span_end}</td></tr>"
+                error_class = " class='error-row'" if entity.id in error_ids else ""
+                error_message = self._get_error_message(entity.id, sentence)
+                status = f"<span class='error-status' title='{error_message}'>⚠️ Error</span>" if entity.id in error_ids else "✓ Valid"
+                
+                html += f"""
+                <tr data-entity-id='{entity.id}'{error_class}>
+                    <td>{entity.id}</td>
+                    <td>{entity.entity_text}</td>
+                    <td>{entity.named_entity}</td>
+                    <td>{entity.span_start}</td>
+                    <td>{entity.span_end}</td>
+                    <td>{status}</td>
+                </tr>
+                """
+                
         html += "</tbody></table>"
         return html
