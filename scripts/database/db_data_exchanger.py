@@ -325,3 +325,15 @@ class DBDataExchanger:
         except sqlite3.Error as e:
             self.logger.error(f"Error fetching co-occurrences summary: {e}")
             return {'summaries': [], 'has_more': False, 'total': 0}
+    
+    def rename_named_entity(self, old_name: str, new_name: str):
+        try:
+            self.cursor.execute(
+            "UPDATE named_entities SET named_entity = ? WHERE named_entity = ?",
+            (new_name, old_name)
+            )
+            self.conn.commit()
+            self.logger.info(f"Renamed named entity from {old_name} to {new_name}")
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Error renaming named entity from {old_name} to {new_name}: {e}")
