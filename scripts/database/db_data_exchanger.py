@@ -231,15 +231,15 @@ class DBDataExchanger:
                     ecs.id,
                     ecs.e1_id_normalized,
                     ecs.e2_id_normalized,
-                    eos1.normalized_entity_text as entity1_text,
-                    eos2.normalized_entity_text as entity2_text,
+                    e1.entity_text as entity1_text,
+                    e2.entity_text as entity2_text,
                     ecs.fq_document_level,
                     ecs.fq_document_level_normalized,
                     ecs.fq_sentence_level,
                     ecs.fq_sentence_level_normalized
                 FROM entity_cooccurrences_summary ecs
-                INNER JOIN entity_occurrences_summary eos1 ON ecs.e1_id_normalized = eos1.id
-                INNER JOIN entity_occurrences_summary eos2 ON ecs.e2_id_normalized = eos2.id
+                INNER JOIN entity_occurrences e1 ON ecs.e1_id_normalized = e1.id
+                INNER JOIN entity_occurrences e2 ON ecs.e1_id_normalized = e2.id
                 WHERE 1=1
             """
             
