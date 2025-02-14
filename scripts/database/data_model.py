@@ -18,7 +18,8 @@ class NamedEntity:
         tf_idf: float,
         idf: float,
         overlap: bool = False,  # Add overlap property
-        pmi: float = None  # Add pmi property
+        pmi: float = None,  # Add pmi property
+        error_id: int = None
     ):
         self.id = id
         self.entity_text = entity_text
@@ -35,6 +36,7 @@ class NamedEntity:
         self.idf = idf
         self.overlap = overlap  # Initialize overlap property
         self.pmi = pmi  # Initialize pmi property
+        self.error_id = error_id
 
 
 
