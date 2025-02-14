@@ -462,13 +462,17 @@ def entity_cooccurrences_summary_table():
         include_self = request.args.get('include_self', 'false').lower() == 'true'
         entity1_type = request.args.get('entity1_type')
         entity2_type = request.args.get('entity2_type')
+        sort = request.args.get('sort', 'fq_document_level')
+        order = request.args.get('order', 'desc')
 
         result = db.data_exchanger.get_cooccurrences_summary(
             page=page,
             per_page=per_page,
             include_self=include_self,
             entity1_type=entity1_type,
-            entity2_type=entity2_type
+            entity2_type=entity2_type,
+            sort=sort,
+            order=order
         )
         
         return jsonify({
@@ -538,13 +542,17 @@ def summary_cooccurrences_table():
         include_self = request.args.get('include_self', 'false').lower() == 'true'
         entity1_type = request.args.get('entity1_type')
         entity2_type = request.args.get('entity2_type')
+        sort = request.args.get('sort', 'fq_document_level')
+        order = request.args.get('order', 'desc')
 
         result = db.data_exchanger.get_cooccurrences_summary(
             page=page,
             per_page=per_page,
             include_self=include_self,
             entity1_type=entity1_type,
-            entity2_type=entity2_type
+            entity2_type=entity2_type,
+            sort=sort,
+            order=order
         )
         
         return jsonify({
