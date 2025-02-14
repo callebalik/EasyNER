@@ -33,7 +33,7 @@
             const perPage = 30;
 
             function loadTableData() {
-                $.getJSON(`/tables/{{ table_name }}?page=${page}&per_page=${perPage}`, function(data) {
+                $.getJSON(`/table/{{ table_name }}?page=${page}&per_page=${perPage}`, function(data) {
                     const tbody = $('#table-view tbody');
                     data.rows.forEach(row => {
                         const tr = $('<tr>');
