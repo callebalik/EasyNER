@@ -3,6 +3,8 @@ from typing import List, Tuple, Optional
 import sqlite3
 from db_data_exchanger import DBDataExchanger
 import logging
+import csv
+import json 
 
 class DBDataCleaner:
     """Data cleaning utilities for the EasyNer database."""
@@ -117,5 +119,119 @@ class DBDataCleaner:
 
         except Exception as e:
             self.logger.error(f"Error cleaning inclusive entity spans: {e}")
+            self.conn.rollback()
+            raise
+
+    def set_error_entity_error_codes(self, error_info: str = "dictionaries/misslabeled_ner.csv", error_codes_path: str ="entity_error_codes.json") -> None:
+        """
+        Attach error information to the entity_occurrences table. The error information is expected to be in the following format:
+
+        entity_type,entity_text,error_label
+        DIS,fires,MISSL
+        DIS,forrest fire,MISSL
+        DIS,earthquake,MISSL
+        DIS,drought,MISSL
+
+        Built in error codes are:
+        {       
+            "error_codes": {
+                "MISSP": "Misspelling",
+                "MISSL": "Misslabeled Entity. Entity is not of the specified type",
+                "AMBIG": "Ambiguous"
+            }
+        }
+
+        This function will:
+        0. read error_info.csv
+        1. If not present create new TABLE entity_error_codes with columns id, error_label, error_description using entity_error_codes.sql
+        2. Populate entity_error_codes with error_codes and corresponding error_description from error_info
+        2. If not present: create a new column error_id in TABLE entity_occurrences that holds references to the entity_error_codes table entity_error_codes.id. Default value is NULL, which means no error
+        3. Set entity_occurrences.error_id according to error_info["entity_errors"] for matching entity_type and entity_text
+
+        Args:
+            error_info: A dictionary containing error information as described above
+        """
+
+        error_codes = {
+        "MISSP": "Misspelling",
+        "MISSL": "Misslabeled Entity. Entity is not of the specified type",
+        "AMBIG": "Ambiguous"
+        }
+        
+
+        try:
+            # 1. Create entity_error_codes table if it doesn't exist
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS entity_error_codes (
+                    error_label VARCHAR(20) PRIMARY KEY,
+                    error_description VARCHAR(255)
+                )
+            """)
+
+            # 2. Check if error_id column exists
+            self.cursor.execute("PRAGMA table_info(entity_occurrences)")
+            columns = [column[1] for column in self.cursor.fetchall()]
+            if "error_id" not in columns:
+                # Add error_id column if it doesn't exist
+                self.cursor.execute("""
+                    ALTER TABLE entity_occurrences
+                    ADD COLUMN error_id VARCHAR(20) DEFAULT NULL
+                """)
+
+            # 3. Bulk insert error codes
+            error_code_data = [(label, desc) for label, desc in error_codes.items()]
+            try:
+                self.cursor.executemany(
+                    "INSERT INTO entity_error_codes (error_label, error_description) VALUES (?, ?)",
+                    error_code_data,
+                )
+                self.logger.info(f"Inserted {len(error_code_data)} new error codes")
+            except sqlite3.IntegrityError:
+                self.logger.warning("Some error codes already exist.")
+
+            self.conn.commit()
+
+            # 4. Load entity errors from CSV and prepare for bulk update
+            entity_updates = []
+            entity_id_cache = {}  # Initialize the cache
+            with open(error_info, 'r') as f:
+                reader = csv.reader(f)
+                next(reader)  # Skip header row
+                for row in reader:
+                    entity_type, entity_text, error_label = row
+
+                    # Check if entity_id is in the cache
+                    if (entity_type, entity_text) in entity_id_cache:
+                        entity_id = entity_id_cache[(entity_type, entity_text)]
+                    else:
+                        # Get the entity_id using get_named_entity_id
+                        self.cursor.execute(
+                            "SELECT id FROM named_entities WHERE named_entity = ?", (entity_text,)
+                        )
+                        result = self.cursor.fetchone()
+                        if result:
+                            entity_id = result[0]
+                            entity_id_cache[(entity_type, entity_text)] = entity_id  # Add to cache
+                        else:
+                            self.logger.warning(f"No entity ID found for type: {entity_type} and text: {entity_text}")
+                            continue
+
+                    entity_updates.append((error_label, entity_type, entity_text, entity_id))
+
+            # 5. Bulk update entity_occurrences
+            update_query = """
+            UPDATE entity_occurrences
+            SET error_id = ?
+            WHERE entity_id = ? AND entity_text = ?
+            """
+            self.cursor.executemany(update_query, entity_updates)
+            self.logger.info(f"Updated {len(entity_updates)} entity occurrences")
+            self.conn.commit()
+
+        except FileNotFoundError as e:
+            self.logger.error(f"Error: File not found: {e.filename}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error attaching error information: {e}")
             self.conn.rollback()
             raise
