@@ -157,7 +157,14 @@ class EasyNerDBHandler:
                 self.cursor.execute(query)
             else:
                 self.cursor.execute(query, args)
-            return self.cursor.fetchall()
+                
+            # For SELECT queries, return the results
+            if query.lstrip().upper().startswith('SELECT') or query.lstrip().upper().startswith('PRAGMA'):
+                return self.cursor.fetchall()
+            # For other queries (INSERT, UPDATE, DELETE, etc.), commit and return empty list
+            else:
+                self.conn.commit()
+                return []
         except Exception as e:
             self.logger.error(f"Error executing query: {query} with args: {args}. Exception: {e}")
             raise

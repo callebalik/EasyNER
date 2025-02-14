@@ -1,3 +1,5 @@
+@import 'variables';
+
 /* Styling for table elements */
 .entity-table {
     width: 100%;
@@ -12,4 +14,110 @@
 .entity-table th {
     background-color: #f2f2f2;
     text-align: left;
+}
+
+.table-section {
+    @extend %section-card;
+    
+    h2 {
+        @extend %section-header;
+    }
+}
+
+.tables-grid {
+    @extend %grid-layout;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.table-card {
+    @extend %hover-card;
+
+    h3 {
+        margin: 0 0 10px 0;
+        color: $primary-color;
+    }
+
+    details {
+        margin-top: 10px;
+
+        summary {
+            cursor: pointer;
+            color: $secondary-color;
+        }
+
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+            color: $secondary-color;
+            
+            li {
+                padding: 2px 0;
+                font-family: monospace;
+            }
+        }
+    }
+}
+
+// Generic data table styling
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+
+    th, td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid $border-color;
+    }
+
+    th {
+        background: #f8f9fa;
+        font-weight: bold;
+    }
+
+    tr:hover {
+        background: $hover-color;
+    }
+
+    .numeric {
+        text-align: right;
+        font-family: monospace;
+    }
+
+    .text-center {
+        text-align: center;
+    }
+
+    .entity-text {
+        font-family: monospace;
+        min-width: 200px;
+    }
+}
+
+// Pagination
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 2rem;
+
+    .page-info {
+        color: $secondary-color;
+        font-size: 0.9rem;
+    }
+}
+
+.pagination-link {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    margin: 1rem 0.5rem;
+    background: $primary-color;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+
+    &:hover {
+        background: darken($primary-color, 10%);
+    }
 }

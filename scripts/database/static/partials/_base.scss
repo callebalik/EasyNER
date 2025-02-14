@@ -1,3 +1,5 @@
+@import 'variables';
+
 /* Styling for base layout */
 body { 
     font-family: Arial, sans-serif; 
@@ -11,20 +13,26 @@ body {
     margin: 0 auto; 
 }
 .nav {
-    background: #2196f3;
+    background: $primary-color;
     padding: 1rem;
     margin: -20px -20px 2rem -20px;
     color: white;
+
+    a {
+        color: white;
+        text-decoration: none;
+        margin-right: 1rem;
+        padding: 0.5rem;
+
+        &:hover {
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+    }
 }
-.nav a {
-    color: white;
-    text-decoration: none;
-    margin-right: 1rem;
-    padding: 0.5rem;
-}
-.nav a:hover {
-    background: rgba(255,255,255,0.1);
-    border-radius: 4px;
+.dashboard {
+    max-width: 1200px;
+    margin: 0 auto;
 }
 .table-grid {
     display: grid;
@@ -60,4 +68,26 @@ h1, h2 {
 }
 h2 {
     margin: 2rem 0 1rem;
+}
+
+// Common components
+.button {
+    background: $primary-color;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+
+    &:hover {
+        background: darken($primary-color, 10%);
+    }
+}
+
+.card {
+    @extend %section-card;
+}
+
+.grid {
+    @extend %grid-layout;
 }

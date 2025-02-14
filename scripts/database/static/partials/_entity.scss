@@ -1,15 +1,19 @@
+@import 'variables';
+
 /* Styling for entity elements */
 .entity {
     cursor: pointer;
     padding: 2px 4px;
     margin: 0 2px;
     border-radius: 3px;
-    background-color: #e3f2fd;
-    border: 1px solid #90caf9;
+    background-color: lighten($primary-color, 45%);
+    border: 1px solid lighten($primary-color, 30%);
+
+    &:hover {
+        background-color: lighten($primary-color, 40%);
+    }
 }
-.entity:hover {
-    background-color: #bbdefb;
-}
+
 .highlighted-entity {
     background-color: #ffeb3b !important;
 }
@@ -23,13 +27,11 @@
 }
 
 .filter-section {
-    background: #f5f5f5;
-    padding: 1.5rem;
-    border-radius: 4px;
+    @extend %section-card;
+    background: $hover-color;
     
     h2 {
-        margin-top: 0;
-        margin-bottom: 1rem;
+        @extend %section-header;
     }
 
     .form-group {
@@ -40,44 +42,21 @@
             margin-bottom: 0.5rem;
         }
 
-        input {
+        input, select {
             padding: 0.5rem;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
             width: 100%;
             max-width: 300px;
-        }
-    }
 
-    select {
-        padding: 0.5rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        width: 100%;
-        max-width: 300px;
-        background-color: white;
-        cursor: pointer;
-
-        &:hover {
-            border-color: #007bff;
-        }
-
-        option {
-            padding: 0.5rem;
+            &:hover {
+                border-color: $primary-color;
+            }
         }
     }
 
     button {
-        background: #007bff;
-        color: white;
-        border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 4px;
-        cursor: pointer;
-
-        &:hover {
-            background: #0056b3;
-        }
+        @extend .button;
     }
 }
 
@@ -93,7 +72,7 @@
         th, td {
             padding: 0.75rem;
             text-align: left;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid $border-color;
         }
 
         th {
@@ -117,7 +96,7 @@
                 }
 
                 &:hover {
-                    color: #007bff;
+                    color: $primary-color;
                     &::after {
                         opacity: 1;
                     }
@@ -136,11 +115,11 @@
         }
 
         tr:hover {
-            background: #f5f5f5;
+            background: $hover-color;
         }
 
         a {
-            color: #007bff;
+            color: $primary-color;
             text-decoration: none;
 
             &:hover {
@@ -177,7 +156,6 @@
     }
 }
 
-
 .validation-warning {
     background-color: #fff3cd;
     border: 1px solid #ffeeba;
@@ -188,16 +166,16 @@
 }
 
 .entity-error {
-    background-color: #ffebee;
-    border-bottom: 2px wavy #f44336;
+    background-color: lighten($error-color, 45%);
+    border-bottom: 2px wavy $error-color;
     cursor: help;
 }
 
 .error-row {
-    background-color: #ffebee;
+    background-color: lighten($error-color, 45%);
 }
 
 .error-status {
-    color: #f44336;
+    color: $error-color;
     cursor: help;
 }
