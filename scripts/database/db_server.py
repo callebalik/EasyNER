@@ -280,50 +280,11 @@ def list_documents():
 
 @app.route("/named-entities")
 def list_named_entities():
-    try:
-        db = get_db()
-        page = int(request.args.get('page', 1))
-        query = request.args.get('query', '')
-        min_freq = request.args.get('min_freq', 0)
-        per_page = 30
-        offset = (page - 1) * per_page
-
-        sql = """
-            SELECT ne.id, ne.named_entity, 
-                   eos.fq as fq_document_level, 
-                   eos.fq as fq_sentence_level
-            FROM named_entities ne
-            LEFT JOIN entity_occurrences_summary eos ON eos.entity_id = ne.id
-            WHERE 1=1
-        """
-        params = []
-
-        if query:
-            sql += " AND ne.named_entity LIKE ?"
-            params.append(f'%{query}%')
-
-        if min_freq:
-            sql += " AND eos.fq_document_level >= ?"
-            params.append(int(min_freq))
-
-        sql += " ORDER BY eos.fq_document_level DESC LIMIT ? OFFSET ?"
-        params.extend([per_page + 1, offset])
-
-        entities = db.execute(sql, params)
-        has_more = len(entities) > per_page
-        entities = entities[:per_page]
-
-        return render_template('named_entities.html',
-                             entities=[dict(zip(['id', 'named_entity', 'fq_document_level', 'fq_sentence_level'], entity)) 
-                                     for entity in entities],
-                             page=page,
-                             query=query,
-                             min_freq=min_freq,
-                             has_more=has_more)
-    except Exception as e:
-        db.logger.error(f"Error loading named entities page: {e}")
-        return render_template('error.html', message="Error loading named entities"), 500
-
+    result = display_table('named_entities')
+    if 'error' in result:
+        return render_template('error.html', message=result['error']), 500
+    return render_template('named_entities.html', **result)
+    
 @app.route('/named-entities/types')
 def get_named_entity_types():
     try:
@@ -820,6 +781,75 @@ def view_table(table_name):
     except Exception as e:
         db.logger.error(f"Error loading table {table_name}: {e}")
         return render_template('error.html', message=f"Error loading table {table_name}"), 500
+
+def display_table(table_name):
+    try:
+        db = get_db()
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 30))
+        offset = (page - 1) * per_page
+        sort_by = request.args.get('sort_by', 'id')
+        sort_order = request.args.get('sort_order', 'asc')
+        search_query = request.args.get('search_query', '')
+
+        # Get column information dynamically
+        db.cursor.execute(f"PRAGMA table_info({table_name})")
+        columns_info = db.cursor.fetchall()
+        columns = [col[1] for col in columns_info]
+        text_columns = [col[1] for col in columns_info if col[2].upper() == 'TEXT']
+
+        # Build the base SQL query
+        sql = f"SELECT * FROM {table_name}"
+        params = []
+
+        # Add search functionality for TEXT columns
+        if search_query and text_columns:
+            search_conditions = [f"{col} LIKE ?" for col in text_columns]
+            sql += " WHERE " + " OR ".join(search_conditions)
+            params.extend([f'%{search_query}%'] * len(text_columns))
+
+        # Add sorting
+        if sort_by in columns:
+            sql += f" ORDER BY {sort_by} {sort_order.upper()}"
+        else:
+            db.logger.warning(f"Invalid sort column: {sort_by}")
+            if columns:
+                fallback_column = columns[0]
+                sql += f" ORDER BY {fallback_column} {sort_order.upper()}"
+            else:
+                # No columns available, so just skip sorting
+                db.logger.warning("No columns found for sorting.")
+
+        # Add pagination
+        sql += " LIMIT ? OFFSET ?"
+        params.extend([per_page + 1, offset])
+
+        # Execute the query
+        db.cursor.execute(sql, params)
+        rows = db.cursor.fetchall()
+        has_more = len(rows) > per_page
+        rows = rows[:per_page]
+
+        return {
+            'columns': columns,
+            'rows': rows,
+            'page': page,
+            'has_more': has_more,
+            'sort_by': sort_by,
+            'sort_order': sort_order,
+            'search_query': search_query
+        }
+    except Exception as e:
+        db.logger.error(f"Error displaying table {table_name}: {e}")
+        return {'error': str(e)}
+
+
+@app.route('/table/<table_name>')
+def table_view(table_name):
+    result = display_table(table_name)
+    if 'error' in result:
+        return render_template('error.html', message=result['error']), 500
+    return render_template('table_view.html', table_name=table_name, **result)
 
 if __name__ == "__main__":
     with app.app_context():
