@@ -464,6 +464,8 @@ def entity_cooccurrences_summary_table():
         entity2_type = request.args.get('entity2_type')
         sort = request.args.get('sort', 'fq_document_level')
         order = request.args.get('order', 'desc')
+        entity1_search = request.args.get('entity1_search')
+        entity2_search = request.args.get('entity2_search')
 
         result = db.data_exchanger.get_cooccurrences_summary(
             page=page,
@@ -472,7 +474,9 @@ def entity_cooccurrences_summary_table():
             entity1_type=entity1_type,
             entity2_type=entity2_type,
             sort=sort,
-            order=order
+            order=order,
+            entity1_search=entity1_search,
+            entity2_search=entity2_search
         )
         
         return jsonify({
@@ -619,6 +623,134 @@ def entity_cooccurrences_summary_plot_data():
     except Exception as e:
         db.logger.error(f"Error loading entity co-occurrences summary plot data: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/summary-cooccurrences/plot-data')
+def summary_cooccurrences_plot_data():
+    try:
+        db = get_db()
+        app.logger.debug("Starting plot data generation")
+        
+        # Log request parameters
+        params = {
+            'freq_column': request.args.get('freq_column', 'fq_document_level'),
+            'bucket_size': request.args.get('bucket_size', 20),
+            'include_self': request.args.get('include_self', 'false').lower() == 'true',
+            'entity1_type': request.args.get('entity1_type'),
+            'entity2_type': request.args.get('entity2_type'),
+            'entity1_search': request.args.get('entity1_search'),
+            'entity2_search': request.args.get('entity2_search')
+        }
+        app.logger.debug(f"Plot parameters: {params}")
+
+        # Validate frequency column to prevent SQL injection
+        allowed_freq_columns = ['fq_document_level', 'fq_document_level_normalized', 
+                              'fq_sentence_level', 'fq_sentence_level_normalized']
+        if params['freq_column'] not in allowed_freq_columns:
+            app.logger.error(f"Invalid frequency column: {params['freq_column']}")
+            return jsonify({'error': 'Invalid frequency column'}), 400
+
+        try:
+            bucket_size = int(params['bucket_size'])
+            if not (5 <= bucket_size <= 100):
+                app.logger.error(f"Invalid bucket size: {bucket_size}")
+                return jsonify({'error': 'Bucket size must be between 5 and 100'}), 400
+        except ValueError:
+            app.logger.error(f"Invalid bucket size parameter: {params['bucket_size']}")
+            return jsonify({'error': 'Invalid bucket size'}), 400
+
+        # Build WHERE clause
+        where_clauses = []
+        query_params = []
+        
+        where_clauses.append(f"{params['freq_column']} IS NOT NULL")
+        
+        if not params['include_self']:
+            where_clauses.append("ecs.e1_id_normalized != ecs.e2_id_normalized")
+
+        if params['entity1_type']:
+            where_clauses.append("e1.entity_id = ?")
+            query_params.append(params['entity1_type'])
+        if params['entity2_type']:
+            where_clauses.append("e2.entity_id = ?")
+            query_params.append(params['entity2_type'])
+            
+        if params['entity1_search']:
+            where_clauses.append("e1.entity_text LIKE ?")
+            query_params.append(f"%{params['entity1_search']}%")
+        if params['entity2_search']:
+            where_clauses.append("e2.entity_text LIKE ?")
+            query_params.append(f"%{params['entity2_search']}%")
+
+        app.logger.debug(f"WHERE clauses: {where_clauses}")
+        app.logger.debug(f"Query parameters: {query_params}")
+
+        # Get min/max values with error handling
+        min_max_sql = f"""
+            SELECT 
+                MIN({params['freq_column']}) as min_freq,
+                MAX({params['freq_column']}) as max_freq,
+                COUNT(*) as total_count
+            FROM entity_cooccurrences_summary ecs
+            JOIN entity_occurrences e1 ON ecs.e1_id_normalized = e1.id
+            JOIN entity_occurrences e2 ON ecs.e2_id_normalized = e2.id
+            WHERE {' AND '.join(where_clauses)}
+        """
+        
+        app.logger.debug(f"Executing min/max query: {min_max_sql}")
+        app.logger.debug(f"With parameters: {query_params}")
+        
+        result = db.execute(min_max_sql, query_params)
+        min_freq, max_freq, total_count = result[0]
+        
+        app.logger.debug(f"Min freq: {min_freq}, Max freq: {max_freq}, Total count: {total_count}")
+        
+        if min_freq is None or max_freq is None or total_count == 0:
+            app.logger.info("No data found matching the criteria")
+            return jsonify({
+                'pairs': [],
+                'total': 0,
+                'message': 'No data found matching the criteria'
+            })
+
+        # Get top pairs for the plot
+        pairs_sql = f"""
+            SELECT 
+                e1.entity_text as entity1_text,
+                e2.entity_text as entity2_text,
+                ecs.{params['freq_column']} as frequency
+            FROM entity_cooccurrences_summary ecs
+            JOIN entity_occurrences e1 ON ecs.e1_id_normalized = e1.id
+            JOIN entity_occurrences e2 ON ecs.e2_id_normalized = e2.id
+            WHERE {' AND '.join(where_clauses)}
+            ORDER BY ecs.{params['freq_column']} DESC
+            LIMIT 20
+        """
+        
+        app.logger.debug(f"Executing pairs query: {pairs_sql}")
+        pairs_result = db.execute(pairs_sql, query_params)
+        
+        pairs = []
+        for row in pairs_result:
+            pair = {
+                'entity1_text': row[0],
+                'entity2_text': row[1],
+                params['freq_column']: row[2]
+            }
+            pairs.append(pair)
+        
+        app.logger.debug(f"Found {len(pairs)} pairs for plotting")
+        
+        return jsonify({
+            'pairs': pairs,
+            'total': total_count
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error generating plot data: {str(e)}", exc_info=True)
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
 
 @app.route('/debug/entity-cooccurrences-summary')
 def debug_entity_cooccurrences_summary():
