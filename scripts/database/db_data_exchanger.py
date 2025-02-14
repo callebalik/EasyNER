@@ -197,7 +197,7 @@ class DBDataExchanger:
 
     def get_cooccurrences_summary(self, page: int = 1, per_page: int = 30, include_self: bool = False, 
                                   entity1_type: str = None, entity2_type: str = None, sort: str = 'fq_document_level', 
-                                  order: str = 'desc'):
+                                  order: str = 'desc', entity1_search: str = None, entity2_search: str = None):
         """
         Get entity co-occurrences summary with entity texts from entity_occurrences.
         
@@ -209,18 +209,14 @@ class DBDataExchanger:
             entity2_type: Filter by second entity type ID
             sort: Column to sort by
             order: Sort direction ('asc' or 'desc')
+            entity1_search: Search term for entity 1
+            entity2_search: Search term for entity 2
             
         Returns:
             dict: Contains summaries list, has_more flag, and total count
         """
         offset = (page - 1) * per_page
         try:
-            # Get total count for pagination
-            count_sql = """
-                SELECT COUNT(*) 
-                FROM entity_cooccurrences_summary ecs
-                WHERE 1=1
-            """
             where_clauses = []
             params = []
             
@@ -234,6 +230,23 @@ class DBDataExchanger:
                 where_clauses.append("ecs.e2_id_normalized IN (SELECT id FROM entity_occurrences WHERE entity_id = ?)")
                 params.append(entity2_type)
                 
+            # Add entity text search conditions
+            if entity1_search:
+                where_clauses.append("e1.entity_text LIKE ?")
+                params.append(f"%{entity1_search}%")
+            if entity2_search:
+                where_clauses.append("e2.entity_text LIKE ?")
+                params.append(f"%{entity2_search}%")
+
+            # Get total count for pagination
+            count_sql = """
+                SELECT COUNT(*) 
+                FROM entity_cooccurrences_summary ecs
+                JOIN entity_occurrences e1 ON ecs.e1_id_normalized = e1.id
+                JOIN entity_occurrences e2 ON ecs.e2_id_normalized = e2.id
+                WHERE 1=1
+            """
+            
             if where_clauses:
                 count_sql += " AND " + " AND ".join(where_clauses)
                 
@@ -275,7 +288,7 @@ class DBDataExchanger:
                 JOIN named_entities ne2 ON e2.entity_id = ne2.id
             """
             
-            # Add same WHERE clauses as count query
+            # Add WHERE clauses
             if where_clauses:
                 sql += " WHERE " + " AND ".join(where_clauses)
                 

@@ -544,6 +544,8 @@ def summary_cooccurrences_table():
         entity2_type = request.args.get('entity2_type')
         sort = request.args.get('sort', 'fq_document_level')
         order = request.args.get('order', 'desc')
+        entity1_search = request.args.get('entity1_search')
+        entity2_search = request.args.get('entity2_search')
 
         result = db.data_exchanger.get_cooccurrences_summary(
             page=page,
@@ -552,7 +554,9 @@ def summary_cooccurrences_table():
             entity1_type=entity1_type,
             entity2_type=entity2_type,
             sort=sort,
-            order=order
+            order=order,
+            entity1_search=entity1_search,
+            entity2_search=entity2_search
         )
         
         return jsonify({
