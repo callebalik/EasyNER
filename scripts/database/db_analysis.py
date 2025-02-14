@@ -2,6 +2,8 @@ import logging
 import os
 from datetime import datetime
 import sqlite3
+from db_statistics import DBStatistics
+import math
 
 class DBAnalysis:
 
@@ -9,6 +11,7 @@ class DBAnalysis:
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
+        self.statistics = DBStatistics(conn, cursor, logger)  # Initialize DBStatistics
         
     def calc_document_counts(self, batch_size=100000):
         """
@@ -815,6 +818,234 @@ class DBAnalysis:
         except sqlite3.Error as e:
             self.conn.rollback()
             self.logger.error(f"Error calculating intra-document frequencies: {e}")
+            raise
+
+    def calculate_pmi(self, batch_size=200000) -> None:
+        """
+        Calculate the Pointwise Mutual Information (PMI) for each entity occurrence and update the 'pmi' column in the entity_occurrences table.
+        """
+        try:
+            self.logger.info("Starting PMI calculation for entity occurrences...")
+
+            # Ensure the pmi column exists in entity_occurrences
+            self.cursor.execute("""
+                SELECT COUNT(*) 
+                FROM pragma_table_info('entity_occurrences') 
+                WHERE name='pmi'
+            """)
+            if self.cursor.fetchone()[0] == 0:
+                self.logger.info("Adding 'pmi' column to entity_occurrences table...")
+                self.cursor.execute("""
+                    ALTER TABLE entity_occurrences 
+                    ADD COLUMN pmi REAL
+                """)
+
+            # Get total number of documents in the corpus
+            total_documents = self.statistics.document_count
+
+            # Process entity occurrences in batches
+            self.cursor.execute("SELECT COUNT(*) FROM entity_occurrences")
+            total_occurrences = self.cursor.fetchone()[0]
+            self.logger.info(f"Total entity occurrences to process: {total_occurrences}")
+
+            for i in range(0, total_occurrences, batch_size):
+                self.cursor.execute("""
+                    SELECT id, summary_id, document_id, intra_doc_fq
+                    FROM entity_occurrences
+                    LIMIT ? OFFSET ?
+                """, (batch_size, i))
+                batch = self.cursor.fetchall()
+
+                pmi_updates = []
+                for eo_id, summary_id, doc_id, intra_doc_fq in batch:
+                    # Get necessary counts for PMI calculation
+                    self.cursor.execute("SELECT fq, uniq_documents FROM entity_occurrences_summary WHERE id = ?", (summary_id,))
+                    total_entity_occurrences, num_docs_with_entity = self.cursor.fetchone()
+
+                    # Calculate probabilities
+                    P_entity_doc = intra_doc_fq / total_entity_occurrences
+                    P_entity = num_docs_with_entity / total_documents
+                    P_doc = 1 / total_documents
+
+                    # Calculate PMI with smoothing
+                    smoothing = 1e-9
+                    pmi = math.log((P_entity_doc + smoothing) / ((P_entity * P_doc) + smoothing))
+
+                    pmi_updates.append((pmi, eo_id))
+
+                # Update PMI values in the database
+                self.cursor.executemany("UPDATE entity_occurrences SET pmi = ? WHERE id = ?", pmi_updates)
+                self.conn.commit()
+
+                self.logger.info(f"Processed batch {i//batch_size + 1}/{(total_occurrences + batch_size - 1)//batch_size}")
+
+            # Get statistics about the PMI values
+            self.cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_entities,
+                    AVG(pmi) as avg_pmi,
+                    MIN(pmi) as min_pmi,
+                    MAX(pmi) as max_pmi
+                FROM entity_occurrences
+                WHERE pmi IS NOT NULL
+            """
+            )
+            stats = self.cursor.fetchone()
+
+            self.logger.info(
+                f"PMI calculation complete:\n"
+                f"- Total entity occurrences processed: {stats[0]:,}\n"
+                f"- Average PMI: {stats[1]:.4f}\n"
+                f"- Minimum PMI: {stats[2]:.4f}\n"
+                f"- Maximum PMI: {stats[3]:.4f}"
+            )
+
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Error calculating PMI: {e}")
+            raise
+        except Exception as e:
+            self.conn.rollback()
+            self.logger.error(f"Unexpected error calculating PMI: {e}")
+            raise
+
+    def summarize_entity_cooccurrences(self) -> None:
+        """
+        Summarize the frequency of unique entity co-occurrences and record them in entity_cooccurrences_summary.
+        Uses normalized entity IDs (e1_id_normalized and e2_id_normalized) from entity_occurrences_summary.
+        """
+        try:
+            self.logger.info("Starting entity co-occurrences summarization...")
+
+            # Recreate entity_cooccurrences_summary table with proper schema
+            self.cursor.execute("DROP TABLE IF EXISTS entity_cooccurrences_summary")
+            self.cursor.execute("""
+                CREATE TABLE entity_cooccurrences_summary (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    e1_id_normalized INTEGER NOT NULL,
+                    e2_id_normalized INTEGER NOT NULL,
+                    fq_document_level INTEGER,
+                    fq_document_level_normalized REAL,
+                    fq_sentence_level INTEGER,
+                    fq_sentence_level_normalized REAL,
+                    FOREIGN KEY (e1_id_normalized) REFERENCES entity_occurrences_summary (id),
+                    FOREIGN KEY (e2_id_normalized) REFERENCES entity_occurrences_summary (id)
+                )
+            """)
+
+            # Summarize document-level co-occurrences
+            self.cursor.execute("""
+                INSERT INTO entity_cooccurrences_summary (
+                    e1_id_normalized, e2_id_normalized, 
+                    fq_document_level, fq_document_level_normalized
+                )
+                SELECT 
+                    CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END as e1_id_normalized,
+                    CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END as e2_id_normalized,
+                    COUNT(*) as fq_document_level,
+                    COUNT(*) * 1.0 / (SELECT COUNT(*) FROM documents) as fq_document_level_normalized
+                FROM entity_cooccurrences ec
+                JOIN entity_occurrences eo1 ON eo1.id = ec.e1_id
+                JOIN entity_occurrences eo2 ON eo2.id = ec.e2_id
+                JOIN entity_occurrences_summary eos1 ON eos1.id = eo1.summary_id
+                JOIN entity_occurrences_summary eos2 ON eos2.id = eo2.summary_id
+                WHERE ec.sentence_distance IS NULL
+                GROUP BY 
+                    CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END,
+                    CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END
+            """)
+
+            # Update sentence-level co-occurrences for existing entries
+            self.cursor.execute("""
+                WITH sentence_level_stats AS (
+                    SELECT 
+                        CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END as e1_id_normalized,
+                        CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END as e2_id_normalized,
+                        COUNT(*) as fq_sentence_level,
+                        COUNT(*) * 1.0 / (SELECT COUNT(*) FROM sentences) as fq_sentence_level_normalized
+                    FROM entity_cooccurrences ec
+                    JOIN entity_occurrences eo1 ON eo1.id = ec.e1_id
+                    JOIN entity_occurrences eo2 ON eo2.id = ec.e2_id
+                    JOIN entity_occurrences_summary eos1 ON eos1.id = eo1.summary_id
+                    JOIN entity_occurrences_summary eos2 ON eos2.id = eo2.summary_id
+                    WHERE ec.sentence_distance IS NOT NULL
+                    GROUP BY 
+                        CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END,
+                        CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END
+                )
+                UPDATE entity_cooccurrences_summary
+                SET 
+                    fq_sentence_level = (
+                        SELECT fq_sentence_level
+                        FROM sentence_level_stats
+                        WHERE sentence_level_stats.e1_id_normalized = entity_cooccurrences_summary.e1_id_normalized
+                        AND sentence_level_stats.e2_id_normalized = entity_cooccurrences_summary.e2_id_normalized
+                    ),
+                    fq_sentence_level_normalized = (
+                        SELECT fq_sentence_level_normalized
+                        FROM sentence_level_stats
+                        WHERE sentence_level_stats.e1_id_normalized = entity_cooccurrences_summary.e1_id_normalized
+                        AND sentence_level_stats.e2_id_normalized = entity_cooccurrences_summary.e2_id_normalized
+                    )
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM sentence_level_stats
+                    WHERE sentence_level_stats.e1_id_normalized = entity_cooccurrences_summary.e1_id_normalized
+                    AND sentence_level_stats.e2_id_normalized = entity_cooccurrences_summary.e2_id_normalized
+                )
+            """)
+
+            # Insert new entries for sentence-level co-occurrences that don't have document-level entries
+            self.cursor.execute("""
+                INSERT INTO entity_cooccurrences_summary (
+                    e1_id_normalized, e2_id_normalized,
+                    fq_sentence_level, fq_sentence_level_normalized
+                )
+                SELECT 
+                    CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END as e1_id_normalized,
+                    CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END as e2_id_normalized,
+                    COUNT(*) as fq_sentence_level,
+                    COUNT(*) * 1.0 / (SELECT COUNT(*) FROM sentences) as fq_sentence_level_normalized
+                FROM entity_cooccurrences ec
+                JOIN entity_occurrences eo1 ON eo1.id = ec.e1_id
+                JOIN entity_occurrences eo2 ON eo2.id = ec.e2_id
+                JOIN entity_occurrences_summary eos1 ON eos1.id = eo1.summary_id
+                JOIN entity_occurrences_summary eos2 ON eos2.id = eo2.summary_id
+                WHERE ec.sentence_distance IS NOT NULL
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM entity_cooccurrences_summary s
+                    WHERE s.e1_id_normalized = CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END
+                    AND s.e2_id_normalized = CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END
+                )
+                GROUP BY 
+                    CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END,
+                    CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END
+            """)
+
+            # Get statistics about the summarization
+            self.cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_pairs,
+                    COUNT(CASE WHEN fq_document_level IS NOT NULL THEN 1 END) as doc_level_pairs,
+                    COUNT(CASE WHEN fq_sentence_level IS NOT NULL THEN 1 END) as sent_level_pairs,
+                    COUNT(CASE WHEN fq_document_level IS NOT NULL AND fq_sentence_level IS NOT NULL THEN 1 END) as both_levels
+                FROM entity_cooccurrences_summary
+            """)
+            stats = self.cursor.fetchone()
+
+            self.conn.commit()
+            self.logger.info(
+                f"Entity co-occurrences summarization complete:"
+                f"\n- Total unique entity pairs: {stats[0]:,}"
+                f"\n- Document-level pairs: {stats[1]:,}"
+                f"\n- Sentence-level pairs: {stats[2]:,}"
+                f"\n- Pairs at both levels: {stats[3]:,}"
+            )
+
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Error summarizing entity co-occurrences: {e}")
             raise
 
 

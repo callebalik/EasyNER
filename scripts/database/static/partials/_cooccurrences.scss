@@ -1,0 +1,211 @@
+@import 'variables';
+
+.cooccurrences-container {
+    @extend %section-card;
+    
+    h2 {
+        @extend %section-header;
+    }
+}
+
+.cooccurrences-controls {
+    margin: 1rem 0;
+    padding: 0.5rem;
+    background: $background-light;
+    border-radius: $border-radius;
+
+    .control-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            color: $secondary-color;
+            
+            input[type="checkbox"],
+            input[type="radio"] {
+                cursor: pointer;
+            }
+        }
+    }
+}
+
+.plot-controls {
+    display: flex;
+    gap: 1rem;
+    margin: 1rem 0;
+    align-items: center;
+    flex-wrap: wrap;
+
+    .control-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        label {
+            color: $secondary-color;
+            font-size: 0.9em;
+        }
+
+        input[type="range"] {
+            width: 150px;
+        }
+
+        .value-display {
+            min-width: 3em;
+            text-align: right;
+            font-family: monospace;
+            color: $primary-color;
+        }
+    }
+}
+
+.plot-container {
+    margin: 2rem 0;
+    padding: 1rem;
+    background: white;
+    border-radius: $border-radius;
+    box-shadow: $card-shadow;
+}
+
+.cooccurrences-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+
+    th, td {
+        padding: 0.5rem;
+        border: 1px solid $border-color;
+        text-align: left;
+    }
+
+    th {
+        background: $header-background;
+        color: $header-text;
+        font-weight: 600;
+    }
+
+    .numeric {
+        text-align: right;
+        font-family: monospace;
+        color: $secondary-color;
+    }
+
+    td span {
+        cursor: help;
+        border-bottom: 1px dotted $secondary-color;
+        
+        &:hover {
+            color: $primary-color;
+            border-bottom-style: solid;
+        }
+    }
+
+    a {
+        color: $primary-color;
+        text-decoration: none;
+        
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+}
+
+.view-selector {
+    margin-bottom: 2rem;
+    
+    button {
+        background: none;
+        border: none;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        color: $secondary-color;
+        border-bottom: 2px solid transparent;
+
+        &.active {
+            color: $primary-color;
+            border-bottom-color: $primary-color;
+        }
+
+        &:hover:not(.active) {
+            color: darken($secondary-color, 10%);
+            border-bottom-color: $border-color;
+        }
+    }
+}
+
+.subnav {
+    margin: 1rem 0;
+    border-bottom: 1px solid $border-color;
+    padding-bottom: 1rem;
+
+    .view-button {
+        background: none;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        margin-right: 0.5rem;
+        cursor: pointer;
+        color: $secondary-color;
+        border-radius: $border-radius;
+        transition: all 0.2s ease;
+
+        &:hover {
+            background: $hover-color;
+            color: darken($secondary-color, 15%);
+        }
+
+        &.active {
+            background: $primary-color;
+            color: white;
+        }
+    }
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+
+    th {
+        background: $background-light;
+        padding: 8px;
+        text-align: left;
+    }
+
+    td {
+        padding: 8px;
+        border-bottom: 1px solid $border-color;
+    }
+}
+
+.entity-text {
+    font-family: monospace;
+    min-width: 200px;
+}
+
+.load-more-button {
+    margin-top: 1em;
+    padding: 8px 16px;
+    background: $primary-color;
+    color: white;
+    border: none;
+    border-radius: $border-radius;
+    cursor: pointer;
+
+    &:hover {
+        background: darken($primary-color, 10%);
+    }
+}
+
+.text-center {
+    text-align: center;
+}
+
+.doc-sent-info {
+    font-size: 0.9em;
+    color: $secondary-color;
+}

@@ -191,3 +191,83 @@ class DBDataExchanger:
         except sqlite3.Error as e:
             self.logger.error(f"Error fetching entity occurrence {eo_id}: {e}")
             return None
+
+    def get_entity_cooccurrences(self, e1_id: int, e2_id: int, level: str = "document"):
+        pass
+
+    def get_cooccurrences_summary(self, page: int = 1, per_page: int = 30, include_self: bool = False):
+        """
+        Get entity co-occurrences summary with entity texts from entity_occurrences.
+        
+        Args:
+            page: Page number (1-based)
+            per_page: Number of records per page
+            include_self: Whether to include self-cooccurrences (where e1_id = e2_id)
+            
+        Returns:
+            dict: Contains summaries list, has_more flag, and total count
+        """
+        offset = (page - 1) * per_page
+        try:
+            # Get total count for pagination
+            count_sql = """
+                SELECT COUNT(*) 
+                FROM entity_cooccurrences_summary 
+                WHERE 1=1
+            """
+            if not include_self:
+                count_sql += " AND e1_id_normalized != e2_id_normalized"
+                
+            self.cursor.execute(count_sql)
+            total_count = self.cursor.fetchone()[0]
+            self.logger.info(f"Total co-occurrences summary records: {total_count}")
+            
+            if total_count == 0:
+                return {'summaries': [], 'has_more': False, 'total': 0}
+
+            # Main query with joins to get entity texts
+            sql = """
+                SELECT 
+                    ecs.id,
+                    ecs.e1_id_normalized,
+                    ecs.e2_id_normalized,
+                    eos1.normalized_entity_text as entity1_text,
+                    eos2.normalized_entity_text as entity2_text,
+                    ecs.fq_document_level,
+                    ecs.fq_document_level_normalized,
+                    ecs.fq_sentence_level,
+                    ecs.fq_sentence_level_normalized
+                FROM entity_cooccurrences_summary ecs
+                INNER JOIN entity_occurrences_summary eos1 ON ecs.e1_id_normalized = eos1.id
+                INNER JOIN entity_occurrences_summary eos2 ON ecs.e2_id_normalized = eos2.id
+                WHERE 1=1
+            """
+            
+            if not include_self:
+                sql += " AND ecs.e1_id_normalized != ecs.e2_id_normalized"
+                
+            sql += """
+                ORDER BY ecs.fq_document_level DESC
+                LIMIT ? OFFSET ?
+            """
+            
+            self.cursor.execute(sql, (per_page, offset))
+            columns = [col[0] for col in self.cursor.description]
+            rows = self.cursor.fetchall()
+            
+            # Convert rows to dictionaries
+            summaries = [dict(zip(columns, row)) for row in rows]
+            has_more = (offset + len(summaries)) < total_count
+            
+            self.logger.info(f"Found {len(summaries)} co-occurrence summaries")
+            if summaries:
+                self.logger.debug(f"Sample row: {summaries[0]}")
+            
+            return {
+                'summaries': summaries,
+                'has_more': has_more,
+                'total': total_count
+            }
+        except sqlite3.Error as e:
+            self.logger.error(f"Error fetching co-occurrences summary: {e}")
+            return {'summaries': [], 'has_more': False, 'total': 0}

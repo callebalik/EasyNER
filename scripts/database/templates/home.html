@@ -1,24 +1,57 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
 {% block title %}Home{% endblock %}
 
 {% block content %}
-    <h1>EasyNer Database Overview</h1>
-    
-    <div class="table-grid">
-        {% for table_name, info in tables.items() %}
+<div class="dashboard">
+    <section class="stats-section">
+        <h2>Database Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Database Size</h3>
+                <p>{{ stats.db_size }}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Source Files Size</h3>
+                <p>{{ stats.source_size }}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Compression Ratio</h3>
+                <p>{{ stats.compression_ratio }}x</p>
+            </div>
+            <div class="stat-card">
+                <h3>Total Documents</h3>
+                <p>{{ stats.document_count }}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Total Sentences</h3>
+                <p>{{ stats.sentence_count }}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Total Entity Types</h3>
+                <p>{{ stats.named_entity_count }}</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="tables-section">
+        <h2>Database Tables</h2>
+        <div class="tables-grid">
+            {% for table_name, info in tables.items() %}
             <div class="table-card">
                 <h3>{{ table_name }}</h3>
-                <p>Rows: {{ info.row_count }}</p>
+                <p>{{ info.row_count }} rows</p>
                 <details>
                     <summary>Columns ({{ info.columns|length }})</summary>
                     <ul>
                         {% for column in info.columns %}
-                            <li>{{ column }}</li>
+                        <li>{{ column }}</li>
                         {% endfor %}
                     </ul>
                 </details>
             </div>
-        {% endfor %}
-    </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
 {% endblock %}

@@ -1,0 +1,34 @@
+// Main stats dashboard styling
+.stats-section {
+    @extend %section-card;
+    margin-bottom: 30px;
+
+    h2 {
+        @extend %section-header;
+    }
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.stat-card {
+    @extend %hover-card;
+    text-align: center;
+
+    h3 {
+        color: #666;
+        font-size: 0.9em;
+        margin: 0 0 8px 0;
+    }
+
+    p {
+        color: $primary-color;
+        font-size: 1.4em;
+        font-weight: 600;
+        margin: 0;
+    }
+}
