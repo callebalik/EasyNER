@@ -26,12 +26,12 @@
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Entity 1</th>
-                    <th>Entity 2</th>
-                    <th>Document Freq.</th>
-                    <th>Document Norm.</th>
-                    <th>Sentence Freq.</th>
-                    <th>Sentence Norm.</th>
+                    <th data-sort="entity1_text" class="sortable">Entity 1 <span class="sort-icon"></span></th>
+                    <th data-sort="entity2_text" class="sortable">Entity 2 <span class="sort-icon"></span></th>
+                    <th data-sort="fq_document_level" class="sortable">Document Freq. <span class="sort-icon"></span></th>
+                    <th data-sort="fq_document_level_normalized" class="sortable">Document Norm. <span class="sort-icon"></span></th>
+                    <th data-sort="fq_sentence_level" class="sortable">Sentence Freq. <span class="sort-icon"></span></th>
+                    <th data-sort="fq_sentence_level_normalized" class="sortable">Sentence Norm. <span class="sort-icon"></span></th>
                 </tr>
             </thead>
             <tbody>
@@ -103,12 +103,36 @@
         .load-more-button:hover {
             background: #1976d2;
         }
+        .sortable {
+            cursor: pointer;
+            position: relative;
+            padding-right: 20px;
+        }
+
+        .sort-icon::after {
+            content: '↕';
+            position: absolute;
+            right: 5px;
+            color: #999;
+        }
+
+        .sort-asc .sort-icon::after {
+            content: '↑';
+            color: #2196f3;
+        }
+
+        .sort-desc .sort-icon::after {
+            content: '↓';
+            color: #2196f3;
+        }
     </style>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         $(document).ready(function() {
             let currentPage = 1;
+            let currentSort = 'fq_document_level';
+            let currentOrder = 'desc';
 
             // Load entity types for filters
             $.get('/named-entities/types').done(function(data) {
@@ -121,13 +145,37 @@
                 $('#entity2-type').append(typeOptions);
             });
             
-            function loadTable(page) {
+            function updateSortIcons() {
+                $('.sortable').removeClass('sort-asc sort-desc');
+                $(`.sortable[data-sort="${currentSort}"]`).addClass(
+                    currentOrder === 'asc' ? 'sort-asc' : 'sort-desc'
+                );
+            }
+            
+            function loadTable(page, newSort = null) {
+                // If a new sort column is clicked
+                if (newSort !== null) {
+                    if (newSort === currentSort) {
+                        // Toggle order if same column
+                        currentOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        // New column, default to desc
+                        currentSort = newSort;
+                        currentOrder = 'desc';
+                    }
+                    page = 1; // Reset to first page on sort change
+                }
+                
+                updateSortIcons();
+                
                 const params = {
                     page: page,
                     per_page: 30,
                     include_self: !$('#include-self').prop('checked'),
                     entity1_type: $('#entity1-type').val(),
-                    entity2_type: $('#entity2-type').val()
+                    entity2_type: $('#entity2-type').val(),
+                    sort: currentSort,
+                    order: currentOrder
                 };
 
                 $.get('/summary-cooccurrences/table', params).done(function(data) {
@@ -192,6 +240,12 @@
                 currentPage = 1;
                 loadTable(currentPage);
             }
+
+            // Add click handlers for sortable columns
+            $('.sortable').click(function() {
+                const sortColumn = $(this).data('sort');
+                loadTable(1, sortColumn);
+            });
 
             $('#include-self').change(reloadTable);
             $('#entity1-type').change(reloadTable);
