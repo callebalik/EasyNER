@@ -195,16 +195,20 @@ class DBDataExchanger:
     def get_entity_cooccurrences(self, e1_id: int, e2_id: int, level: str = "document"):
         pass
 
-    def get_cooccurrences_summary(self, page: int = 1, per_page: int = 30, include_self: bool = False, entity1_type: str = None, entity2_type: str = None):
+    def get_cooccurrences_summary(self, page: int = 1, per_page: int = 30, include_self: bool = False, 
+                                  entity1_type: str = None, entity2_type: str = None, sort: str = 'fq_document_level', 
+                                  order: str = 'desc'):
         """
         Get entity co-occurrences summary with entity texts from entity_occurrences.
         
         Args:
             page: Page number (1-based)
             per_page: Number of records per page
-            include_self: Whether to include self-cooccurrences (where e1_id = e2_id)
+            include_self: Whether to include self-cooccurrences
             entity1_type: Filter by first entity type ID
             entity2_type: Filter by second entity type ID
+            sort: Column to sort by
+            order: Sort direction ('asc' or 'desc')
             
         Returns:
             dict: Contains summaries list, has_more flag, and total count
@@ -240,6 +244,16 @@ class DBDataExchanger:
             if total_count == 0:
                 return {'summaries': [], 'has_more': False, 'total': 0}
 
+            # Map front-end sort columns to actual database columns
+            sort_columns = {
+                'entity1_text': 'e1.entity_text',
+                'entity2_text': 'e2.entity_text',
+                'fq_document_level': 'ecs.fq_document_level',
+                'fq_document_level_normalized': 'ecs.fq_document_level_normalized',
+                'fq_sentence_level': 'ecs.fq_sentence_level',
+                'fq_sentence_level_normalized': 'ecs.fq_sentence_level_normalized'
+            }
+
             # Main query with joins to get entity texts
             sql = """
                 SELECT 
@@ -265,10 +279,12 @@ class DBDataExchanger:
             if where_clauses:
                 sql += " WHERE " + " AND ".join(where_clauses)
                 
-            sql += """
-                ORDER BY ecs.fq_document_level DESC
-                LIMIT ? OFFSET ?
-            """
+            # Add ORDER BY clause using the mapped column
+            sort_column = sort_columns.get(sort, 'ecs.fq_document_level')
+            sort_direction = 'DESC' if order.lower() == 'desc' else 'ASC'
+            sql += f" ORDER BY {sort_column} {sort_direction} NULLS LAST"
+                
+            sql += " LIMIT ? OFFSET ?"
             
             # Add pagination parameters
             params.extend([per_page + 1, offset])
