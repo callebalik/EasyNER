@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Entity Co-occurrences Summary{% endblock %}
+
+{% block content %}
+    <h1>Entity Co-occurrences Summary</h1>
+    <div class="cooccurrences-controls">
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="include-self" checked> Exclude self co-occurrences
+            </label>
+        </div>
+        <div class="control-group">
+            <label for="entity1-type">Entity 1 Type:</label>
+            <select id="entity1-type">
+                <option value="">All</option>
+            </select>
+            <label for="entity2-type">Entity 2 Type:</label>
+            <select id="entity2-type">
+                <option value="">All</option>
+            </select>
+        </div>
+    </div>
+    <div id="total-count"></div>
+    <div id="table-view" class="view"></div>
+    <div id="plot-view" class="view">
+        <h2>Frequency Distribution Plot</h2>
+        <label for="freq-column">Frequency Column:</label>
+        <select id="freq-column">
+            <option value="fq_document_level">Document Level</option>
+            <option value="fq_sentence_level">Sentence Level</option>
+        </select>
+        <label for="min-freq">Min Frequency:</label>
+        <input type="number" id="min-freq" value="0">
+        <label for="max-freq">Max Frequency:</label>
+        <input type="number" id="max-freq" value="100">
+        <button id="update-plot">Update Plot</button>
+        <canvas id="freq-plot"></canvas>
+    </div>
+
+    <style>
+        .cooccurrences-controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        .control-group label {
+            margin-right: 10px;
+        }
+        .control-group select {
+            margin-right: 20px;
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        #total-count {
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1em 0;
+        }
+        .data-table th {
+            background: #f5f5f5;
+            padding: 8px;
+            text-align: left;
+        }
+        .data-table td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        .entity-text {
+            font-family: monospace;
+            min-width: 200px;
+        }
+        .entity-type {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .numeric {
+            text-align: right;
+            font-family: monospace;
+        }
+        .load-more-button {
+            margin-top: 1em;
+            padding: 8px 16px;
+            background: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .load-more-button:hover {
+            background: #1976d2;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            let currentPage = 1;
+            let frequencyPlot = null;
+
+            // Load entity types for filters
+            $.get('/named-entities/types').done(function(data) {
+                const types = data.types;
+                const typeOptions = types.map(type => 
+                    `<option value="${type.id}">${type.named_entity}</option>`
+                ).join('');
+                
+                $('#entity1-type').append(typeOptions);
+                $('#entity2-type').append(typeOptions);
+            });
+            
+            function loadTable(page) {
+                const params = {
+                    page: page,
+                    include_self: !$('#include-self').prop('checked'),
+                    entity1_type: $('#entity1-type').val(),
+                    entity2_type: $('#entity2-type').val()
+                };
+
+                $.get('/entity-cooccurrences/summary/table', params).done(function(data) {
+                    $('#total-count').text(`Total co-occurrences: ${data.total}`);
+                    
+                    const table = $('<table class="data-table">').append(
+                        $('<thead>').append(
+                            $('<tr>').append(
+                                $('<th>').text('Entity 1'),
+                                $('<th>').text('Entity 2'),
+                                $('<th>').text('Document Freq.'),
+                                $('<th>').text('Document Norm.'),
+                                $('<th>').text('Sentence Freq.'),
+                                $('<th>').text('Sentence Norm.')
+                            )
+                        )
+                    );
+                    
+                    const tbody = $('<tbody>');
+                    data.summaries.forEach(summary => {
+                        tbody.append(
+                            $('<tr>').append(
+                                $('<td>').append(
+                                    $('<div>')
+                                        .text(summary.entity1_text)
+                                        .attr('title', `ID: ${summary.e1_id_normalized}`),
+                                    $('<div>')
+                                        .addClass('entity-type')
+                                        .text(summary.entity1_type)
+                                ),
+                                $('<td>').append(
+                                    $('<div>')
+                                        .text(summary.entity2_text)
+                                        .attr('title', `ID: ${summary.e2_id_normalized}`),
+                                    $('<div>')
+                                        .addClass('entity-type')
+                                        .text(summary.entity2_type)
+                                ),
+                                $('<td class="numeric">').text(summary.fq_document_level || '0'),
+                                $('<td class="numeric">').text(
+                                    summary.fq_document_level_normalized 
+                                        ? summary.fq_document_level_normalized.toFixed(4) 
+                                        : '0.0000'
+                                ),
+                                $('<td class="numeric">').text(summary.fq_sentence_level || '0'),
+                                $('<td class="numeric">').text(
+                                    summary.fq_sentence_level_normalized 
+                                        ? summary.fq_sentence_level_normalized.toFixed(4) 
+                                        : '0.0000'
+                                )
+                            )
+                        );
+                    });
+                    
+                    table.append(tbody);
+                    $('#table-view').empty().append(table);
+                    
+                    if (data.has_more) {
+                        $('#table-view').append(
+                            $('<button>')
+                                .addClass('load-more-button')
+                                .text('Load More')
+                                .click(() => loadTable(page + 1))
+                        );
+                    }
+                });
+            }
+
+            function reloadTable() {
+                currentPage = 1;
+                loadTable(currentPage);
+            }
+
+            $('#include-self').change(reloadTable);
+            $('#entity1-type').change(reloadTable);
+            $('#entity2-type').change(reloadTable);
+
+            function initializePlot() {
+                const ctx = document.getElementById('freq-plot').getContext('2d');
+                frequencyPlot = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Count',
+                            data: [],
+                            backgroundColor: 'rgba(33, 150, 243, 0.5)',
+                            borderColor: 'rgba(33, 150, 243, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Number of Co-occurrences'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Frequency'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function updatePlot() {
+                const freqColumn = $('#freq-column').val();
+                const minFreq = parseInt($('#min-freq').val());
+                const maxFreq = parseInt($('#max-freq').val());
+
+                $.get('/entity-cooccurrences/plot-data', {
+                    freq_column: freqColumn,
+                    min_freq: minFreq,
+                    max_freq: maxFreq,
+                    include_self: !$('#include-self').prop('checked'),
+                    entity1_type: $('#entity1-type').val(),
+                    entity2_type: $('#entity2-type').val()
+                }).done(function(data) {
+                    const plotData = data.plot_data;
+                    frequencyPlot.data.labels = plotData.map(item => item[freqColumn]);
+                    frequencyPlot.data.datasets[0].data = plotData.map(item => item.count);
+                    frequencyPlot.options.scales.x.title.text = `Frequency (${freqColumn})`;
+                    frequencyPlot.update();
+                });
+            }
+
+            $('#update-plot').click(updatePlot);
+            $('#freq-column, #min-freq, #max-freq').change(updatePlot);
+
+            // Initial load
+            loadTable(currentPage);
+            initializePlot();
+            updatePlot();
+        });
+    </script>
+{% endblock %}
