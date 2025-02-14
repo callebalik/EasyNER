@@ -25,8 +25,37 @@
             <input type="text" id="entity2-search" placeholder="Search Entity 2..." class="entity-search">
         </div>
     </div>
+
+    <div class="plot-controls">
+        <div class="control-group">
+            <label for="freq-column">Frequency Type:</label>
+            <select id="freq-column">
+                <option value="fq_document_level">Document Level</option>
+                <option value="fq_document_level_normalized">Document Level (Normalized)</option>
+                <option value="fq_sentence_level">Sentence Level</option>
+                <option value="fq_sentence_level_normalized">Sentence Level (Normalized)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="bucket-size">Number of Buckets:</label>
+            <input type="number" id="bucket-size" value="20" min="5" max="100" step="5">
+        </div>
+    </div>
+
+    <div class="plot-container">
+        <div class="loading-overlay">
+            <div class="spinner"></div>
+            <div>Loading plot data...</div>
+        </div>
+        <canvas id="freq-plot"></canvas>
+    </div>
+
     <div id="total-count"></div>
     <div id="table-view" class="view">
+        <div class="loading-overlay">
+            <div class="spinner"></div>
+            <div>Loading data...</div>
+        </div>
         <table class="data-table">
             <thead>
                 <tr>
@@ -149,9 +178,80 @@
             outline: none;
             box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
         }
+
+        .plot-controls {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        .plot-container {
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            height: 800px;  /* Increased from 300px */
+            position: relative;
+        }
+
+        #freq-column {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-width: 200px;
+        }
+
+        #bucket-size {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 80px;
+        }
+
+        .loading-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2196f3;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .plot-container, #table-view {
+            position: relative;
+        }
     </style>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         $(document).ready(function() {
             let currentPage = 1;
@@ -160,6 +260,7 @@
             let entity1Search = '';
             let entity2Search = '';
             let searchTimeout = null;
+            let freqPlot = null;
 
             // Load entity types for filters
             $.get('/named-entities/types').done(function(data) {
@@ -180,6 +281,9 @@
             }
             
             function loadTable(page, newSort = null) {
+                const tableView = $('#table-view');
+                showLoading(tableView);
+
                 // If a new sort column is clicked
                 if (newSort !== null) {
                     if (newSort === currentSort) {
@@ -207,62 +311,58 @@
                     entity2_search: entity2Search
                 };
 
-                $.get('/summary-cooccurrences/table', params).done(function(data) {
-                    $('#total-count').text(`Total co-occurrences: ${data.total}`);
-                    
-                    const tbody = $('.data-table tbody');
-                    if (page === 1) {
-                        tbody.empty();
-                    }
-                    
-                    data.summaries.forEach(summary => {
-                        tbody.append(
-                            $('<tr>').append(
-                                $('<td>').append(
-                                    $('<div>')
-                                        .text(summary.entity1_text)
-                                        .attr('title', `ID: ${summary.e1_id_normalized}`),
-                                    $('<div>')
-                                        .addClass('entity-type')
-                                        .text(summary.entity1_type || '')
-                                ),
-                                $('<td>').append(
-                                    $('<div>')
-                                        .text(summary.entity2_text)
-                                        .attr('title', `ID: ${summary.e2_id_normalized}`),
-                                    $('<div>')
-                                        .addClass('entity-type')
-                                        .text(summary.entity2_type || '')
-                                ),
-                                $('<td class="numeric">').text(summary.fq_document_level || '0'),
-                                $('<td class="numeric">').text(
-                                    summary.fq_document_level_normalized 
-                                        ? summary.fq_document_level_normalized.toFixed(4) 
-                                        : '0.0000'
-                                ),
-                                $('<td class="numeric">').text(summary.fq_sentence_level || '0'),
-                                $('<td class="numeric">').text(
-                                    summary.fq_sentence_level_normalized 
-                                        ? summary.fq_sentence_level_normalized.toFixed(4) 
-                                        : '0.0000'
-                                )
-                            )
-                        );
+                $.get('/summary-cooccurrences/table', params)
+                    .done(function(data) {
+                        $('#total-count').text(`Total co-occurrences: ${data.total}`);
+                        
+                        const tbody = $('.data-table tbody');
+                        if (page === 1) {
+                            tbody.empty();
+                        }
+                        
+                        data.summaries.forEach(summary => {
+                            const maxValue = Math.max(
+                                summary.fq_document_level,
+                                summary.fq_document_level_normalized,
+                                summary.fq_sentence_level,
+                                summary.fq_sentence_level_normalized
+                            );
+                            
+                            const formatValue = (value) => {
+                                if (maxValue > 5) {
+                                    return Math.round(value);
+                                }
+                                return value.toFixed(3);
+                            };
+
+                            tbody.append(`
+                                <tr>
+                                    <td class="entity-text">${summary.entity1_text}<br><span class="entity-type">${summary.entity1_type}</span></td>
+                                    <td class="entity-text">${summary.entity2_text}<br><span class="entity-type">${summary.entity2_type}</span></td>
+                                    <td class="numeric">${formatValue(summary.fq_document_level)}</td>
+                                    <td class="numeric">${formatValue(summary.fq_document_level_normalized)}</td>
+                                    <td class="numeric">${formatValue(summary.fq_sentence_level)}</td>
+                                    <td class="numeric">${formatValue(summary.fq_sentence_level_normalized)}</td>
+                                </tr>
+                            `);
+                        });
+                        
+                        // Remove existing load more button
+                        $('.load-more-button').remove();
+                        
+                        // Add new load more button if there are more results
+                        if (data.has_more) {
+                            $('#table-view').append(
+                                $('<button>')
+                                    .addClass('load-more-button')
+                                    .text('Load More')
+                                    .click(() => loadTable(page + 1))
+                            );
+                        }
+                    })
+                    .always(function() {
+                        hideLoading(tableView);
                     });
-                    
-                    // Remove existing load more button
-                    $('.load-more-button').remove();
-                    
-                    // Add new load more button if there are more results
-                    if (data.has_more) {
-                        $('#table-view').append(
-                            $('<button>')
-                                .addClass('load-more-button')
-                                .text('Load More')
-                                .click(() => loadTable(page + 1))
-                        );
-                    }
-                });
             }
 
             function reloadTable() {
@@ -275,7 +375,10 @@
                 if (searchTimeout) {
                     clearTimeout(searchTimeout);
                 }
-                searchTimeout = setTimeout(reloadTable, 300);
+                searchTimeout = setTimeout(function() {
+                    updatePlot();
+                    reloadTable();
+                }, 300);
             }
 
             $('#entity1-search').on('input', function() {
@@ -294,12 +397,190 @@
                 loadTable(1, sortColumn);
             });
 
-            $('#include-self').change(reloadTable);
-            $('#entity1-type').change(reloadTable);
-            $('#entity2-type').change(reloadTable);
+            $('#include-self').change(function() {
+                updatePlot();
+                reloadTable();
+            });
+            $('#entity1-type').change(function() {
+                updatePlot();
+                reloadTable();
+            });
+            $('#entity2-type').change(function() {
+                updatePlot();
+                reloadTable();
+            });
+
+            function initializePlot() {
+                const ctx = document.getElementById('freq-plot').getContext('2d');
+                freqPlot = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Frequency',
+                            data: [],
+                            backgroundColor: 'rgba(33, 150, 243, 0.5)',
+                            borderColor: 'rgba(33, 150, 243, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'x',
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Frequency'
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 70,
+                                    minRotation: 70,
+                                    autoSkip: false,
+                                    font: {
+                                        size: 11,
+                                        lineHeight: 1.5  // Increase line height for better spacing
+                                    },
+                                    padding: 8  // Add padding between ticks
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Entity Pairs'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Entity Pair Co-occurrence Frequencies'
+                            }
+                        },
+                        layout: {
+                            padding: {
+                                bottom: 200  // Increased padding to accommodate multiline labels
+                            }
+                        }
+                    }
+                });
+                
+                // Add error display plugin
+                Chart.register({
+                    id: 'chartError',
+                    afterDraw: (chart) => {
+                        const errorMessage = chart.options.plugins.title.text;
+                        if (errorMessage.includes('Error') || errorMessage.includes('No data')) {
+                            const ctx = chart.ctx;
+                            const width = chart.width;
+                            const height = chart.height;
+                            
+                            chart.clear();
+                            
+                            ctx.save();
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.font = '16px Arial';
+                            ctx.fillStyle = '#666';
+                            ctx.fillText(errorMessage, width / 2, height / 2);
+                            ctx.restore();
+                        }
+                    }
+                });
+            }
+
+            function updatePlot() {
+                console.log('Starting updatePlot function');
+                const plotContainer = $('.plot-container');
+                showLoading(plotContainer);
+
+                const params = {
+                    freq_column: $('#freq-column').val(),
+                    bucket_size: $('#bucket-size').val(),
+                    include_self: !$('#include-self').prop('checked'),
+                    entity1_type: $('#entity1-type').val(),
+                    entity2_type: $('#entity2-type').val(),
+                    entity1_search: entity1Search,
+                    entity2_search: entity2Search
+                };
+                
+                console.log('Plot params:', params);
+
+                $.get('/summary-cooccurrences/plot-data', params)
+                    .done(function(data) {
+                        console.log('Received plot data:', data);
+                        if (freqPlot) {
+                            if (!data.pairs || data.pairs.length === 0) {
+                                console.log('No data received for plot');
+                                freqPlot.data.labels = [];
+                                freqPlot.data.datasets[0].data = [];
+                                freqPlot.options.plugins.title.text = 'No data available';
+                            } else {
+                                // Create multiline labels with entity types and clear separation
+                                const labels = data.pairs.map(p => {
+                                    const entity1 = `[${p.entity1_type}] ${p.entity1_text}`;
+                                    const entity2 = `[${p.entity2_type}] ${p.entity2_text}`;
+                                    // Add multiple newlines and a separator line
+                                    return `${entity1}\n―\n${entity2}`;
+                                });
+                                const frequencies = data.pairs.map(p => p[params.freq_column]);
+                                
+                                console.log('Plot labels:', labels);
+                                console.log('Plot frequencies:', frequencies);
+                                
+                                freqPlot.data.labels = labels;
+                                freqPlot.data.datasets[0].data = frequencies;
+                                freqPlot.options.plugins.title.text = 
+                                    `Entity Pair Co-occurrences (${$('#freq-column option:selected').text()})`;
+                            }
+                            freqPlot.update();
+                        } else {
+                            console.error('Plot object not initialized');
+                        }
+                    })
+                    .fail(function(jqXHR, textStatus, errorThrown) {
+                        console.error('Plot data error:', {
+                            status: jqXHR.status,
+                            statusText: jqXHR.statusText,
+                            responseText: jqXHR.responseText,
+                            textStatus: textStatus,
+                            errorThrown: errorThrown
+                        });
+                        if (freqPlot) {
+                            freqPlot.data.labels = [];
+                            freqPlot.data.datasets[0].data = [];
+                            freqPlot.options.plugins.title.text = 'Error loading data';
+                            freqPlot.update();
+                        }
+                    })
+                    .always(function() {
+                        console.log('Plot update completed');
+                        hideLoading(plotContainer);
+                    });
+            }
+
+            function showLoading(container) {
+                container.find('.loading-overlay').addClass('active');
+            }
+
+            function hideLoading(container) {
+                container.find('.loading-overlay').removeClass('active');
+            }
+
+            // Initialize plot
+            initializePlot();
+
+            // Add plot update triggers to existing controls
+            $('#freq-column, #bucket-size').change(updatePlot);
 
             // Initial load
             loadTable(currentPage);
+            updatePlot();
         });
     </script>
 {% endblock %}
