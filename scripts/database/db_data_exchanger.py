@@ -195,7 +195,7 @@ class DBDataExchanger:
     def get_entity_cooccurrences(self, e1_id: int, e2_id: int, level: str = "document"):
         pass
 
-    def get_cooccurrences_summary(self, page: int = 1, per_page: int = 30, include_self: bool = False):
+    def get_cooccurrences_summary(self, page: int = 1, per_page: int = 30, include_self: bool = False, entity1_type: str = None, entity2_type: str = None):
         """
         Get entity co-occurrences summary with entity texts from entity_occurrences.
         
@@ -203,6 +203,8 @@ class DBDataExchanger:
             page: Page number (1-based)
             per_page: Number of records per page
             include_self: Whether to include self-cooccurrences (where e1_id = e2_id)
+            entity1_type: Filter by first entity type ID
+            entity2_type: Filter by second entity type ID
             
         Returns:
             dict: Contains summaries list, has_more flag, and total count
@@ -212,13 +214,26 @@ class DBDataExchanger:
             # Get total count for pagination
             count_sql = """
                 SELECT COUNT(*) 
-                FROM entity_cooccurrences_summary 
+                FROM entity_cooccurrences_summary ecs
                 WHERE 1=1
             """
+            where_clauses = []
+            params = []
+            
             if not include_self:
-                count_sql += " AND e1_id_normalized != e2_id_normalized"
+                where_clauses.append("ecs.e1_id_normalized != ecs.e2_id_normalized")
+
+            if entity1_type:
+                where_clauses.append("ecs.e1_id_normalized IN (SELECT id FROM entity_occurrences WHERE entity_id = ?)")
+                params.append(entity1_type)
+            if entity2_type:
+                where_clauses.append("ecs.e2_id_normalized IN (SELECT id FROM entity_occurrences WHERE entity_id = ?)")
+                params.append(entity2_type)
                 
-            self.cursor.execute(count_sql)
+            if where_clauses:
+                count_sql += " AND " + " AND ".join(where_clauses)
+                
+            self.cursor.execute(count_sql, params)
             total_count = self.cursor.fetchone()[0]
             self.logger.info(f"Total co-occurrences summary records: {total_count}")
             
@@ -236,28 +251,38 @@ class DBDataExchanger:
                     ecs.fq_document_level,
                     ecs.fq_document_level_normalized,
                     ecs.fq_sentence_level,
-                    ecs.fq_sentence_level_normalized
+                    ecs.fq_sentence_level_normalized,
+                    ne1.named_entity as entity1_type,
+                    ne2.named_entity as entity2_type
                 FROM entity_cooccurrences_summary ecs
-                INNER JOIN entity_occurrences e1 ON ecs.e1_id_normalized = e1.id
-                INNER JOIN entity_occurrences e2 ON ecs.e1_id_normalized = e2.id
-                WHERE 1=1
+                JOIN entity_occurrences e1 ON ecs.e1_id_normalized = e1.id
+                JOIN entity_occurrences e2 ON ecs.e2_id_normalized = e2.id
+                JOIN named_entities ne1 ON e1.entity_id = ne1.id
+                JOIN named_entities ne2 ON e2.entity_id = ne2.id
             """
             
-            if not include_self:
-                sql += " AND ecs.e1_id_normalized != ecs.e2_id_normalized"
+            # Add same WHERE clauses as count query
+            if where_clauses:
+                sql += " WHERE " + " AND ".join(where_clauses)
                 
             sql += """
                 ORDER BY ecs.fq_document_level DESC
                 LIMIT ? OFFSET ?
             """
             
-            self.cursor.execute(sql, (per_page, offset))
+            # Add pagination parameters
+            params.extend([per_page + 1, offset])
+            
+            self.cursor.execute(sql, params)
             columns = [col[0] for col in self.cursor.description]
             rows = self.cursor.fetchall()
             
+            # Handle pagination
+            has_more = len(rows) > per_page
+            rows = rows[:per_page]  # Trim the extra item we fetched
+            
             # Convert rows to dictionaries
             summaries = [dict(zip(columns, row)) for row in rows]
-            has_more = (offset + len(summaries)) < total_count
             
             self.logger.info(f"Found {len(summaries)} co-occurrence summaries")
             if summaries:

@@ -480,6 +480,82 @@ def entity_cooccurrences_summary_table():
         db.logger.error(f"Error loading entity co-occurrences summary table: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/raw-cooccurrences')
+def raw_cooccurrences():
+    return render_template('raw_cooccurrences.html')
+
+@app.route('/summary-cooccurrences')
+def summary_cooccurrences():
+    return render_template('summary_cooccurrences.html')
+
+@app.route('/raw-cooccurrences/table')
+def raw_cooccurrences_table():
+    try:
+        db = get_db()
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 30))
+        offset = (page - 1) * per_page
+
+        query = """
+            SELECT 
+                ec.id,
+                ec.e1_id,
+                ec.e2_id,
+                eo1.entity_text as entity1_text,
+                eo2.entity_text as entity2_text,
+                ec.sentence_distance,
+                eo1.document_id,
+                eo1.sentence_index
+            FROM entity_cooccurrences ec
+            JOIN entity_occurrences eo1 ON eo1.id = ec.e1_id
+            JOIN entity_occurrences eo2 ON eo2.id = ec.e2_id
+            ORDER BY ec.id DESC
+            LIMIT ? OFFSET ?
+        """
+        params = [per_page + 1, offset]
+        
+        cooccurrences = db.execute(query, params)
+        has_more = len(cooccurrences) > per_page
+        cooccurrences = cooccurrences[:per_page]
+        
+        return jsonify({
+            'cooccurrences': [dict(zip([
+                'id', 'e1_id', 'e2_id', 'entity1_text', 'entity2_text',
+                'sentence_distance', 'document_id', 'sentence_index'
+            ], row)) for row in cooccurrences],
+            'has_more': has_more
+        })
+    except Exception as e:
+        db.logger.error(f"Error loading entity co-occurrences table: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/summary-cooccurrences/table')
+def summary_cooccurrences_table():
+    try:
+        db = get_db()
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 30))
+        include_self = request.args.get('include_self', 'false').lower() == 'true'
+        entity1_type = request.args.get('entity1_type')
+        entity2_type = request.args.get('entity2_type')
+
+        result = db.data_exchanger.get_cooccurrences_summary(
+            page=page,
+            per_page=per_page,
+            include_self=include_self,
+            entity1_type=entity1_type,
+            entity2_type=entity2_type
+        )
+        
+        return jsonify({
+            'summaries': result['summaries'],
+            'has_more': result['has_more'],
+            'total': result['total']
+        })
+    except Exception as e:
+        db.logger.error(f"Error loading entity co-occurrences summary table: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/entity-cooccurrences/plot-data')
 def entity_cooccurrences_plot_data():
     try:
