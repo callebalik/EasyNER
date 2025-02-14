@@ -20,6 +20,10 @@
                 <option value="">All</option>
             </select>
         </div>
+        <div class="control-group search-controls">
+            <input type="text" id="entity1-search" placeholder="Search Entity 1..." class="entity-search">
+            <input type="text" id="entity2-search" placeholder="Search Entity 2..." class="entity-search">
+        </div>
     </div>
     <div id="total-count"></div>
     <div id="table-view" class="view">
@@ -125,6 +129,26 @@
             content: '↓';
             color: #2196f3;
         }
+
+        .search-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .entity-search {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+            font-size: 14px;
+        }
+
+        .entity-search:focus {
+            border-color: #2196f3;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+        }
     </style>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -133,6 +157,9 @@
             let currentPage = 1;
             let currentSort = 'fq_document_level';
             let currentOrder = 'desc';
+            let entity1Search = '';
+            let entity2Search = '';
+            let searchTimeout = null;
 
             // Load entity types for filters
             $.get('/named-entities/types').done(function(data) {
@@ -175,7 +202,9 @@
                     entity1_type: $('#entity1-type').val(),
                     entity2_type: $('#entity2-type').val(),
                     sort: currentSort,
-                    order: currentOrder
+                    order: currentOrder,
+                    entity1_search: entity1Search,
+                    entity2_search: entity2Search
                 };
 
                 $.get('/summary-cooccurrences/table', params).done(function(data) {
@@ -240,6 +269,24 @@
                 currentPage = 1;
                 loadTable(currentPage);
             }
+
+            // Handle entity search with debouncing
+            function handleSearch() {
+                if (searchTimeout) {
+                    clearTimeout(searchTimeout);
+                }
+                searchTimeout = setTimeout(reloadTable, 300);
+            }
+
+            $('#entity1-search').on('input', function() {
+                entity1Search = $(this).val();
+                handleSearch();
+            });
+
+            $('#entity2-search').on('input', function() {
+                entity2Search = $(this).val();
+                handleSearch();
+            });
 
             // Add click handlers for sortable columns
             $('.sortable').click(function() {
