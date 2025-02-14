@@ -17,12 +17,14 @@ class NamedEntity:
         inter_doc_fq: int,
         tf_idf: float,
         idf: float,
+        overlap: bool = False,  # Add overlap property
+        pmi: float = None  # Add pmi property
     ):
         self.id = id
         self.entity_text = entity_text
         self.named_entity = entity_id
         self.span_start = span_start
-        self.span_end = span_end # Adjust to follow Python slicing convention of [start:end) i.e. exclusive end
+        self.span_end = span_end  # Adjust to follow Python slicing convention of [start:end) i.e. exclusive end
         self.document_id = document_id
         self.sentence_index = sentence_index
         self.summary_id = summary_id
@@ -31,6 +33,8 @@ class NamedEntity:
         self.inter_doc_fq = inter_doc_fq
         self.tf_idf = tf_idf
         self.idf = idf
+        self.overlap = overlap  # Initialize overlap property
+        self.pmi = pmi  # Initialize pmi property
 
 
 

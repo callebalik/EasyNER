@@ -25,7 +25,7 @@ CREATE TABLE named_entities (
 
 CREATE TABLE entity_occurrences_summary (
     id INTEGER PRIMARY KEY NOT NULL,
-    normalized_entity_text TEXT UNIQUE NOT NULL,
+    normalized_entity_text TEXT,
     uniq_documents INTEGER,
     fq INTEGER
 );
@@ -50,12 +50,16 @@ CREATE TABLE entity_occurrences (
     FOREIGN KEY (summary_id) REFERENCES entity_occurrences_summary (id)
 );
 
-CREATE TABLE cooccurrence_summary (
+CREATE TABLE entity_cooccurrences_summary (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    e1_id_normalized INTEGER NOT NULL,
+    e2_id_normalized INTEGER NOT NULL,
     fq_document_level INTEGER,
     fq_document_level_normalized REAL,
     fq_sentence_level INTEGER,
-    fq_sentence_level_normalized REAL
+    fq_sentence_level_normalized REAL,
+    FOREIGN KEY (e1_id_normalized) REFERENCES entity_occurrences_summary (id),
+    FOREIGN KEY (e2_id_normalized) REFERENCES entity_occurrences_summary (id)
 );
 
 CREATE TABLE entity_cooccurrences (
@@ -68,7 +72,7 @@ CREATE TABLE entity_cooccurrences (
     coocurences_summary_id INTEGER,
     FOREIGN KEY (e1_id) REFERENCES entity_occurrences (id),
     FOREIGN KEY (e2_id) REFERENCES entity_occurrences (id),
-    FOREIGN KEY (coocurences_summary_id) REFERENCES cooccurrence_summary (id)
+    FOREIGN KEY (coocurences_summary_id) REFERENCES entity_cooccurrences_summary (id)
 );
 
 CREATE TABLE source_files (

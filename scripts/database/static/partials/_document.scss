@@ -1,3 +1,5 @@
+@import 'variables';
+
 /* Styling for document content */
 .document-content {
     line-height: 1.8;
@@ -9,20 +11,53 @@
 
 p.sentence {
     margin: 0;
-
-    span.sentence-nbr {
-        opacity: 0.2;
-        font-size: 0.8em;
-        color: #666;
-    }
+    padding: 0.5rem;
+    border-radius: $border-radius;
 
     &:hover {
-        opacity: 1;
+        background: $hover-color;
     }
 
+    span.sentence-nbr {
+        color: $secondary-color;
+        font-size: 0.8em;
+        opacity: 0.5;
+        margin-right: 0.5rem;
+    }
 }
 
 span.sentence-text {
     font-size: 0.9em;
+}
+
+.document-metadata {
+    @extend %section-card;
+    margin-bottom: 2rem;
+
+    h1 {
+        @extend %section-header;
+        font-size: 1.5em;
+    }
+
+    .metadata-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+
+        .metadata-item {
+            h3 {
+                color: $secondary-color;
+                font-size: 0.9em;
+                margin: 0 0 0.5rem 0;
+            }
+
+            p {
+                margin: 0;
+                font-size: 1.1em;
+                color: $primary-color;
+            }
+        }
+    }
 }
 

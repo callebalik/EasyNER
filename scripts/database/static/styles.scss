@@ -1,6 +1,17 @@
-/* Styling for document content */
-@import 'partials/_base';
-@import 'partials/_document';
-@import 'partials/_entity';
-@import 'partials/_table';
-@import 'partials/_error';
+// Import base variables and mixins first
+@import 'partials/variables';
+
+// Import component styles
+@import 'partials/cooccurrences';
+
+// Base styles
+@import 'partials/base';
+
+// Component styles
+@import 'partials/stats';
+@import 'partials/table';
+@import 'partials/entity';
+@import 'partials/document';
+
+// Error handling styles
+@import 'partials/error';

@@ -3,6 +3,7 @@ from db_main import EasyNerDBHandler
 import os
 from data_model import Document, Sentence, NamedEntity
 import sass
+import subprocess
 
 # Set template directory to current directory/templates
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
@@ -10,15 +11,35 @@ app = Flask(__name__, template_folder=template_dir)
 
 # Compile SCSS to CSS on server load
 def compile_scss():
-    scss_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/styles.scss')
-    css_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/styles.css')
-    partials_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/partials')
-    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
-    with open(scss_file, 'r') as f:
-        scss_content = f.read()
-    css_content = sass.compile(string=scss_content, include_paths=[static_dir])
-    with open(css_file, 'w') as f:
-        f.write(css_content)
+    """Compile SCSS files to CSS with support for partials and watching changes"""
+    try:
+        scss_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/styles.scss')
+        css_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/styles.css')
+        static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+        partials_dir = os.path.join(static_dir, 'partials')
+
+        # Ensure the partials directory exists
+        os.makedirs(partials_dir, exist_ok=True)
+
+        # Read and compile the main SCSS file
+        with open(scss_file, 'r') as f:
+            scss_content = f.read()
+            
+        # Compile SCSS with include paths for partials
+        css_content = sass.compile(
+            string=scss_content,
+            include_paths=[static_dir],
+            output_style='compressed' if not app.debug else 'nested'
+        )
+        
+        # Write the compiled CSS
+        with open(css_file, 'w') as f:
+            f.write(css_content)
+            
+        app.logger.info("SCSS compilation successful")
+    except Exception as e:
+        app.logger.error(f"Error compiling SCSS: {e}")
+        raise
 
 compile_scss()
 
@@ -30,7 +51,7 @@ def styles():
 def get_db():
     if 'db' not in g:
         try:
-            g.db = EasyNerDBHandler(db_path="/lunarc/nobackup/projects/snic2020-6-41/carl/test_eo_sentence_ref.db")
+            g.db = EasyNerDBHandler()
             g.db.logger.info("New database connection created")
         except Exception as e:
             g.db.logger.error(f"Database connection error: {e}")
@@ -51,6 +72,27 @@ def close_db(e=None):
 def init_db():
     with app.app_context():
         db = get_db()
+        try:
+            # Use existing schema alignment method
+            schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+            db.align_with_schema(schema_path)
+            
+            # Apply indexes (they are idempotent with IF NOT EXISTS)
+            with open(os.path.join(os.path.dirname(__file__), 'indexes.sql'), 'r') as f:
+                indexes_sql = f.read()
+                for statement in indexes_sql.split(';'):
+                    if statement.strip():
+                        try:
+                            db.execute(statement)
+                        except Exception as e:
+                            db.logger.warning(f"Error applying index: {e}")
+                            continue
+            db.logger.info("Database indexes applied successfully")
+            
+        except Exception as e:
+            db.logger.error(f"Error initializing database: {e}")
+            raise
+            
         db.logger.info("Flask application initialized")
         return db
 
@@ -76,10 +118,27 @@ def home():
                 "columns": [col[1] for col in columns]
             }
         
-        return render_template('home.html', tables=tables_info)
+        # Get database statistics
+        stats = {
+            'db_size': _format_size(db.statistics.size),
+            'source_size': _format_size(db.statistics.total_source_size),
+            'compression_ratio': f"{db.statistics.compression_ratio:.2f}",
+            'document_count': db.statistics.get_document_count(),
+            'sentence_count': db.statistics.get_sentence_count(),
+            'named_entity_count': db.statistics.get_named_entity_count()
+        }
+        
+        return render_template('home.html', tables=tables_info, stats=stats)
     except Exception as e:
         db.logger.error(f"Error loading home page: {e}")
         return render_template('error.html', message="Error loading database information"), 500
+
+def _format_size(size_bytes):
+    """Convert size in bytes to human readable format."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size_bytes < 1024 or unit == 'TB':
+            return f"{size_bytes:.2f} {unit}"
+        size_bytes /= 1024
 
 @app.route("/health")
 def health_check():
@@ -231,10 +290,10 @@ def list_named_entities():
 
         sql = """
             SELECT ne.id, ne.named_entity, 
-                   eos.fq_document_level, 
-                   eos.fq_sentence_level
+                   eos.fq as fq_document_level, 
+                   eos.fq as fq_sentence_level
             FROM named_entities ne
-            LEFT JOIN entity_occurrences_summary eos ON eos.id = ne.id
+            LEFT JOIN entity_occurrences_summary eos ON eos.entity_id = ne.id
             WHERE 1=1
         """
         params = []
@@ -299,6 +358,7 @@ def list_entities():
         entities = []
         for entity_data in paginated_data:
             entity_type_name = entity_data.pop('named_entity')
+            entity_data.pop('overlap', None)  # Remove 'overlap' parameter
             entity = NamedEntity(**entity_data)
             entity.named_entity = entity_type_name
             entities.append(entity)
@@ -331,16 +391,213 @@ def show_document(doc_id):
 
     return render_template('document.html', document=document, content=document.to_html())
 
-if __name__ == "__main__":
+@app.route('/entity-cooccurrences/')
+def entity_cooccurrences():
+    return render_template('entity_cooccurrences.html')
+
+@app.route('/entity-cooccurrences/table')
+def entity_cooccurrences_table():
     try:
-        # Initialize database before running the server
-        db = init_db()
-        db.logger.info("Starting Flask server in debug mode with reloader...")
-        app.run(host="127.0.0.1", 
-                port=5000, 
-                debug=True,  # Enable debug mode
-                use_reloader=True,  # Enable automatic reloader
-                threaded=True)  # Enable threading for better development experience
+        db = get_db()
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 30))
+        offset = (page - 1) * per_page
+
+        # Get total count for pagination
+        db.cursor.execute("SELECT COUNT(*) FROM entity_cooccurrences")
+        total_count = db.cursor.fetchone()[0]
+
+        if total_count == 0:
+            return jsonify({'cooccurrences': [], 'has_more': False, 'total': 0})
+
+        # Get raw co-occurrences with entity texts
+        query = """
+            SELECT 
+                ec.id,
+                ec.e1_id,
+                ec.e2_id,
+                eo1.entity_text as entity1_text,
+                eo2.entity_text as entity2_text,
+                ec.sentence_distance,
+                eo1.document_id,
+                eo1.sentence_index
+            FROM entity_cooccurrences ec
+            JOIN entity_occurrences eo1 ON eo1.id = ec.e1_id
+            JOIN entity_occurrences eo2 ON eo2.id = ec.e2_id
+            ORDER BY ec.id DESC
+            LIMIT ? OFFSET ?
+        """
+        
+        db.cursor.execute(query, (per_page, offset))
+        columns = [col[0] for col in db.cursor.description]
+        cooccurrences = [dict(zip(columns, row)) for row in db.cursor.fetchall()]
+        
+        has_more = (offset + len(cooccurrences)) < total_count
+        
+        return jsonify({
+            'cooccurrences': cooccurrences,
+            'has_more': has_more,
+            'total': total_count
+        })
     except Exception as e:
-        if hasattr(g, 'db'):
-            g.db.logger.error(f"Server error: {e}")
+        db.logger.error(f"Error loading entity co-occurrences table: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/entity-cooccurrences/plot-data')
+def entity_cooccurrences_plot_data():
+    try:
+        db = get_db()
+        freq_column = request.args.get('freq_column', 'fq_document_level')
+        min_freq = int(request.args.get('min_freq', 0))
+        max_freq = int(request.args.get('max_freq', 100))
+
+        sql = f"""
+            SELECT {freq_column}, COUNT(*) as count
+            FROM entity_cooccurrences_summary
+            WHERE {freq_column} BETWEEN ? AND ?
+            GROUP BY {freq_column}
+            ORDER BY {freq_column}
+        """
+        params = [min_freq, max_freq]
+
+        plot_data = db.execute(sql, params)
+
+        return jsonify({
+            'plot_data': [dict(zip([col[0] for col in db.cursor.description], row)) for row in plot_data]
+        })
+    except Exception as e:
+        db.logger.error(f"Error loading entity co-occurrences plot data: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/entity-cooccurrences/summary')
+def entity_cooccurrences_summary():
+    return render_template('entity_cooccurrences_summary.html')
+
+@app.route('/entity-cooccurrences/summary/table')
+def entity_cooccurrences_summary_table():
+    try:
+        db = get_db()
+        page = int(request.args.get('page', 1))
+        include_self = request.args.get('include_self', 'false').lower() == 'true'
+        
+        # Use the data exchanger's method
+        result = db.data_exchanger.get_cooccurrences_summary(
+            page=page,
+            include_self=include_self
+        )
+        return jsonify(result)
+    except Exception as e:
+        db.logger.error(f"Error loading entity co-occurrences summary table: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/entity-cooccurrences/summary/plot-data')
+def entity_cooccurrences_summary_plot_data():
+    try:
+        db = get_db()
+        freq_column = request.args.get('freq_column', 'fq_document_level')
+        min_freq = int(request.args.get('min_freq', 0))
+        max_freq = int(request.args.get('max_freq', 100))
+
+        sql = f"""
+            SELECT {freq_column}, COUNT(*) as count
+            FROM entity_cooccurrences_summary
+            WHERE {freq_column} BETWEEN ? AND ?
+            GROUP BY {freq_column}
+            ORDER BY {freq_column}
+        """
+        params = [min_freq, max_freq]
+
+        plot_data = db.execute(sql, params)
+
+        return jsonify({
+            'plot_data': [dict(zip([col[0] for col in db.cursor.description], row)) for row in plot_data]
+        })
+    except Exception as e:
+        db.logger.error(f"Error loading entity co-occurrences summary plot data: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/debug/entity-cooccurrences-summary')
+def debug_entity_cooccurrences_summary():
+    try:
+        db = get_db()
+        
+        # Check total count
+        count_sql = "SELECT COUNT(*) FROM entity_cooccurrences_summary"
+        count = db.execute(count_sql)[0][0]
+        
+        # Get a sample row with entity texts
+        sample_sql = """
+            SELECT 
+                ecs.*,
+                eo1.entity_text as entity1_text,
+                eo2.entity_text as entity2_text
+            FROM entity_cooccurrences_summary ecs
+            JOIN entity_occurrences eo1 ON ecs.e1_id = eo1.id
+            JOIN entity_occurrences eo2 ON ecs.e2_id = eo2.id
+            LIMIT 1
+        """
+        sample = db.execute(sample_sql)
+        
+        # Get the actual table schema
+        schema_sql = "PRAGMA table_info(entity_cooccurrences_summary)"
+        schema = db.execute(schema_sql)
+        
+        return jsonify({
+            'total_records': count,
+            'schema': [dict(zip(['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'], col)) for col in schema],
+            'sample_row': [dict(zip([col[0] for col in db.cursor.description], row)) for row in sample]
+        })
+    except Exception as e:
+        db.logger.error(f"Debug endpoint error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Enhanced table views
+@app.route('/tables/<table_name>')
+def view_table(table_name):
+    try:
+        db = get_db()
+        page = int(request.args.get('page', 1))
+        per_page = 30
+        offset = (page - 1) * per_page
+
+        # Get column information dynamically
+        db.cursor.execute(f"PRAGMA table_info({table_name})")
+        columns = [col[1] for col in db.cursor.fetchall()]
+
+        sql = f"""
+            SELECT *
+            FROM {table_name}
+            LIMIT ? OFFSET ?
+        """
+        params = [per_page + 1, offset]
+
+        rows = db.execute(sql, params)
+        has_more = len(rows) > per_page
+        rows = rows[:per_page]
+
+        return render_template('table_view.html',
+                               table_name=table_name,
+                               columns=columns,
+                               rows=rows,
+                               page=page,
+                               has_more=has_more)
+    except Exception as e:
+        db.logger.error(f"Error loading table {table_name}: {e}")
+        return render_template('error.html', message=f"Error loading table {table_name}"), 500
+
+if __name__ == "__main__":
+    with app.app_context():
+        try:
+            # Initialize database before running the server
+            db = init_db()
+            db.logger.info("Starting Flask server...")
+            
+            app.run(host="127.0.0.1", 
+                    port=5001, 
+                    debug=True,
+                    use_reloader=True,
+                    threaded=True)
+        except Exception as e:
+            if 'db' in locals():
+                db.logger.error(f"Server error: {e}")
+            raise
