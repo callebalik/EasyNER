@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Entity Co-occurrences Summary{% endblock %}
+{% block title %}Summary Co-occurrences{% endblock %}
 
 {% block content %}
     <h1>Entity Co-occurrences Summary</h1>
@@ -22,7 +22,22 @@
         </div>
     </div>
     <div id="total-count"></div>
-    <div id="table-view" class="view"></div>
+    <div id="table-view" class="view">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Entity 1</th>
+                    <th>Entity 2</th>
+                    <th>Document Freq.</th>
+                    <th>Document Norm.</th>
+                    <th>Sentence Freq.</th>
+                    <th>Sentence Norm.</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
 
     <style>
         .cooccurrences-controls {
@@ -109,28 +124,20 @@
             function loadTable(page) {
                 const params = {
                     page: page,
+                    per_page: 30,
                     include_self: !$('#include-self').prop('checked'),
                     entity1_type: $('#entity1-type').val(),
                     entity2_type: $('#entity2-type').val()
                 };
 
-                $.get('/entity-cooccurrences/summary/table', params).done(function(data) {
+                $.get('/summary-cooccurrences/table', params).done(function(data) {
                     $('#total-count').text(`Total co-occurrences: ${data.total}`);
                     
-                    const table = $('<table class="data-table">').append(
-                        $('<thead>').append(
-                            $('<tr>').append(
-                                $('<th>').text('Entity 1'),
-                                $('<th>').text('Entity 2'),
-                                $('<th>').text('Document Freq.'),
-                                $('<th>').text('Document Norm.'),
-                                $('<th>').text('Sentence Freq.'),
-                                $('<th>').text('Sentence Norm.')
-                            )
-                        )
-                    );
+                    const tbody = $('.data-table tbody');
+                    if (page === 1) {
+                        tbody.empty();
+                    }
                     
-                    const tbody = $('<tbody>');
                     data.summaries.forEach(summary => {
                         tbody.append(
                             $('<tr>').append(
@@ -140,7 +147,7 @@
                                         .attr('title', `ID: ${summary.e1_id_normalized}`),
                                     $('<div>')
                                         .addClass('entity-type')
-                                        .text(summary.entity1_type)
+                                        .text(summary.entity1_type || '')
                                 ),
                                 $('<td>').append(
                                     $('<div>')
@@ -148,7 +155,7 @@
                                         .attr('title', `ID: ${summary.e2_id_normalized}`),
                                     $('<div>')
                                         .addClass('entity-type')
-                                        .text(summary.entity2_type)
+                                        .text(summary.entity2_type || '')
                                 ),
                                 $('<td class="numeric">').text(summary.fq_document_level || '0'),
                                 $('<td class="numeric">').text(
@@ -166,9 +173,10 @@
                         );
                     });
                     
-                    table.append(tbody);
-                    $('#table-view').empty().append(table);
+                    // Remove existing load more button
+                    $('.load-more-button').remove();
                     
+                    // Add new load more button if there are more results
                     if (data.has_more) {
                         $('#table-view').append(
                             $('<button>')
