@@ -129,7 +129,8 @@
         "db_path": "results/co_occurrences.db"
     },
     "database": {
-        "db_path": "/lunarc/nobackup/projects/snic2020-6-41/carl/pubmed_abstracts_test.db",
+        "develop": true,
+        "db_path": "/lunarc/nobackup/projects/snic2020-6-41/carl/",
         "schema_path": "/home/carloa/Desktop/EasyNer/scripts/database/schema.sql",
         "import_data_path": "/lunarc/nobackup/projects/snic2020-6-41/carl/ner_merged_plurals_and_word_count/"
     }
