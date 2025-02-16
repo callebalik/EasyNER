@@ -15,12 +15,17 @@ class EasyNerDBHandler:
         """
         self.config = self._load_config(config_path)
         
-        
-        if db_path is not None:
-            self.db_path = db_path
+        # Check if in development mode, if so, ignore db_path provided
+        if self.config["develop"]:
+                print("Setting up in development mode, ignoring database path provided")
+                pwd = os.path.dirname(os.path.abspath(__file__))
+                self.db_path = os.path.join(pwd, "development.db")
         else:
-            print("WARNING: Using No database path provided, continuing with database path provided in config")
-            self.db_path = self.config.get("db_path")
+            if db_path is not None:
+                self.db_path = db_path
+            else:
+                print("WARNING: Using No database path provided, continuing with database path provided in config")
+                self.db_path = self.config.get("db_path")
         
         # Ensure db_path is absolute otherwise resolve it relative to the script
         if not os.path.isabs(self.db_path):
@@ -66,8 +71,11 @@ class EasyNerDBHandler:
             with open(config_path, "r") as f:
                 config = json.load(f).get("database", {})
                 # Test integrity of the configuration
-                if "db_path" not in config:
-                    raise ValueError("Database configuration must contain 'db_path' key.")
+                if not config["develop"]: # No db path neeeded when in development mode
+                    if "db_path" not in config:
+                        raise ValueError("Database configuration must contain 'db_path' key.")
+                else:
+                    print("Setting up in development mode, ignoring database path provided")
                 if "schema_path" not in config:
                     raise ValueError("Database configuration does not contain 'schema_path' key.")
         except (FileNotFoundError, json.JSONDecodeError) as e:
