@@ -1,73 +1,37 @@
 from typing import List, Optional
+from dataclasses import dataclass
 
-
+@dataclass
 class NamedEntity:
-    def __init__(
-        self,
-        id: int,
-        entity_text: str,
-        entity_id: int,
-        span_start: int,
-        span_end: int,
-        document_id: int,
-        sentence_index: int,
-        summary_id: int,
-        intra_doc_fq: int,
-        tf: float,
-        inter_doc_fq: int,
-        tf_idf: float,
-        idf: float,
-        overlap: bool = False,  # Add overlap property
-        pmi: float = None,  # Add pmi property
-        error_id: int = None
-    ):
-        self.id = id
-        self.entity_text = entity_text
-        self.named_entity = entity_id
-        self.span_start = span_start
-        self.span_end = span_end  # Adjust to follow Python slicing convention of [start:end) i.e. exclusive end
-        self.document_id = document_id
-        self.sentence_index = sentence_index
-        self.summary_id = summary_id
-        self.intra_doc_fq = intra_doc_fq
-        self.tf = tf
-        self.inter_doc_fq = inter_doc_fq
-        self.tf_idf = tf_idf
-        self.idf = idf
-        self.overlap = overlap  # Initialize overlap property
-        self.pmi = pmi  # Initialize pmi property
-        self.error_id = error_id
+    id: int
+    entity_text: str
+    named_entity: int
+    span_start: int
+    span_end: int
+    document_id: int
+    sentence_index: int
+    summary_id: int
+    intra_doc_fq: int
+    tf: float
+    inter_doc_fq: int
+    tf_idf: float
+    idf: float
+    overlap: bool = False
+    pmi: float = None
+    error_id: int = None
 
-
-
-
+@dataclass
 class Sentence:
-    def __init__(
-        self,
-        text: str,
-        sentence_index: int,
-        document_id: int,
-        word_count: int,
-        token_count: int,
-        alpha_count: int,
-        entities: Optional[List[NamedEntity]] = None,
-        validate_entities: bool = True,
-    ):
-        self.text = text
-        self.sentence_index = sentence_index
-        self.document_id = document_id
-        self.word_count = word_count
-        self.token_count = token_count
-        self.alpha_count = alpha_count
+    text: str
+    sentence_index: int
+    document_id: int
+    word_count: int
+    token_count: int
+    alpha_count: int
+    entities: Optional[List[NamedEntity]] = None
+    validation_errors: List[dict] = None
 
-        self.entities = entities if entities is not None else []
-        self.validation_errors = []
-
-        if validate_entities:
-            self.validate_entities()
-
-
-    def validate_entities(self):
+    def __post_init__(self, validate_entities: bool =True):    
         """
         1. Ensure that span_start and span_end are non-negative.
         2. Ensure that span_start and span_end are within the bounds of the sentence.
@@ -75,51 +39,50 @@ class Sentence:
         4. Ensure that the entity text matches text[span_start->span_end] of the sentence.
 
         """
+        self.validation_errors = []
+        if validate_entities:
+            for entity in self.entities:
+                if entity.span_start < 0 or entity.span_end < 0:
+                    self.validation_errors.append({
+                        "entity_id": entity.id,
+                        "error": "Span start and end must be non-negative",
+                        "entity": entity
+                    })
+                elif entity.span_start >= len(self.text) or entity.span_end >= len(self.text):
+                    self.validation_errors.append({
+                        "entity_id": entity.id,
+                        "error": "Span out of bounds",
+                        "entity": entity
+                    })
+                elif entity.span_start >= entity.span_end:
+                    self.validation_errors.append({
+                        "entity_id": entity.id,
+                        "error": "Invalid span range",
+                        "entity": entity
+                    })
+                elif entity.entity_text != self.text[entity.span_start : entity.span_end]:
+                    self.validation_errors.append({
+                        "entity_id": entity.id,
+                        "error": f"Text mismatch: '{entity.entity_text}' vs '{self.text[entity.span_start : entity.span_end]}'",
+                        "entity": entity
+                    })
 
-        for entity in self.entities:
-            if entity.span_start < 0 or entity.span_end < 0:
-                self.validation_errors.append({
-                    "entity_id": entity.id,
-                    "error": "Span start and end must be non-negative",
-                    "entity": entity
-                })
-            elif entity.span_start >= len(self.text) or entity.span_end >= len(self.text):
-                self.validation_errors.append({
-                    "entity_id": entity.id,
-                    "error": "Span out of bounds",
-                    "entity": entity
-                })
-            elif entity.span_start >= entity.span_end:
-                self.validation_errors.append({
-                    "entity_id": entity.id,
-                    "error": "Invalid span range",
-                    "entity": entity
-                })
-            elif entity.entity_text != self.text[entity.span_start : entity.span_end]:
-                self.validation_errors.append({
-                    "entity_id": entity.id,
-                    "error": f"Text mismatch: '{entity.entity_text}' vs '{self.text[entity.span_start : entity.span_end]}'",
-                    "entity": entity
-                })
-
-
+@dataclass
 class Document:
-    def __init__(
-        self,
-        id: int,
-        title: str,
-        word_count: int,
-        token_count: int,
-        alpha_count: int,
-        sentences: Optional[List[Sentence]] = None,
-    ):
-        self.id = id
-        self.title = title
-        self.word_count = word_count
-        self.token_count = token_count
-        self.alpha_count = alpha_count
-        self.sentences = sentences if sentences is not None else []
+    id: int
+    title: str
+    word_count: int
+    token_count: int
+    alpha_count: int
+    sentences: Optional[List[Sentence]] = None
 
+    def __repr__(self) -> str:
+        s = f"Document(id={self.id}, title={self.title})"
+        s += f"\nsentences: {len(self.sentences)}"
+        s += f"\nentities: {sum(len(sentence.entities) for sentence in self.sentences)}"
+        s += f"\nWord Count: {self.word_count}"
+
+    
     def print_document(self):
         print(f"Document ID: {self.id}")
         print(f"Title: {self.title}")
