@@ -3,6 +3,9 @@ import os
 import logging
 import json
 import sqlite3
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from data_models import Base
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -37,13 +40,22 @@ class EasyNerDBHandler:
         # Resolve sql schema, defaulting to schema path if user doesn't provide one after prompt
         if not os.path.exists(self.db_path):
             print(f"Database {self.db_path} does not exist. Creating database...")
-            self.schema_path = input("Please provide the path to the schema file, or press <Enter> to use the default schema path defined in config: ")
+            prompt_str = "Press <Enter> to use the default schema path defined in config"
+            prompt_str += f"\n 'n' to use sqlalchemy models to create the database"
+            self.schema_path = input(prompt_str)
             if self.schema_path == "":
                 self.schema_path = self.config.get("schema_path")
+            if self.schema_path == "n":
+                self.schema_path = None
+    
             self.create_db(self.db_path, self.schema_path)
 
         self.name = os.path.basename(self.db_path)
         self._setup_logging()
+
+        self.engine = create_engine(f'sqlite:///{self.db_path}')
+        self.Session = sessionmaker(bind=self.engine)
+        self.session = self.Session()
 
         # Connect to the database
         self.logger.info(f"Connecting to database {self.name}")
@@ -414,18 +426,29 @@ class EasyNerDBHandler:
             print("Database connection closed and unlocked.")
 
     @classmethod
-    def create_db(self, db_path, schema_path):
-        # Ensure the schema path is absolute; if not, resolve it relative to current script
-        if not os.path.isabs(schema_path):
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            schema_path = os.path.join(script_dir, schema_path)
+    def create_db(self, db_path, schema_path=None):
+        if not schema_path:
+            # Create a new database using SQLAlchemy models
+            engine = create_engine(f'sqlite:///{db_path}')
+            Base.metadata.create_all(engine)
+            print(f"Database created at {db_path} using SQLAlchemy models")
+        else:
+            # Ensure the schema path is absolute; if not, resolve it relative to current script
+            if not os.path.isabs(schema_path):
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                schema_path = os.path.join(script_dir, schema_path)
 
-        with open(schema_path, "r") as f:
-            sql_script = f.read()
-
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.executescript(sql_script)
-        conn.commit()
-        conn.close()
-        print(f"Database created at {db_path} using schema from {schema_path}")
+    def export_schema(self):
+        """
+        Export the database schema to a file.
+        """
+        schema = sqlite3.connect(":memory:")
+        schema_cursor = schema.cursor()
+        for table in self.tables["tables"]:
+            self.cursor.execute(f"SELECT sql FROM sqlite_master WHERE name='{table}';")
+            schema_cursor.execute(self.cursor.fetchone()[0])
+        with open("schema_alchemy.sql", "w") as f:
+            for line in schema.iterdump():
+                f.write(f"{line}\n")
+        schema.close()
+        print("Schema exported to schema.sql")
