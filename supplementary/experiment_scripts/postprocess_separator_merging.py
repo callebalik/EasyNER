@@ -19,6 +19,7 @@ __version__ = '0.1.0'
 import os
 import json
 import re
+import argparse
 
 # Function to extend entities with an unmatched hyphen by merging them with missing parts of the word
 def merge_entities(entities, entity_spans, text):
@@ -166,6 +167,14 @@ def postprocess_ner_entities(input_folder):
 
 
 # Example usage
-input_folder = 'path/to/folder/with/easyner_json_files/'  # Replace with your actual input folder path
-postprocess_ner_entities(input_folder)
+# input_folder = '/lunarc/nobackup/projects/snic2020-6-41/carl/ner_merged_plurals_and_word_count/'  # Replace with your actual input folder path
+# postprocess_ner_entities(input_folder)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Postprocess EasyNER NER files by merging entities separated with hyphens or brackets.')
+    parser.add_argument('input_folder', type=str, help='Path to the input folder containing files in EasyNER json format with annotated entities')
+    args = parser.parse_args()
+
+    postprocess_ner_entities(args.input_folder)
 
