@@ -33,3 +33,4 @@ scripts/database/*.log
 scripts/database/*.db*
 scripts/database/logs/*
 scripts/database/static/styles.css
+supplementary/slurm_job_manager/logs/*
