@@ -1,6 +1,7 @@
 data/tmp/*
 *pycache*
 *results*
+**/logs/*
 dev_easyner_env/**
 **/slurm_job_manager/results*
 .vscode/**
