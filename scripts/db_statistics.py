@@ -404,7 +404,7 @@ def count_cooucerence_fq(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def record_sentence_cooccurences(df: pd.DataFrame) -> pd.DataFrame:
+def record_sentence_cooccurrences(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate the number of times two different entities co-occur in the same sentence.
 

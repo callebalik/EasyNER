@@ -132,7 +132,7 @@ CREATE TABLE entity_cooccurrences (
     coocurences_summary_id INTEGER,
     FOREIGN KEY (e1_id) REFERENCES entity_occurrences (id),
     FOREIGN KEY (e2_id) REFERENCES entity_occurrences (id),
-    FOREIGN KEY (coocurences_summary_id) REFERENCES entity_cooccurrences_summary (id)
+        FOREIGN KEY (coocurrences_summary_id) REFERENCES entity_cooccurrences_summary (id)
 );
 
 CREATE VIEW view_entity_cooccurrences AS
