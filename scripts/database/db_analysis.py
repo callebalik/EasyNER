@@ -423,86 +423,53 @@ class DBAnalysis:
 
     def count_entity_cooccurrences(self, level: str = "document") -> None:
         """
-        Identify and record unique co-occurrences of named entities at either document or sentence level.
-        Only considers non-overlapping entities.
-
-        Args:
-            level (str): The level at which to identify co-occurrences. Either "document" or "sentence".
-
-        Note:
-            This method only identifies and records unique co-occurrence pairs.
-            Frequency calculations and summary statistics are handled separately.
+        Updated version enforcing e1_id <= e2_id schema constraint.
+        Identifies and records unique co-occurrences of named entities at the
+        specified level ("document" or "sentence") and ensures that pairs are stored
+        in their canonical order (smaller ID first).
         """
         if level not in ["document", "sentence"]:
             raise ValueError("Level must be either 'document' or 'sentence'")
 
         try:
-            self.logger.info(f"Starting entity co-occurrence identification at {level} level...")
+            self.logger.info(
+                f"Starting entity co-occurrence identification at {level} level..."
+            )
 
-            # Create temporary working table for new co-occurrences
+            # Create temporary table with the same ordering constraints as main table
             self.cursor.execute("DROP TABLE IF EXISTS temp_new_cooccurrences")
-            
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 CREATE TEMPORARY TABLE temp_new_cooccurrences (
-                    e1_id INTEGER NOT NULL,
+                        e1_id INTEGER NOT NULL CHECK (e1_id <= e2_id),
                     e2_id INTEGER NOT NULL,
-                    sentence_distance INTEGER
+                        sentence_distance INTEGER,
+                        CHECK (e1_id <= e2_id)
                 )
-            """)
+                """
+            )
 
-            # Create index on entity_cooccurrences for faster duplicate checking
-            self.cursor.execute("DROP INDEX IF EXISTS idx_entity_pairs")
-            self.cursor.execute("""
-                CREATE INDEX idx_entity_pairs 
-                ON entity_cooccurrences(e1_id, e2_id)
-            """)
-
-            # Identify co-occurrences based on level
-            if level == "document":
-                self.logger.info("Finding document-level co-occurrences...")
-                self.cursor.execute("""
+            # Use a unified query structure that directly uses the ordering constraint
+            base_query = f"""
                     INSERT INTO temp_new_cooccurrences (e1_id, e2_id, sentence_distance)
                     SELECT DISTINCT
-                        CASE WHEN e1.id < e2.id THEN e1.id ELSE e2.id END as e1_id,
-                        CASE WHEN e1.id < e2.id THEN e2.id ELSE e1.id END as e2_id,
-                        NULL
+                        e1.id,  -- e1.id is <= e2.id due to JOIN condition, ensuring canonical order
+                        e2.id,
+                        {"ABS(e1.sentence_index - e2.sentence_index)" if level == "sentence" else "NULL"}
                     FROM entity_occurrences e1
                     JOIN entity_occurrences e2 ON 
                         e1.document_id = e2.document_id AND
-                        e1.id != e2.id AND
-                        (e1.overlap = FALSE OR e1.overlap IS NULL) AND
-                        (e2.overlap = FALSE OR e2.overlap IS NULL)
-                    WHERE e1.id < e2.id
-                    AND NOT EXISTS (
+                        e1.id <= e2.id
+                    WHERE NOT EXISTS (
                         SELECT 1 
                         FROM entity_cooccurrences ec
-                        WHERE ec.e1_id = CASE WHEN e1.id < e2.id THEN e1.id ELSE e2.id END
-                        AND ec.e2_id = CASE WHEN e1.id < e2.id THEN e2.id ELSE e1.id END
+                        WHERE ec.e1_id = e1.id AND ec.e2_id = e2.id
                     )
-                """)
-            else:  # sentence level
-                self.logger.info("Finding sentence-level co-occurrences...")
-                self.cursor.execute("""
-                    INSERT INTO temp_new_cooccurrences (e1_id, e2_id, sentence_distance)
-                    SELECT DISTINCT
-                        CASE WHEN e1.id < e2.id THEN e1.id ELSE e2.id END as e1_id,
-                        CASE WHEN e1.id < e2.id THEN e2.id ELSE e1.id END as e2_id,
-                        ABS(e1.sentence_index - e2.sentence_index)
-                    FROM entity_occurrences e1
-                    JOIN entity_occurrences e2 ON 
-                        e1.document_id = e2.document_id AND
-                        e1.id != e2.id AND
-                        (e1.overlap = FALSE OR e1.overlap IS NULL) AND
-                        (e2.overlap = FALSE OR e2.overlap IS NULL) AND
-                        ABS(e1.sentence_index - e2.sentence_index) <= 5  -- Consider nearby sentences only
-                    WHERE e1.id < e2.id
-                    AND NOT EXISTS (
-                        SELECT 1 
-                        FROM entity_cooccurrences ec
-                        WHERE ec.e1_id = CASE WHEN e1.id < e2.id THEN e1.id ELSE e2.id END
-                        AND ec.e2_id = CASE WHEN e1.id < e2.id THEN e2.id ELSE e1.id END
-                    )
-                """)
+                    AND (e1.overlap = FALSE OR e1.overlap IS NULL)
+                    AND (e2.overlap = FALSE OR e2.overlap IS NULL)
+                    {"AND ABS(e1.sentence_index - e2.sentence_index) <= 5" if level == "sentence" else ""}
+                """
+            self.cursor.execute(base_query)
 
             # Get count of new co-occurrences
             self.cursor.execute("SELECT COUNT(*) FROM temp_new_cooccurrences")
@@ -510,23 +477,35 @@ class DBAnalysis:
             self.logger.info(f"Found {new_count:,} new co-occurrences")
 
             if new_count > 0:
-                # Insert new co-occurrences
-                self.logger.info("Recording new co-occurrences...")
-                self.cursor.execute("""
+                self.logger.info(
+                    "Recording new co-occurrences using batch insertions..."
+                )
+                BATCH_SIZE = 10_000
+                offset = 0
+                while True:
+                    self.cursor.execute(
+                        f"""
                     INSERT INTO entity_cooccurrences (
-                        e1_id, e2_id, overlap, sentence_distance, coocurences_summary_id
+                                e1_id, e2_id, overlap, sentence_distance
                     )
                     SELECT 
                         e1_id,
                         e2_id,
                         FALSE as overlap,
-                        sentence_distance,
-                        NULL as coocurences_summary_id
+                                sentence_distance
                     FROM temp_new_cooccurrences
-                """)
+                            LIMIT {BATCH_SIZE} OFFSET {offset}
+                        """
+                    )
+                    batch_rows = self.cursor.rowcount
+                    self.conn.commit()
+                    if batch_rows == 0:
+                        break
+                    offset += BATCH_SIZE
 
                 # Get statistics about entity types involved
-                self.cursor.execute("""
+                self.cursor.execute(
+                    """
                     WITH new_pairs AS (
                         SELECT 
                             ne1.named_entity as type1,
@@ -542,19 +521,17 @@ class DBAnalysis:
                         LIMIT 5
                     )
                     SELECT * FROM new_pairs
-                """)
+                    """
+                )
                 type_stats = self.cursor.fetchall()
 
                 self.logger.info("\nTop entity type pairs:")
                 for type1, type2, count in type_stats:
                     self.logger.info(f"  {type1} - {type2}: {count:,} pairs")
 
-            # Cleanup
-            self.cursor.execute("DROP TABLE temp_new_cooccurrences")
-            self.cursor.execute("DROP INDEX IF EXISTS idx_entity_pairs")
-
             # Get total statistics with proper NULL handling
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 SELECT 
                     COUNT(*) as total_pairs,
                     (SELECT COUNT(DISTINCT entity_id) 
@@ -562,9 +539,10 @@ class DBAnalysis:
                      WHERE id IN (SELECT e1_id FROM entity_cooccurrences 
                                 UNION 
                                 SELECT e2_id FROM entity_cooccurrences)) as total_entities,
-                    COALESCE(AVG(NULLIF(sentence_distance, 0)), 0) as avg_distance
+                        COALESCE(AVG(sentence_distance), 0) as avg_distance
                 FROM entity_cooccurrences
-            """)
+                """
+            )
             total_stats = self.cursor.fetchone()
 
             self.conn.commit()
@@ -572,13 +550,20 @@ class DBAnalysis:
                 f"\nCo-occurrence identification complete:"
                 f"\n- Total unique pairs: {total_stats[0]:,}"
                 f"\n- Unique entities involved: {total_stats[1]:,}"
-                + (f"\n- Average sentence distance: {total_stats[2]:.2f}" if level == 'sentence' else "")
+                + (
+                    f"\n- Average sentence distance: {total_stats[2]:.2f}"
+                    if level == "sentence"
+                    else ""
+                )
             )
 
         except sqlite3.Error as e:
             self.conn.rollback()
             self.logger.error(f"Error identifying co-occurrences: {e}")
             raise
+
+        finally:
+            self.cursor.execute("DROP TABLE IF EXISTS temp_new_cooccurrences")
 
     def count_named_entity_fq(self):
         """
