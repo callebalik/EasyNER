@@ -902,13 +902,14 @@ class DBAnalysis:
             self.cursor.execute(
                 """
                 SELECT 
-                    ecs.id,
+                    ecs.e1_id_normalized,
+                    ecs.e2_id_normalized,
                     ecs.fq_document_level,
-                    e1.uniq_documents AS e1_docs,
-                    e2.uniq_documents AS e2_docs
+                    eos1.uniq_documents AS e1_docs,
+                    eos2.uniq_documents AS e2_docs
                 FROM entity_cooccurrences_summary ecs
-                JOIN entity_occurrences_summary e1 ON ecs.e1_id_normalized = e1.id
-                JOIN entity_occurrences_summary e2 ON ecs.e2_id_normalized = e2.id
+                JOIN entity_occurrences_summary eos1 ON ecs.e1_id_normalized = eos1.id
+                JOIN entity_occurrences_summary eos2 ON ecs.e2_id_normalized = eos2.id
                 WHERE ecs.fq_document_level > 0
             """
             )
@@ -916,16 +917,16 @@ class DBAnalysis:
 
             # Calculate PMI and update in batches
             updates = []
-            for cooc_id, fq, e1_docs, e2_docs in cooccurrences:
+            for e1_id, e2_id, fq, e1_docs, e2_docs in cooccurrences:
                 if e1_docs == 0 or e2_docs == 0:
                     pmi = None  # Handle division by zero or log(0)
                 else:
                     pmi = math.log((fq * total_docs) / (e1_docs * e2_docs))
-                updates.append((pmi, cooc_id))
+                updates.append((pmi, e1_id, e2_id))
 
             # Batch update
             self.cursor.executemany(
-                "UPDATE entity_cooccurrences_summary SET pmi = ? WHERE id = ?", updates
+                "UPDATE entity_cooccurrences_summary SET pmi = ? WHERE e1_id_normalized = ? AND e2_id_normalized = ?", updates
             )
             self.conn.commit()
 
