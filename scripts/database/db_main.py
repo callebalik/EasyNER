@@ -60,7 +60,7 @@ class EasyNerDBHandler:
 
         self.data_exchanger = DBDataExchanger(self.conn, self.cursor, self.logger)
         self.data_cleaner = DBDataCleaner(self.conn, self.cursor, self.logger, self.data_exchanger)
-        self.analysis = DBAnalysis(self.conn, self.cursor, self.logger)
+        self.analysis = DBAnalysis(self.conn, self.cursor, self.logger, self.data_exchanger)
         self.statistics = DBStatistics(self.conn, self.cursor, self.logger)
         
     def _load_config(self, config_path):
@@ -176,7 +176,7 @@ class EasyNerDBHandler:
         except Exception as e:
             self.logger.error(f"Error executing query: {query} with args: {args}. Exception: {e}")
             raise
-
+    
     def commit(self):
         """
         Commit the current transaction.
