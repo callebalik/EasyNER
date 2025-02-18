@@ -118,20 +118,23 @@ CREATE TABLE
 CREATE VIEW
     view_entity_cooccurrences_summary AS
 SELECT
-    ecs.id,
-    e1.normalized_entity_text AS entity_text1,
-    e2.normalized_entity_text AS entity_text2,
+    eos1.normalized_entity_text AS entity_text1,
+    eos2.normalized_entity_text AS entity_text2,
     ne1.named_entity AS named_entity1,
     ne2.named_entity AS named_entity2,
     ecs.fq_document_level,
     ecs.fq_sentence_level,
-    ecs.pmi
+    ecs.pmi,
+    eo1.error_id AS error_id1,
+    eo2.error_id AS error_id2
 FROM
     entity_cooccurrences_summary ecs
-    JOIN entity_occurrences_summary e1 ON ecs.e1_id_normalized = e1.id
-    JOIN entity_occurrences_summary e2 ON ecs.e2_id_normalized = e2.id
-    JOIN named_entities ne1 ON e1.entity_id = ne1.id
-    JOIN named_entities ne2 ON e2.entity_id = ne2.id;
+    JOIN entity_occurrences_summary eos1 ON ecs.e1_id_normalized = eos1.id
+    JOIN entity_occurrences_summary eos2 ON ecs.e2_id_normalized = eos2.id
+    JOIN entity_occurrences eo1 ON eos1.id = eo1.id
+    JOIN entity_occurrences eo2 ON eos2.id = eo2.id
+    JOIN named_entities ne1 ON eo1.entity_id = ne1.id
+    JOIN named_entities ne2 ON eo2.entity_id = ne2.id;
 
 CREATE VIEW
     view_disease_phenomena_summary AS
@@ -141,6 +144,7 @@ SELECT
     ecs.fq_document_level,
     ecs.fq_sentence_level,
     ecs.pmi
+
 FROM
     entity_cooccurrences_summary ecs
     JOIN entity_occurrences_summary e1 ON ecs.e1_id_normalized = e1.id
@@ -177,7 +181,7 @@ CREATE TABLE
         CHECK (e1_id <= e2_id), -- enforce ordering so that (e1, e2) is always ordered with e1 < e2, if not self referential
         UNIQUE (e1_id, e2_id),
         FOREIGN KEY (e1_id) REFERENCES entity_occurrences (id),
-        FOREIGN KEY (e2_id) REFERENCES entity_occurrences (id),
+        FOREIGN KEY (e2_id) REFERENCES entity_occurrences (id)
     ) WITHOUT ROWID;
 
 -- disable rowid to enforce the composite primary key, ~30 % storgare savings for this table
