@@ -23,7 +23,8 @@ CREATE TABLE named_entities (
     fq INT
 );
 
-CREATE TABLE entity_occurrences_summary (
+CREATE TABLE
+    entity_occurrences_summary (
     id INTEGER PRIMARY KEY NOT NULL,
     normalized_entity_text TEXT,
     entity_id INTEGER NOT NULL,
@@ -47,7 +48,8 @@ CREATE TABLE IF NOT EXISTS entity_error_codes (
     error_description VARCHAR(255)
 );
 
-CREATE TABLE entity_occurrences (
+CREATE TABLE
+entity_occurrences (
     id INTEGER PRIMARY KEY NOT NULL,
     entity_text TEXT,
     span_start INTEGER,
@@ -90,9 +92,8 @@ JOIN documents doc ON eo.document_id = doc.id
 LEFT JOIN entity_occurrences_summary eos ON eo.summary_id = eos.id
 LEFT JOIN entity_error_codes error_code ON eo.error_id = error_code.error_id;
 
-
-CREATE TABLE entity_cooccurrences_summary (
-    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+CREATE TABLE
+    entity_cooccurrences_summary (
     e1_id_normalized INTEGER NOT NULL,
     e2_id_normalized INTEGER NOT NULL,
     fq_document_level INTEGER,
@@ -104,8 +105,10 @@ CREATE TABLE entity_cooccurrences_summary (
     FOREIGN KEY (e2_id_normalized) REFERENCES entity_occurrences_summary (id)
 );
 
-CREATE VIEW view_entity_cooccurrences_summary AS
-SELECT ecs.id,
+CREATE VIEW
+    view_entity_cooccurrences_summary AS
+SELECT
+    ecs.id,
     e1.normalized_entity_text AS entity_text1,
     e2.normalized_entity_text AS entity_text2,
     ne1.named_entity AS named_entity1,
@@ -115,7 +118,8 @@ SELECT ecs.id,
     ecs.fq_sentence_level,
     ecs.fq_sentence_level_normalized,
     ecs.pmi
-FROM entity_cooccurrences_summary ecs
+FROM
+    entity_cooccurrences_summary ecs
 JOIN entity_occurrences_summary e1 ON ecs.e1_id_normalized = e1.id
 JOIN entity_occurrences_summary e2 ON ecs.e2_id_normalized = e2.id
 JOIN named_entities ne1 ON e1.entity_id = ne1.id
@@ -129,14 +133,17 @@ CREATE TABLE entity_cooccurrences (
     overlap BOOLEAN,
     weight REAL,
     sentence_distance INTEGER,
-    coocurences_summary_id INTEGER,
+        summary_id INTEGER,
+        PRIMARY KEY (e1_id, e2_id),
+        CHECK (e1_id <= e2_id), -- enforce ordering so that (e1, e2) is always ordered with e1 < e2, if not self referential
+        UNIQUE (e1_id, e2_id),
     FOREIGN KEY (e1_id) REFERENCES entity_occurrences (id),
     FOREIGN KEY (e2_id) REFERENCES entity_occurrences (id),
-        FOREIGN KEY (coocurrences_summary_id) REFERENCES entity_cooccurrences_summary (id)
-);
+    ) WITHOUT ROWID; -- disable rowid to enforce the composite primary key, ~30 % storgare savings for this table
 
-CREATE VIEW view_entity_cooccurrences AS
-SELECT ec.id,
+CREATE VIEW
+    view_entity_cooccurrences AS
+SELECT
     ne1.named_entity AS entity1,
     ne2.named_entity AS entity2,
     eo1.entity_text AS entity_text1,
@@ -156,7 +163,8 @@ SELECT ec.id,
     ec.overlap,
     ec.weight,
     ec.sentence_distance
-FROM entity_cooccurrences ec
+FROM
+    entity_cooccurrences ec
 JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
 JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
 JOIN named_entities ne1 ON eo1.entity_id = ne1.id
