@@ -853,87 +853,60 @@ class DBAnalysis:
 
     def calculate_pmi(self, batch_size=200000) -> None:
         """
-        Calculate the Pointwise Mutual Information (PMI) for each entity occurrence and update the 'pmi' column in the entity_occurrences table.
+        Calculate the Pointwise Mutual Information (PMI) for each cooccurence pairing of two unique entities and update the 'pmi' column in entity_cooccurrences_summary table.
+
+        PMI is calculated as:
+            PMI(e1, e2) = log(P(e1, e2) / (P(e1) * P(e2)))
+        where:
+
+        - P(e1, e2) is the probability of co-occurrence of entities e1 and e2
+            = frequency of co-occurrence / docs_total
+        - P(e1) and P(e2) are the probabilities of occurrence of entities e1 and e2 respectively
+            = number of documents containing the entity / docs_total
+
+        Uses pre-calculated entity co-occurrence frequencies and entity occurrence frequencies.
+
         """
         try:
-            self.logger.info("Starting PMI calculation for entity occurrences...")
+            self.logger.info("Starting PMI calculation for entity co-occurrences...")
+            total_docs = self.statistics.document_count
 
-            # Ensure the pmi column exists in entity_occurrences
-            self.cursor.execute("""
-                SELECT COUNT(*) 
-                FROM pragma_table_info('entity_occurrences') 
-                WHERE name='pmi'
-            """)
-            if self.cursor.fetchone()[0] == 0:
-                self.logger.info("Adding 'pmi' column to entity_occurrences table...")
-                self.cursor.execute("""
-                    ALTER TABLE entity_occurrences 
-                    ADD COLUMN pmi REAL
-                """)
-
-            # Get total number of documents in the corpus
-            total_documents = self.statistics.document_count
-
-            # Process entity occurrences in batches
-            self.cursor.execute("SELECT COUNT(*) FROM entity_occurrences")
-            total_occurrences = self.cursor.fetchone()[0]
-            self.logger.info(f"Total entity occurrences to process: {total_occurrences}")
-
-            for i in range(0, total_occurrences, batch_size):
-                self.cursor.execute("""
-                    SELECT id, summary_id, document_id, intra_doc_fq
-                    FROM entity_occurrences
-                    LIMIT ? OFFSET ?
-                """, (batch_size, i))
-                batch = self.cursor.fetchall()
-
-                pmi_updates = []
-                for eo_id, summary_id, doc_id, intra_doc_fq in batch:
-                    # Get necessary counts for PMI calculation
-                    self.cursor.execute("SELECT fq, uniq_documents FROM entity_occurrences_summary WHERE id = ?", (summary_id,))
-                    total_entity_occurrences, num_docs_with_entity = self.cursor.fetchone()
-
-                    # Calculate probabilities
-                    P_entity_doc = intra_doc_fq / total_entity_occurrences
-                    P_entity = num_docs_with_entity / total_documents
-                    P_doc = 1 / total_documents
-
-                    # Calculate PMI with smoothing
-                    smoothing = 1e-9
-                    pmi = math.log((P_entity_doc + smoothing) / ((P_entity * P_doc) + smoothing))
-
-                    pmi_updates.append((pmi, eo_id))
-
-                # Update PMI values in the database
-                self.cursor.executemany("UPDATE entity_occurrences SET pmi = ? WHERE id = ?", pmi_updates)
-                self.conn.commit()
-
-                self.logger.info(f"Processed batch {i//batch_size + 1}/{(total_occurrences + batch_size - 1)//batch_size}")
-
-            # Get statistics about the PMI values
-            self.cursor.execute("""
+            # Fetch co-occurrence pairs with document frequencies
+            self.cursor.execute(
+                """
                 SELECT 
-                    COUNT(*) as total_entities,
-                    AVG(pmi) as avg_pmi,
-                    MIN(pmi) as min_pmi,
-                    MAX(pmi) as max_pmi
-                FROM entity_occurrences
-                WHERE pmi IS NOT NULL
+                    ecs.id,
+                    ecs.fq_document_level,
+                    e1.uniq_documents AS e1_docs,
+                    e2.uniq_documents AS e2_docs
+                FROM entity_cooccurrences_summary ecs
+                JOIN entity_occurrences_summary e1 ON ecs.e1_id_normalized = e1.id
+                JOIN entity_occurrences_summary e2 ON ecs.e2_id_normalized = e2.id
+                WHERE ecs.fq_document_level > 0
             """
             )
-            stats = self.cursor.fetchone()
+            cooccurrences = self.cursor.fetchall()
 
-            self.logger.info(
-                f"PMI calculation complete:\n"
-                f"- Total entity occurrences processed: {stats[0]:,}\n"
-                f"- Average PMI: {stats[1]:.4f}\n"
-                f"- Minimum PMI: {stats[2]:.4f}\n"
-                f"- Maximum PMI: {stats[3]:.4f}"
+            # Calculate PMI and update in batches
+            updates = []
+            for cooc_id, fq, e1_docs, e2_docs in cooccurrences:
+                if e1_docs == 0 or e2_docs == 0:
+                    pmi = None  # Handle division by zero or log(0)
+                else:
+                    pmi = math.log((fq * total_docs) / (e1_docs * e2_docs))
+                updates.append((pmi, cooc_id))
+
+            # Batch update
+            self.cursor.executemany(
+                "UPDATE entity_cooccurrences_summary SET pmi = ? WHERE id = ?", updates
             )
+            self.conn.commit()
+
+            self.logger.info(f"PMI calculation complete")
 
         except sqlite3.Error as e:
             self.conn.rollback()
-            self.logger.error(f"Error calculating PMI: {e}")
+            self.logger.error(f"Sqlite error while calculating PMI {e}")
             raise
         except Exception as e:
             self.conn.rollback()
