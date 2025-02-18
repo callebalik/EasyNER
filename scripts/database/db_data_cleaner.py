@@ -147,7 +147,7 @@ class DBDataCleaner:
         """
         Attach error information to the entity_occurrences table. The error information is expected to be in the following format:
 
-        entity_type,entity_text,error_label
+        entity_type,entity_text,error_id
         DIS,fires,MISSL
         DIS,forrest fire,MISSL
         DIS,earthquake,MISSL
@@ -164,7 +164,7 @@ class DBDataCleaner:
 
         This function will:
         0. read error_info.csv
-        1. If not present create new TABLE entity_error_codes with columns id, error_label, error_description using entity_error_codes.sql
+        1. If not present create new TABLE entity_error_codes with columns id, error_id, error_description using entity_error_codes.sql
         2. Populate entity_error_codes with error_codes and corresponding error_description from error_info
         2. If not present: create a new column error_id in TABLE entity_occurrences that holds references to the entity_error_codes table entity_error_codes.id. Default value is NULL, which means no error
         3. Set entity_occurrences.error_id according to error_info["entity_errors"] for matching entity_type and entity_text
@@ -180,16 +180,6 @@ class DBDataCleaner:
         }
 
         try:
-            # 1. Create entity_error_codes table if it doesn't exist
-            self.cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS entity_error_codes (
-                    error_label VARCHAR(20) PRIMARY KEY,
-                    error_description VARCHAR(255)
-                )
-            """
-            )
-
             # 2. Check if error_id column exists
             self.cursor.execute("PRAGMA table_info(entity_occurrences)")
             columns = [column[1] for column in self.cursor.fetchall()]
@@ -201,12 +191,16 @@ class DBDataCleaner:
                     ADD COLUMN error_id VARCHAR(20) DEFAULT NULL
                 """
                 )
+            else:
+                self.logger.info("Column error_id already exists in entity_occurrences, clearing")
+                self.cursor.execute("UPDATE entity_occurrences SET error_id = NULL")
+                self.conn.commit()  
 
             # 3. Bulk insert error codes
             error_code_data = [(label, desc) for label, desc in error_codes.items()]
             try:
                 self.cursor.executemany(
-                    "INSERT INTO entity_error_codes (error_label, error_description) VALUES (?, ?)",
+                    "INSERT INTO entity_error_codes (error_id, error_description) VALUES (?, ?)",
                     error_code_data,
                 )
                 self.logger.info(f"Inserted {len(error_code_data)} new error codes")
@@ -222,7 +216,21 @@ class DBDataCleaner:
                 reader = csv.reader(f)
                 next(reader)  # Skip header row
                 for row in reader:
-                    entity_type, entity_text, error_label = row
+                    entity_type, entity_text, error_id = row
+
+                    # Type checking and validation
+                    if not isinstance(entity_text, str):
+                        self.logger.warning(f"Invalid entity_text type: {type(entity_text)}. Skipping.")
+                        continue
+                        
+                    if not isinstance(entity_type, str) or len(entity_type) > 20:
+                        self.logger.warning(f"Invalid entity_type: {entity_type}. Must be string <= 20 chars. Skipping.")
+                        continue
+                        
+                    if not isinstance(error_id, str) or len(error_id) > 10:
+                        self.logger.warning(f"Invalid error_id: {error_id}. Must be string <= 10 chars. Skipping.")
+                        continue
+
 
                     # Check if entity_id is in the cache
                     if (entity_type, entity_text) in entity_id_cache:
@@ -231,7 +239,7 @@ class DBDataCleaner:
                         # Get the entity_id using get_named_entity_id
                         self.cursor.execute(
                             "SELECT id FROM named_entities WHERE named_entity = ?",
-                            (entity_text,),
+                            (entity_type,),
                         )
                         result = self.cursor.fetchone()
                         if result:
@@ -246,17 +254,32 @@ class DBDataCleaner:
                             continue
 
                     entity_updates.append(
-                        (error_label, entity_type, entity_text, entity_id)
+                        (error_id, entity_text, entity_id)
                     )
+
+            # Print the first 5 updates
+            self.logger.info(f"First 5 entity updates: {entity_updates[:5]}")
+
 
             # 5. Bulk update entity_occurrences
             update_query = """
             UPDATE entity_occurrences
             SET error_id = ?
-            WHERE entity_id = ? AND entity_text = ?
+            WHERE entity_text = ? AND entity_id = ?
             """
             self.cursor.executemany(update_query, entity_updates)
+            
+            # Get actual matches from entity_occurrences
+            matched_query = """
+            SELECT DISTINCT entity_text, error_id 
+            FROM entity_occurrences 
+            WHERE error_id IS NOT NULL
+            """
+            self.cursor.execute(matched_query)
+            updated_entities = set((text, error) for text, error in self.cursor.fetchall())
+            
             self.logger.info(f"Updated {len(entity_updates)} entity occurrences")
+            self.logger.info(f"Matched entities with errors: {updated_entities}")
             self.conn.commit()
 
         except FileNotFoundError as e:

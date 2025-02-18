@@ -1,0 +1,25 @@
+entity_type,entity_text,error_id
+DIS,fires,MISSL
+DIS,fire,MISSL
+DIS,forrest fire,MISSL
+DIS,forrest fires,MISSL
+DIS,earthquake,MISSL
+DIS,earthquakes,MISSL
+DIS,drought,MISSL
+DIS,droughts,MISSL
+DIS,flood,MISSL
+DIS,floods,MISSL
+DIS,tsunami,MISSL
+DIS,tsunamis,MISSL
+DIS,eutrophication,MISSL
+DIS,water eutrophication,MISSL
+DIS,landslide,MISSL
+DIS,soil erosion,MISSL
+DIS,air pollution,MISSL
+DIS,hurricane,MISSL
+PNM,current,AMBG
+PNM,currents,AMBG
+PNM,haziness,AMBG
+PNM,waves,AMBG
+PNM,wave,AMBG
+PNM,precipitation, AMBG
