@@ -13,6 +13,11 @@ class DBDataExchanger:
         self.cursor = cursor
         self.logger = logger
         
+def _safe_count(self, table_name: str) -> int:
+        """Get count with zero-value protection"""
+        self.cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+        result = self.cursor.fetchone()[0]
+        return result if result > 0 else 1
 
     def bulk_insert(self, insert_query, data):
         """
