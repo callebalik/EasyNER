@@ -22,7 +22,7 @@ from scripts.db_statistics import (
     update_db_with_entity_occurrence_term_fq,
     update_tf_idf,
     calc_weighted_fqs,
-    get_all_entity_occurrences
+    get_all_entity_occurrences,
 )
 
 
@@ -106,13 +106,15 @@ class TestDBStatistics(unittest.TestCase):
 
     def test_calc_weighted_fqs(self):
         calc_weighted_fqs(self.conn)
+
     def test_get_all_entity_occurrences(self):
         df = get_all_entity_occurrences(self.conn)
         df.to_csv("all_entity_occurrences.csv", index=False)
 
+
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(TestDBStatistics('test_count_articles_counts'))
+    suite.addTest(TestDBStatistics("test_count_articles_counts"))
     # suite.addTest(TestDBStatistics('test_calc_all_article_lengths'))
     suite.addTest(TestDBStatistics("test_get_entity_occurrences_with_article_id"))
     suite.addTest(TestDBStatistics("test_calc_unique_doc_fq"))

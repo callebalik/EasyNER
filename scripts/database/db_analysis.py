@@ -21,7 +21,7 @@ class DBAnalysis:
         self.logger = logger
         self.statistics = DBStatistics(conn, cursor, logger)  # Initialize DBStatistics
         self.data_exchanger = data_exchanger
-        
+
     def calc_document_counts(self, batch_size=100000):
         """
         Calculate word count, token count, and alphabetic character count for each document in batches.
@@ -36,7 +36,7 @@ class DBAnalysis:
 
         self.logger.info("Starting document counts calculation")
         start_time = time.time()
-        
+
         # Check documents with null counts or zero word/token counts
         self.cursor.execute(
             """
@@ -65,7 +65,7 @@ class DBAnalysis:
         self.cursor.execute(
             "CREATE INDEX IF NOT EXISTS temp_sentences_doc_id ON sentences(document_id)"
         )
-        
+
         # Process documents in batches
         processed = 0
         with tqdm(total=total_to_update, desc="Calculating document counts") as pbar:
@@ -74,12 +74,12 @@ class DBAnalysis:
                     batch_docs = documents_to_update[i : i + batch_size]
                     batch_ids = [doc[0] for doc in batch_docs]
                     batch_start = time.time()
-                    
+
                     self.logger.debug(
                         f"Processing batch {i//batch_size + 1}/{(total_to_update + batch_size - 1)//batch_size}"
                     )
                     self.logger.debug(f"Batch size: {len(batch_ids)} documents")
-                    
+
                     # Update counts for the current batch
                     query_start = time.time()
                     self.cursor.execute(
@@ -121,15 +121,15 @@ class DBAnalysis:
                         batch_ids + batch_ids,
                     )
                     query_time = time.time() - query_start
-                    
+
                     batch_processed = len(batch_ids)
                     commit_start = time.time()
                     self.conn.commit()
                     commit_time = time.time() - commit_start
-                    
+
                     processed += batch_processed
                     batch_time = time.time() - batch_start
-                    
+
                     self.logger.debug(
                         f"Batch timing:"
                         f"\n  - Query execution: {query_time:.2f}s"
@@ -138,7 +138,7 @@ class DBAnalysis:
                         f"\n  - Documents processed: {batch_processed}"
                         f"\n  - Processing rate: {batch_processed/batch_time:.1f} docs/s"
                     )
-                    
+
                     pbar.set_postfix(
                         {
                             "docs/s": f"{batch_processed/batch_time:.1f}",
@@ -147,7 +147,7 @@ class DBAnalysis:
                         }
                     )
                     pbar.update(batch_processed)
-                        
+
             except Exception as e:
                 self.conn.rollback()
                 self.logger.error(f"Error during document count calculation: {str(e)}")
@@ -160,7 +160,7 @@ class DBAnalysis:
         self.logger.info(
             f"Document count calculation completed. Processed {processed} documents in {total_time:.2f}s"
         )
-        
+
         # Verify results and provide detailed statistics
         self.cursor.execute(
             """
@@ -181,7 +181,7 @@ class DBAnalysis:
         self.logger.info(f"- Average word count: {stats[3]:.2f}")
         self.logger.info(f"- Average token count: {stats[4]:.2f}")
         self.logger.info(f"- Average alpha count: {stats[5]:.2f}")
-        
+
         if stats[1] > 0 or stats[2] > 0:
             self.logger.warning(
                 f"There are still {stats[1]} documents with null counts and {stats[2]} with zero word/token counts"
@@ -196,7 +196,7 @@ class DBAnalysis:
         Check and report statistics about sentence-level counts.
         """
         self.logger.info("Analyzing sentence-level counts...")
-        
+
         self.cursor.execute(
             """
             SELECT 
@@ -212,7 +212,7 @@ class DBAnalysis:
             """
         )
         stats = self.cursor.fetchone()
-        
+
         self.logger.info("Sentence-level statistics:")
         self.logger.info(f"Total sentences: {stats[0]}")
         self.logger.info(f"Sentences with null counts:")
@@ -225,19 +225,19 @@ class DBAnalysis:
         self.logger.info(f"- Words per sentence: {stats[5]:.2f}")
         self.logger.info(f"- Tokens per sentence: {stats[6]:.2f}")
         self.logger.info(f"- Alpha chars per sentence: {stats[7]:.2f}")
-        
+
         # Sample some sentences with word/token count issues for inspection
         self.cursor.execute(
             """
             SELECT document_id, sentence_index, text, word_count, token_count, alpha_count
             FROM sentences
             WHERE word_count IS NULL OR token_count IS NULL
-               OR word_count = 0 OR token_count = 0
+                OR word_count = 0 OR token_count = 0
             LIMIT 5
             """
         )
         problem_samples = self.cursor.fetchall()
-        
+
         if problem_samples:
             self.logger.info("\nSample problematic sentences:")
             for sample in problem_samples:
@@ -265,7 +265,7 @@ class DBAnalysis:
                 SELECT id
                 FROM documents
                 WHERE word_count IS NULL OR token_count IS NULL
-                   OR word_count = 0 OR token_count = 0
+                    OR word_count = 0 OR token_count = 0
             )
             SELECT 
                 p.id,
@@ -285,7 +285,7 @@ class DBAnalysis:
 
         doc_ids = [row[0] for row in rows]
         stats = rows[0][1:]  # Stats are the same for all rows due to window functions
-        
+
         stats_msg = (
             f"Found {stats[0]} problematic documents:\n"
             f"- Documents with null word count: {stats[1]}\n"
@@ -329,7 +329,7 @@ class DBAnalysis:
         """
         Find entities in the same sentence where span_start and span_end overlap between the two entities.
         Record into new column of TABLE entity_occurrences [overlap: boolean].
-        
+
         This method:
         1. Adds an 'overlap' column if it doesn't exist
         2. Sets all overlap values to FALSE initially
@@ -365,7 +365,7 @@ class DBAnalysis:
                 )
 
             self.logger.info("Finding overlapping entities...")
-            
+
             # Find overlapping entities within the same sentence
             # Two entities overlap if:
             # - They are in the same document and sentence
@@ -410,12 +410,12 @@ class DBAnalysis:
             """
             )
             stats = self.cursor.fetchone()
-            
+
             self.conn.commit()
             self.logger.info(
                 f"Found {stats[1]} overlapping entities across {stats[2]} documents and {stats[3]} sentences"
             )
-            
+
         except sqlite3.Error as e:
             self.conn.rollback()
             self.logger.error(f"Error while finding overlapping entities: {e}")
@@ -440,12 +440,12 @@ class DBAnalysis:
             self.cursor.execute("DROP TABLE IF EXISTS temp_new_cooccurrences")
             self.cursor.execute(
                 """
-                CREATE TEMPORARY TABLE temp_new_cooccurrences (
+                    CREATE TEMPORARY TABLE temp_new_cooccurrences (
                         e1_id INTEGER NOT NULL CHECK (e1_id <= e2_id),
-                    e2_id INTEGER NOT NULL,
+                        e2_id INTEGER NOT NULL,
                         sentence_distance INTEGER,
                         CHECK (e1_id <= e2_id)
-                )
+                    )
                 """
             )
 
@@ -485,15 +485,15 @@ class DBAnalysis:
                 while True:
                     self.cursor.execute(
                         f"""
-                    INSERT INTO entity_cooccurrences (
+                            INSERT INTO entity_cooccurrences (
                                 e1_id, e2_id, overlap, sentence_distance
-                    )
-                    SELECT 
-                        e1_id,
-                        e2_id,
-                        FALSE as overlap,
+                            )
+                            SELECT 
+                                e1_id,
+                                e2_id,
+                                FALSE as overlap,
                                 sentence_distance
-                    FROM temp_new_cooccurrences
+                            FROM temp_new_cooccurrences
                             LIMIT {BATCH_SIZE} OFFSET {offset}
                         """
                     )
@@ -506,21 +506,21 @@ class DBAnalysis:
                 # Get statistics about entity types involved
                 self.cursor.execute(
                     """
-                    WITH new_pairs AS (
-                        SELECT 
-                            ne1.named_entity as type1,
-                            ne2.named_entity as type2,
-                            COUNT(*) as pair_count
-                        FROM temp_new_cooccurrences t
-                        JOIN entity_occurrences e1 ON e1.id = t.e1_id
-                        JOIN entity_occurrences e2 ON e2.id = t.e2_id
-                        JOIN named_entities ne1 ON ne1.id = e1.entity_id
-                        JOIN named_entities ne2 ON ne2.id = e2.entity_id
-                        GROUP BY ne1.named_entity, ne2.named_entity
-                        ORDER BY pair_count DESC
-                        LIMIT 5
-                    )
-                    SELECT * FROM new_pairs
+                        WITH new_pairs AS (
+                            SELECT 
+                                ne1.named_entity as type1,
+                                ne2.named_entity as type2,
+                                COUNT(*) as pair_count
+                            FROM temp_new_cooccurrences t
+                            JOIN entity_occurrences e1 ON e1.id = t.e1_id
+                            JOIN entity_occurrences e2 ON e2.id = t.e2_id
+                            JOIN named_entities ne1 ON ne1.id = e1.entity_id
+                            JOIN named_entities ne2 ON ne2.id = e2.entity_id
+                            GROUP BY ne1.named_entity, ne2.named_entity
+                            ORDER BY pair_count DESC
+                            LIMIT 5
+                        )
+                        SELECT * FROM new_pairs
                     """
                 )
                 type_stats = self.cursor.fetchall()
@@ -532,15 +532,15 @@ class DBAnalysis:
             # Get total statistics with proper NULL handling
             self.cursor.execute(
                 """
-                SELECT 
-                    COUNT(*) as total_pairs,
-                    (SELECT COUNT(DISTINCT entity_id) 
-                     FROM entity_occurrences 
-                     WHERE id IN (SELECT e1_id FROM entity_cooccurrences 
-                                UNION 
-                                SELECT e2_id FROM entity_cooccurrences)) as total_entities,
+                    SELECT 
+                        COUNT(*) as total_pairs,
+                        (SELECT COUNT(DISTINCT entity_id) 
+                            FROM entity_occurrences 
+                            WHERE id IN (SELECT e1_id FROM entity_cooccurrences 
+                                        UNION 
+                                        SELECT e2_id FROM entity_cooccurrences)) as total_entities,
                         COALESCE(AVG(sentence_distance), 0) as avg_distance
-                FROM entity_cooccurrences
+                    FROM entity_cooccurrences
                 """
             )
             total_stats = self.cursor.fetchone()
@@ -583,7 +583,9 @@ class DBAnalysis:
                 """
             )
             self.conn.commit()
-            self.logger.info("Named entity frequencies updated in named_entities table.")
+            self.logger.info(
+                "Named entity frequencies updated in named_entities table."
+            )
         except sqlite3.Error as e:
             self.logger.error(f"Error counting named entity frequencies: {e}")
 
@@ -591,7 +593,7 @@ class DBAnalysis:
         """
         Summaries the fq of unique TABLE entity_occurrences and records in entity_occurrences_summary, adds reference to summary table in entity_occurrences['summary_id']
         For each entity_occurence record a reference to the linked normalized entity in entity_occurrences_summary in column [summary_id].
-        
+
         Pre-processing to link entities to the correct summary entity text
             - Normalize entity_text to lowercase
             - Remove leading and trailing whitespace
@@ -606,10 +608,11 @@ class DBAnalysis:
         """
         try:
             self.logger.info("Starting entity occurrences summarization...")
-            
+
             # Recreate entity_occurrences_summary table with entity_id
             self.cursor.execute("DROP TABLE IF EXISTS entity_occurrences_summary")
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 CREATE TABLE entity_occurrences_summary (
                     id INTEGER PRIMARY KEY NOT NULL,
                     normalized_entity_text TEXT NOT NULL,
@@ -619,13 +622,15 @@ class DBAnalysis:
                     UNIQUE(normalized_entity_text, entity_id),
                     FOREIGN KEY (entity_id) REFERENCES named_entities (id)
                 )
-            """)
-            
+            """
+            )
+
             # Drop temporary table if it exists
             self.cursor.execute("DROP TABLE IF EXISTS temp_normalized_entities")
-            
+
             # Create a temporary table for normalized texts
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 CREATE TEMPORARY TABLE temp_normalized_entities AS
                 SELECT 
                     id,
@@ -641,10 +646,12 @@ class DBAnalysis:
                     ) as normalized_entity_text
                 FROM entity_occurrences
                 WHERE entity_text IS NOT NULL
-            """)
+            """
+            )
 
             # Remove leading non-alphanumeric characters
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 WITH RECURSIVE
                 strip_leading(id, entity_id, txt, n) AS (
                     SELECT id, entity_id, normalized_entity_text, 1
@@ -666,10 +673,12 @@ class DBAnalysis:
                     )
                     LIMIT 1
                 )
-            """)
+            """
+            )
 
             # Insert summaries into entity_occurrences_summary considering entity_id
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 INSERT INTO entity_occurrences_summary (normalized_entity_text, entity_id, uniq_documents, fq)
                 SELECT 
                     ne.normalized_entity_text,
@@ -682,37 +691,45 @@ class DBAnalysis:
                 ON CONFLICT(normalized_entity_text, entity_id) DO UPDATE SET
                     uniq_documents = excluded.uniq_documents,
                     fq = excluded.fq
-            """)
+            """
+            )
 
             # Update summary_id references
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 SELECT eo.id, s.id as summary_id
                 FROM entity_occurrences eo
                 JOIN temp_normalized_entities ne ON ne.id = eo.id
                 JOIN entity_occurrences_summary s 
                     ON s.normalized_entity_text = ne.normalized_entity_text 
                     AND s.entity_id = ne.entity_id
-            """)
-            
+            """
+            )
+
             mappings = self.cursor.fetchall()
             total_records = len(mappings)
-            self.logger.info(f"Updating summary_id references for {total_records} records in batches of {batch_size}")
+            self.logger.info(
+                f"Updating summary_id references for {total_records} records in batches of {batch_size}"
+            )
 
             # Process in batches
             for i in range(0, total_records, batch_size):
-                batch = mappings[i:i + batch_size]
+                batch = mappings[i : i + batch_size]
                 self.cursor.executemany(
                     "UPDATE entity_occurrences SET summary_id = ? WHERE id = ?",
-                    [(summary_id, eo_id) for eo_id, summary_id in batch]
+                    [(summary_id, eo_id) for eo_id, summary_id in batch],
                 )
                 self.conn.commit()
-                self.logger.debug(f"Processed {min(i + batch_size, total_records)}/{total_records} records")
+                self.logger.debug(
+                    f"Processed {min(i + batch_size, total_records)}/{total_records} records"
+                )
 
             # Drop temporary table
             self.cursor.execute("DROP TABLE temp_normalized_entities")
 
             # Get statistics with entity type information
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 SELECT 
                     COUNT(*) as total_summaries,
                     AVG(fq) as avg_frequency,
@@ -720,11 +737,13 @@ class DBAnalysis:
                     AVG(uniq_documents) as avg_documents,
                     COUNT(DISTINCT entity_id) as unique_entity_types
                 FROM entity_occurrences_summary
-            """)
+            """
+            )
             stats = self.cursor.fetchone()
 
             # Get per-entity-type statistics
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 SELECT 
                     ne.named_entity as entity_type,
                     COUNT(*) as total_variants,
@@ -735,11 +754,12 @@ class DBAnalysis:
                 JOIN named_entities ne ON ne.id = eos.entity_id
                 GROUP BY eos.entity_id, ne.named_entity
                 ORDER BY total_occurrences DESC
-            """)
+            """
+            )
             type_stats = self.cursor.fetchall()
 
             self.conn.commit()
-            
+
             self.logger.info(
                 f"Entity occurrences summarization complete:\n"
                 f"- Total unique normalized entities: {stats[0]}\n"
@@ -749,7 +769,7 @@ class DBAnalysis:
                 f"- Average documents per entity: {stats[3]:.2f}\n"
                 f"\nBreakdown by entity type:"
             )
-            
+
             for type_stat in type_stats:
                 self.logger.info(
                     f"\n{type_stat[0]}:\n"
@@ -764,18 +784,19 @@ class DBAnalysis:
             self.logger.error(f"Error summarizing entity occurrences: {e}")
             raise
 
-    def count_entity_intra_doc_fq(self) -> None: 
+    def count_entity_intra_doc_fq(self) -> None:
         """
         For each entity, calculate the frequency of the entity within each document.
         This is done by using the summary_id column in entity_occurrences to group by document_id and summary_id.
-        Summary_id refers to the normalized entity in entity_occurrences_summary. 
+        Summary_id refers to the normalized entity in entity_occurrences_summary.
         Results are stored in entity_occurrences with the column 'intra_doc_fq'.
         """
         try:
             self.logger.info("Calculating intra-document frequencies for entities...")
 
             # Update intra-document frequencies
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 WITH doc_entity_counts AS (
                     SELECT 
                         document_id,
@@ -793,10 +814,12 @@ class DBAnalysis:
                     AND doc_entity_counts.summary_id = entity_occurrences.summary_id
                 )
                 WHERE summary_id IS NOT NULL
-            """)
+            """
+            )
 
             # Get statistics about the update
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 SELECT 
                     COUNT(*) as total_entities,
                     COUNT(DISTINCT document_id) as unique_documents,
@@ -805,11 +828,12 @@ class DBAnalysis:
                     MAX(intra_doc_fq) as max_frequency
                 FROM entity_occurrences
                 WHERE intra_doc_fq IS NOT NULL
-            """)
+            """
+            )
             stats = self.cursor.fetchone()
 
             self.conn.commit()
-            
+
             self.logger.info(
                 f"Intra-document frequency calculation complete:\n"
                 f"- Total entity occurrences processed: {stats[0]:,}\n"
@@ -820,7 +844,8 @@ class DBAnalysis:
             )
 
             # Sample some high-frequency entities for inspection
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 SELECT 
                     e.document_id,
                     e.entity_text,
@@ -834,8 +859,10 @@ class DBAnalysis:
                 GROUP BY e.document_id, e.summary_id
                 ORDER BY e.intra_doc_fq DESC
                 LIMIT 5
-            """, (stats[3] * 2,))  # Show entities with frequency > 2x average
-            
+            """,
+                (stats[3] * 2,),
+            )  # Show entities with frequency > 2x average
+
             high_freq = self.cursor.fetchall()
             if high_freq:
                 self.logger.info("\nSample high-frequency entities:")
@@ -938,12 +965,12 @@ class DBAnalysis:
                 self.cursor.execute(
                     f"""
                     INSERT OR IGNORE INTO temp_cooc_staging
-                SELECT 
+                    SELECT
                         MIN(eo1.summary_id, eo2.summary_id),
                         MAX(eo1.summary_id, eo2.summary_id),
                         eo1.document_id,
                         COUNT(ec.e1_id)
-                FROM entity_cooccurrences ec
+                    FROM entity_cooccurrences ec
                     JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
                     JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
                     WHERE eo1.document_id = eo2.document_id
@@ -962,7 +989,7 @@ class DBAnalysis:
             # Step 2: Bulk insert summaries using staging data
             base_query = """
                 INSERT INTO entity_cooccurrences_summary (e1_id_normalized, e2_id_normalized, fq_document_level, uniq_documents)
-                    SELECT 
+                SELECT
                     e1_norm,
                     e2_norm,
                     SUM(fq),
@@ -1009,7 +1036,7 @@ class DBAnalysis:
                     break
 
                 offset += self.cursor.rowcount
-            self.conn.commit()
+                self.conn.commit()
                 self.logger.info(f"Linking progress: {offset} rows")
 
         except sqlite3.Error as e:
@@ -1019,6 +1046,7 @@ class DBAnalysis:
         finally:
             self.cursor.execute("DROP TABLE IF EXISTS temp_cooc_staging")
             self.cursor.execute("DROP INDEX IF EXISTS idx_cooc_pair")
+
 
     def aggregate_cooccurrences(self, batch_size=50000) -> None:
         """
