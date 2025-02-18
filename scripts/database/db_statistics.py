@@ -1,5 +1,6 @@
 import sqlite3
 import logging
+import os
 
 class DBStatistics:
 
@@ -7,6 +8,7 @@ class DBStatistics:
         self.connection = connection
         self.cursor = connection.cursor()
         self.logger = logger
+        self._results_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'results')
 
     @property
     def size(self):
