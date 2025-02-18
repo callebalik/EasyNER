@@ -459,7 +459,7 @@ def record_sentence_cooccurrences(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(result)
 
 
-def record_document_cooccurences(df: pd.DataFrame) -> pd.DataFrame:
+def record_document_cooccurrences(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate the number of times two different entities co-occur in the same document.
 
