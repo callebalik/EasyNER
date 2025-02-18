@@ -265,7 +265,7 @@ class DBDataCleaner:
             update_query = """
             UPDATE entity_occurrences
             SET error_id = ?
-            WHERE entity_text = ? AND entity_id = ?
+            WHERE LOWER(entity_text) = LOWER(?) AND entity_id = ?
             """
             self.cursor.executemany(update_query, entity_updates)
             

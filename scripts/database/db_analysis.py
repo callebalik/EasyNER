@@ -421,7 +421,9 @@ class DBAnalysis:
             self.logger.error(f"Error while finding overlapping entities: {e}")
             raise
 
-    def count_entity_cooccurrences(self, level: str = "document") -> None:
+    def count_entity_cooccurrences(
+        self, level: str = "document", ignore_error_occurrencess: bool = True
+    ) -> None:
         """
         Updated version enforcing e1_id <= e2_id schema constraint.
         Identifies and records unique co-occurrences of named entities at the
@@ -569,6 +571,7 @@ class DBAnalysis:
         """
         Counts the frequency of each named entity in the entity_occurrences table
         and updates the 'fq' column in the named_entities table.
+        By defaults fq excludes entitiy occurrences with an error_id != Null.
         """
         try:
             self.logger.info("Counting named entity frequencies...")
@@ -579,6 +582,7 @@ class DBAnalysis:
                     SELECT COUNT(*)
                     FROM entity_occurrences
                     WHERE entity_occurrences.entity_id = named_entities.id
+                    AND entity_occurrences.error_id IS NULL
                 )
                 """
             )
@@ -589,9 +593,11 @@ class DBAnalysis:
         except sqlite3.Error as e:
             self.logger.error(f"Error counting named entity frequencies: {e}")
 
-    def count_entity_occurrences(self, batch_size=10000) -> None:
+    def aggregate_entity_occurrences(
+        self, batch_size=10000, ignore_error_occurrences: bool = True
+    ) -> None:
         """
-        Summaries the fq of unique TABLE entity_occurrences and records in entity_occurrences_summary, adds reference to summary table in entity_occurrences['summary_id']
+        Aggregates the fq of unique TABLE entity_occurrences and records in entity_occurrences_summary, adds reference to summary table in entity_occurrences['summary_id']
         For each entity_occurence record a reference to the linked normalized entity in entity_occurrences_summary in column [summary_id].
 
         Pre-processing to link entities to the correct summary entity text
@@ -629,8 +635,7 @@ class DBAnalysis:
             self.cursor.execute("DROP TABLE IF EXISTS temp_normalized_entities")
 
             # Create a temporary table for normalized texts
-            self.cursor.execute(
-                """
+            query_string = f"""
                 CREATE TEMPORARY TABLE temp_normalized_entities AS
                 SELECT 
                     id,
@@ -643,11 +648,14 @@ class DBAnalysis:
                                 ELSE entity_text 
                             END
                         )
-                    ) as normalized_entity_text
+                    ) as normalized_entity_text,
+                    error_id
                 FROM entity_occurrences
                 WHERE entity_text IS NOT NULL
+                AND error_id IS NULL  -- Explicitly filter out error entities here
             """
-            )
+            self.logger.debug(f"Query string for entity occurrence aggregation: {query_string}")
+            self.cursor.execute(query_string)
 
             # Remove leading non-alphanumeric characters
             self.cursor.execute(
@@ -676,9 +684,32 @@ class DBAnalysis:
             """
             )
 
+            # Test that no entities in temp_normalized_entities have error codes
+            self.cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM temp_normalized_entities
+                WHERE error_id IS NOT NULL
+            """
+            )
+            error_count = self.cursor.fetchone()[0]
+            if error_count > 0:
+                self.logger.warning(
+                    f"Found {error_count} entities with error codes in temp_normalized_entities"
+                )
+            self.logger.info(
+                f"Normalized entity texts prepared, {error_count} error counts"
+            )
+
             # Insert summaries into entity_occurrences_summary considering entity_id
             self.cursor.execute(
                 """
+                WITH error_entities AS (
+                    -- Get all normalized forms that have error codes anywhere
+                    SELECT DISTINCT TRIM(LOWER(entity_text)) as error_text
+                    FROM entity_occurrences 
+                    WHERE error_id IS NOT NULL
+                )
                 INSERT INTO entity_occurrences_summary (normalized_entity_text, entity_id, uniq_documents, fq)
                 SELECT 
                     ne.normalized_entity_text,
@@ -687,11 +718,37 @@ class DBAnalysis:
                     COUNT(*) as fq
                 FROM temp_normalized_entities ne
                 JOIN entity_occurrences eo ON eo.id = ne.id
+                WHERE ne.error_id IS NULL  -- Double-check no error entities from normalized table
+                AND eo.error_id IS NULL    -- Double-check no error entities from original table
+                AND NOT EXISTS (          -- Exclude if any occurrence of this normalized form has an error
+                    SELECT 1 
+                    FROM error_entities ee
+                    WHERE ee.error_text = ne.normalized_entity_text
+                )
                 GROUP BY ne.normalized_entity_text, ne.entity_id
                 ON CONFLICT(normalized_entity_text, entity_id) DO UPDATE SET
                     uniq_documents = excluded.uniq_documents,
                     fq = excluded.fq
             """
+            )
+
+            # Test that no entities in entity_occurrences_summary have error codes
+            self.cursor.execute(
+                """
+                SELECT COUNT(*), GROUP_CONCAT(normalized_entity_text)
+                FROM entity_occurrences_summary eos
+                WHERE EXISTS (
+                    SELECT 1 
+                    FROM entity_occurrences eo 
+                    WHERE eo.entity_text = eos.normalized_entity_text 
+                    AND eo.error_id IS NOT NULL
+                )
+            """
+            )
+            error_check = self.cursor.fetchone()
+            if error_check[0] > 0:
+                self.logger.warning(
+                    f"Found {error_check[0]} entities with error codes in entity_occurrences_summary: {error_check[1]}"
             )
 
             # Update summary_id references
@@ -703,6 +760,7 @@ class DBAnalysis:
                 JOIN entity_occurrences_summary s 
                     ON s.normalized_entity_text = ne.normalized_entity_text 
                     AND s.entity_id = ne.entity_id
+                WHERE eo.error_id IS NULL
             """
             )
 
@@ -926,7 +984,8 @@ class DBAnalysis:
 
             # Batch update
             self.cursor.executemany(
-                "UPDATE entity_cooccurrences_summary SET pmi = ? WHERE e1_id_normalized = ? AND e2_id_normalized = ?", updates
+                "UPDATE entity_cooccurrences_summary SET pmi = ? WHERE e1_id_normalized = ? AND e2_id_normalized = ?",
+                updates,
             )
             self.conn.commit()
 
@@ -963,8 +1022,7 @@ class DBAnalysis:
             # Step 1: Batch populate staging table using direct joins
             offset = 0
             while True:
-                self.cursor.execute(
-                    f"""
+                query = """
                     INSERT OR IGNORE INTO temp_cooc_staging
                     SELECT
                         MIN(eo1.summary_id, eo2.summary_id),
@@ -976,9 +1034,9 @@ class DBAnalysis:
                     JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
                     WHERE eo1.document_id = eo2.document_id
                     GROUP BY MIN(eo1.summary_id, eo2.summary_id), MAX(eo1.summary_id, eo2.summary_id), eo1.document_id
-                    LIMIT {batch_size} OFFSET {offset}
+                    LIMIT ? OFFSET ?
                 """
-                )
+                self.cursor.execute(query, (batch_size, offset))
 
                 if self.cursor.rowcount == 0:
                     break
@@ -1048,8 +1106,9 @@ class DBAnalysis:
             self.cursor.execute("DROP TABLE IF EXISTS temp_cooc_staging")
             self.cursor.execute("DROP INDEX IF EXISTS idx_cooc_pair")
 
-
-    def aggregate_cooccurrences(self, batch_size=50000) -> None:
+    def aggregate_cooccurrences(
+        self, batch_size=50000, ignore_entities_with_error_codes: bool = True
+    ) -> None:
         """
         Aggregate entity cooccurrences based on normalized entity IDs from entity_occurrences_summary.
         Uses existing relationships through entity_occurrences.summary_id to get normalized IDs.
@@ -1057,8 +1116,7 @@ class DBAnalysis:
         self.logger.info("Starting cooccurrence aggregation...")
 
         # Create temporary table for staging aggregated results
-        self.cursor.execute(
-            """
+        query = f"""
             CREATE TEMPORARY TABLE tmp_cooccurrences AS
             WITH normalized_pairs AS (
                 SELECT 
@@ -1076,6 +1134,8 @@ class DBAnalysis:
                 WHERE eo1.summary_id IS NOT NULL 
                 AND eo2.summary_id IS NOT NULL
                 AND eo1.document_id = eo2.document_id  -- Ensure same document
+                {"AND eo1.error_id IS NULL" if ignore_entities_with_error_codes else ""}
+                {"AND eo2.error_id IS NULL" if ignore_entities_with_error_codes else ""}
             )
             SELECT
                 e1_id_normalized,
@@ -1086,7 +1146,10 @@ class DBAnalysis:
             FROM normalized_pairs
             GROUP BY e1_id_normalized, e2_id_normalized
         """
-        )
+
+        self.logger.debug(f"Query for cooccurrence aggregation: {query}")
+
+        self.cursor.execute(query)
 
         # Insert or replace final results using SQLite syntax
         self.cursor.execute(
