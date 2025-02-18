@@ -3,15 +3,24 @@ import os
 from datetime import datetime
 import sqlite3
 from db_statistics import DBStatistics
+from db_data_exchanger import DBDataExchanger
 import math
+
 
 class DBAnalysis:
 
-    def __init__(self, conn: sqlite3.Connection, cursor: sqlite3.Cursor, logger: logging.Logger):
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        cursor: sqlite3.Cursor,
+        logger: logging.Logger,
+        data_exchanger: DBDataExchanger,
+    ):
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
         self.statistics = DBStatistics(conn, cursor, logger)  # Initialize DBStatistics
+        self.data_exchanger = data_exchanger
         
     def calc_document_counts(self, batch_size=100000):
         """
