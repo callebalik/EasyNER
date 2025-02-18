@@ -56,22 +56,28 @@ class DBAnalysis:
         self.logger.info(f"Documents needing update: {total_to_update}")
 
         if total_to_update == 0:
-            self.logger.info("All documents have valid word and token counts. No action needed.")
+            self.logger.info(
+                "All documents have valid word and token counts. No action needed."
+            )
             return
 
         # Create temporary indices for better performance
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS temp_sentences_doc_id ON sentences(document_id)")
+        self.cursor.execute(
+            "CREATE INDEX IF NOT EXISTS temp_sentences_doc_id ON sentences(document_id)"
+        )
         
         # Process documents in batches
         processed = 0
         with tqdm(total=total_to_update, desc="Calculating document counts") as pbar:
             try:
                 for i in range(0, total_to_update, batch_size):
-                    batch_docs = documents_to_update[i:i + batch_size]
+                    batch_docs = documents_to_update[i : i + batch_size]
                     batch_ids = [doc[0] for doc in batch_docs]
                     batch_start = time.time()
                     
-                    self.logger.debug(f"Processing batch {i//batch_size + 1}/{(total_to_update + batch_size - 1)//batch_size}")
+                    self.logger.debug(
+                        f"Processing batch {i//batch_size + 1}/{(total_to_update + batch_size - 1)//batch_size}"
+                    )
                     self.logger.debug(f"Batch size: {len(batch_ids)} documents")
                     
                     # Update counts for the current batch
@@ -107,8 +113,12 @@ class DBAnalysis:
                                 WHERE document_stats.document_id = documents.id
                             )
                         WHERE id IN (%s)
-                        """ % (','.join('?' * len(batch_ids)), ','.join('?' * len(batch_ids))),
-                        batch_ids + batch_ids
+                        """
+                        % (
+                            ",".join("?" * len(batch_ids)),
+                            ",".join("?" * len(batch_ids)),
+                        ),
+                        batch_ids + batch_ids,
                     )
                     query_time = time.time() - query_start
                     
@@ -129,11 +139,13 @@ class DBAnalysis:
                         f"\n  - Processing rate: {batch_processed/batch_time:.1f} docs/s"
                     )
                     
-                    pbar.set_postfix({
-                        'docs/s': f"{batch_processed/batch_time:.1f}",
-                        'processed': processed,
-                        'remaining': total_to_update - processed
-                    })
+                    pbar.set_postfix(
+                        {
+                            "docs/s": f"{batch_processed/batch_time:.1f}",
+                            "processed": processed,
+                            "remaining": total_to_update - processed,
+                        }
+                    )
                     pbar.update(batch_processed)
                         
             except Exception as e:
@@ -145,7 +157,9 @@ class DBAnalysis:
                 self.cursor.execute("DROP INDEX IF EXISTS temp_sentences_doc_id")
 
         total_time = time.time() - start_time
-        self.logger.info(f"Document count calculation completed. Processed {processed} documents in {total_time:.2f}s")
+        self.logger.info(
+            f"Document count calculation completed. Processed {processed} documents in {total_time:.2f}s"
+        )
         
         # Verify results and provide detailed statistics
         self.cursor.execute(
@@ -169,9 +183,13 @@ class DBAnalysis:
         self.logger.info(f"- Average alpha count: {stats[5]:.2f}")
         
         if stats[1] > 0 or stats[2] > 0:
-            self.logger.warning(f"There are still {stats[1]} documents with null counts and {stats[2]} with zero word/token counts")
+            self.logger.warning(
+                f"There are still {stats[1]} documents with null counts and {stats[2]} with zero word/token counts"
+            )
         else:
-            self.logger.info("All documents have been successfully processed with valid word and token counts")
+            self.logger.info(
+                "All documents have been successfully processed with valid word and token counts"
+            )
 
     def check_sentence_counts(self):
         """
