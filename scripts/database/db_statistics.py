@@ -124,6 +124,53 @@ class DBStatistics:
         self.cursor.execute("SELECT COUNT(*) FROM entity_cooccurrences;")
         return self.cursor.fetchone()[0]
 
+    def results_dis_pnm_cooccurrences(
+        self, 
+        sort_by: str = "pmi",
+        ascending: bool = False,
+        rows: int = None
+    ) -> None:
+        """
+        Write disease-phenomenon co-occurrences to a CSV file using the view_disease_phenomena_summary.
+        
+        Args:
+            sort_by: Column to sort by. One of ['pmi', 'fq_document_level', 'fq_sentence_level']
+            ascending: Sort order, False for descending, True for ascending
+            rows: Optional number of rows to limit the result
+        """
+        valid_sort_columns = ['pmi', 'fq_document_level', 'fq_sentence_level']
+        if sort_by not in valid_sort_columns:
+            raise ValueError(f"sort_by must be one of {valid_sort_columns}")
+    
+        order_dir = "ASC" if ascending else "DESC"
+        limit_clause = f"LIMIT {rows}" if rows else ""
+        
+        query = f"""
+        SELECT disease, phenomenon, fq_document_level, fq_sentence_level, pmi
+        FROM view_disease_phenomena_summary
+        ORDER BY {sort_by} {order_dir}
+        {limit_clause}
+        """
+        
+        results_file = os.path.join(self._results_dir, 'dis_pnm_cooccurrences.csv')
+        self.logger.info(f"Writing dis-pnm co-occurrences to {results_file}")
+        
+        try:
+            self.cursor.execute(query)
+            with open(results_file, 'w') as f:
+                header = ['disease', 'phenomenon', 'doc_frequency', 'sent_frequency', 'pmi']
+                f.write(','.join(header) + '\n')
+                
+                for row in self.cursor:
+                    formatted_row = [str(x) if x is not None else '' for x in row]
+                    f.write(','.join(formatted_row) + '\n')
+                    
+            self.logger.info(f"Successfully wrote results to {results_file}")
+            
+        except Exception as e:
+            self.logger.error(f"Error writing dis-pnm co-occurrences: {e}")
+            raise
+
     def get_processed_file_count(self):
         """
         Get the total number of processed files in the database.
