@@ -17,9 +17,9 @@ DIS,landslide,MISSL
 DIS,soil erosion,MISSL
 DIS,air pollution,MISSL
 DIS,hurricane,MISSL
-PNM,current,AMBG
-PNM,currents,AMBG
-PNM,haziness,AMBG
-PNM,waves,AMBG
-PNM,wave,AMBG
-PNM,precipitation, AMBG
+PNM,current,AMBIG
+PNM,currents,AMBIG
+PNM,haziness,AMBIG
+PNM,waves,AMBIG
+PNM,wave,AMBIG
+PNM,precipitation, AMBIG
