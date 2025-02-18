@@ -717,7 +717,7 @@ class DBAnalysis:
                     COUNT(DISTINCT eo.document_id) as uniq_documents,
                     COUNT(*) as fq
                 FROM temp_normalized_entities ne
-                JOIN entity_occurrences eo ON eo.id = ne.id
+                JOIN entity_occurrences eo ON eo.id = ne.id 
                 WHERE ne.error_id IS NULL  -- Double-check no error entities from normalized table
                 AND eo.error_id IS NULL    -- Double-check no error entities from original table
                 AND NOT EXISTS (          -- Exclude if any occurrence of this normalized form has an error
@@ -749,7 +749,7 @@ class DBAnalysis:
             if error_check[0] > 0:
                 self.logger.warning(
                     f"Found {error_check[0]} entities with error codes in entity_occurrences_summary: {error_check[1]}"
-            )
+                )
 
             # Update summary_id references
             self.cursor.execute(
@@ -1165,3 +1165,14 @@ class DBAnalysis:
         self.conn.commit()
 
         self.logger.info("Cooccurrence aggregation completed")
+
+    def suite_analysis(self) -> None:
+        """
+        Run a suite of analysis steps in sequence:
+        - Entity co-occurrence summarization
+        - Entity co-occurrence aggregation
+        - PMI calculation
+        """
+        self.aggregate_entity_cooccurrences(batch_size=batch_size)
+        self.aggregate_cooccurrences(batch_size=batch_size)
+        self.calculate_pmi(batch_size=batch_size)
