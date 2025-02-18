@@ -372,3 +372,9 @@ if __name__ == "__main__":
     data_dir = db.config["import_data_path"]
     json_to_sqlite(data_dir, db, file_span=[0, 3
     ])
+    db = EasyNerDBHandler()
+    db.data_exchanger.rename_named_entity("phenomenon", "PNM")
+    db.data_exchanger.rename_named_entity("disease", "DIS")
+    db.data_cleaner.clean_inclusive_entity_spans("PNM")
+    db.analysis.calc_document_counts()
+    db.data_cleaner.set_error_entity_error_codes()
