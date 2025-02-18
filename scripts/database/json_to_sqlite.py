@@ -77,15 +77,16 @@ def process_chunk(chunk):
                             entity,
                             span_start,
                             span_end,
+                            None,
                             entity_id,
                             doc_id,
                             sent_idx_local,
                             None,
-                            0,
-                            0.0,
-                            0,
-                            0.0,
-                            0.0,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
                         )
                         if entity_idx < len(entity_occurrences):
                             entity_occurrences[entity_idx] = occurrence
@@ -133,7 +134,7 @@ def batch_insert(
         elif table == "named_entities":
             stmt = "INSERT OR IGNORE INTO named_entities VALUES (?, ?, ?)"
         elif table == "entity_occurrences":
-            stmt = "INSERT INTO entity_occurrences VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            stmt = "INSERT INTO entity_occurrences VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
         cursor.execute("SAVEPOINT batch_insert")
 
