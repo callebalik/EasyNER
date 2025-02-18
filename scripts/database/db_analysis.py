@@ -338,23 +338,31 @@ class DBAnalysis:
         """
         try:
             # Add overlap column if it doesn't exist
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 SELECT COUNT(*) 
                 FROM pragma_table_info('entity_occurrences') 
                 WHERE name='overlap'
-            """)
+            """
+            )
             if self.cursor.fetchone()[0] == 0:
-                self.logger.info("Adding 'overlap' column to entity_occurrences table...")
-                self.cursor.execute("""
+                self.logger.info(
+                    "Adding 'overlap' column to entity_occurrences table..."
+                )
+                self.cursor.execute(
+                    """
                     ALTER TABLE entity_occurrences 
                     ADD COLUMN overlap BOOLEAN DEFAULT FALSE
-                """)
+                """
+                )
             else:
                 # Reset all overlap flags to FALSE
-                self.cursor.execute("""
+                self.cursor.execute(
+                    """
                     UPDATE entity_occurrences 
                     SET overlap = FALSE
-                """)
+                """
+                )
 
             self.logger.info("Finding overlapping entities...")
             
@@ -363,7 +371,8 @@ class DBAnalysis:
             # - They are in the same document and sentence
             # - One entity's span intersects with another's span
             # - They are different entities (different IDs)
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 WITH overlapping_pairs AS (
                     SELECT DISTINCT
                         e1.id as id1,
@@ -385,10 +394,12 @@ class DBAnalysis:
                     UNION
                     SELECT id2 FROM overlapping_pairs
                 )
-            """)
+            """
+            )
 
             # Get statistics about overlapping entities
-            self.cursor.execute("""
+            self.cursor.execute(
+                """
                 SELECT 
                     COUNT(*) as total_entities,
                     SUM(CASE WHEN overlap THEN 1 ELSE 0 END) as overlapping_entities,
@@ -396,11 +407,14 @@ class DBAnalysis:
                     COUNT(DISTINCT sentence_index) as affected_sentences
                 FROM entity_occurrences
                 WHERE overlap = TRUE
-            """)
+            """
+            )
             stats = self.cursor.fetchone()
             
             self.conn.commit()
-            self.logger.info(f"Found {stats[1]} overlapping entities across {stats[2]} documents and {stats[3]} sentences")
+            self.logger.info(
+                f"Found {stats[1]} overlapping entities across {stats[2]} documents and {stats[3]} sentences"
+            )
             
         except sqlite3.Error as e:
             self.conn.rollback()
