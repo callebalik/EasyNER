@@ -295,29 +295,34 @@ class DBAnalysis:
         )
         print(stats_msg)
         user_response = input("Export these documents to JSON? (y/n): ")
-        if user_response.lower() != 'y':
+        if user_response.lower() != "y":
             self.logger.info("Export cancelled by user")
             return
 
         if output_path is None:
             default_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                'results',
-                f'problematic_documents_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+                "results",
+                f'problematic_documents_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json',
             )
-            output_path = input(f"Enter output path (default: {default_path}): ").strip() or default_path
+            output_path = (
+                input(f"Enter output path (default: {default_path}): ").strip()
+                or default_path
+            )
 
         metadata = {
-            'statistics': {
-                'null_word_count': stats[1],
-                'null_token_count': stats[2],
-                'zero_word_count': stats[3],
-                'zero_token_count': stats[4]
+            "statistics": {
+                "null_word_count": stats[1],
+                "null_token_count": stats[2],
+                "zero_word_count": stats[3],
+                "zero_token_count": stats[4],
             }
         }
 
         output_path = self.export_documents_to_json(doc_ids, output_path, metadata)
-        self.logger.info(f"Exported {len(doc_ids)} problematic documents to {output_path}")
+        self.logger.info(
+            f"Exported {len(doc_ids)} problematic documents to {output_path}"
+        )
         return output_path
 
     def find_overlapping_entities(self) -> None:
