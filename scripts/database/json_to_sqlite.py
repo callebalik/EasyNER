@@ -246,22 +246,12 @@ def insert_data(
             conn.rollback()
             raise
         finally:
-            # Reset pragmas to default values for safety
-            pragmas = """
-            PRAGMA journal_mode=DELETE;
-            PRAGMA synchronous=FULL;
-            PRAGMA cache_size=2000;
-            PRAGMA temp_store=DEFAULT;
-            PRAGMA mmap_size=0;
-            PRAGMA threads=0;
-            PRAGMA busy_timeout=5000;
-            """
             gc.collect()
 
 
 def json_to_sqlite(
     json_path: str,
-    db_path: str,
+    db: EasyNerDBHandler,
     chunk_size: int = 100000,
     batch_size: int = 10000000,
     file_span: Tuple[int, int] = None,
@@ -274,12 +264,11 @@ def json_to_sqlite(
         chunk_size: Number of documents to process at once from JSON (default: 10000)
         batch_size: Number of rows to insert in a single batch (default: 200000)
     """
-    db = EasyNerDBHandler(db_path=db_path)
     logger = db.logger
 
     logger.info(f"Starting JSON to SQLite conversion")
     logger.info(f"Input path: {json_path}")
-    logger.info(f"Database path: {db_path}")
+    logger.info(f"Database path: {db.db_path}")
     logger.info(f"Chunk size: {chunk_size}")
     logger.info(f"Batch size: {batch_size}")
 
@@ -300,9 +289,8 @@ def json_to_sqlite(
         logger.info(
             f"Found {len(json_files)} JSON files to process of which {len(json_files_new)} are not already processed"
         )
-        db.close()
     else:
-        print("Invalid path. Please provide a valid directory path to JSON files.")
+        raise ValueError("Invalid path. Please provide a valid directory path to JSON files.")
 
     start_time = time.time()
     start_memory = get_memory_usage()
@@ -324,7 +312,7 @@ def json_to_sqlite(
                 for i in range(0, total_items, chunk_size):
                     chunk = dict(list(data.items())[i : i + chunk_size])
                     processed_data = process_chunk(chunk)
-                    insert_data(db_path=db_path, data=processed_data, batch_size=batch_size, logger=logger)
+                    insert_data(db.db_path, data=processed_data, batch_size=batch_size, logger=logger)
                     del chunk
                     del processed_data
                     gc.collect()
@@ -349,13 +337,11 @@ def json_to_sqlite(
             finally:
                 # Record fully prodcessed files in TABLE source_files
                 try:
-                    db = EasyNerDBHandler(db_path=db_path)
                     db.execute(
                         "INSERT INTO source_files (file_name, file_size, import_date) VALUES (?, ?, datetime('now'))",
                         (os.path.basename(json_file), file_size),
                     )
                     db.commit()
-                    db.close()
                 except Exception as e:
                     logger.error(f"Error recording processed file: {e}")
                     continue
@@ -367,6 +353,7 @@ def json_to_sqlite(
             "Processing halted by user. Rolling back any open transactions if needed."
         )
     finally:
+        db.close()
         end_time = time.time()
         end_memory = get_memory_usage()
         logger.info(
@@ -382,4 +369,5 @@ if __name__ == "__main__":
     if "import_data_path" not in db.config:
         raise ValueError("Database does not 'data_path' key.")
     data_dir = db.config["import_data_path"]
-    json_to_sqlite(data_dir, db.db_path, file_span=[0, 10])
+    json_to_sqlite(data_dir, db, file_span=[0, 3
+    ])
