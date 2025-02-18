@@ -1078,6 +1078,56 @@ class DBAnalysis:
             self.conn.rollback()
             self.logger.error(f"Error summarizing entity co-occurrences: {e}")
             raise
+    def aggregate_cooccurrences(self, batch_size=50000) -> None:
+        """
+        Aggregate entity cooccurrences based on normalized entity IDs from entity_occurrences_summary.
+        Uses existing relationships through entity_occurrences.summary_id to get normalized IDs.
+        """
+        self.logger.info("Starting cooccurrence aggregation...")
 
+        # Create temporary table for staging aggregated results
+        self.cursor.execute(
+            """
+            CREATE TEMPORARY TABLE tmp_cooccurrences AS
+            WITH normalized_pairs AS (
+                SELECT 
+                    CASE WHEN eo1.summary_id <= eo2.summary_id 
+                         THEN eo1.summary_id 
+                         ELSE eo2.summary_id END AS e1_id_normalized,
+                    CASE WHEN eo1.summary_id <= eo2.summary_id 
+                         THEN eo2.summary_id 
+                         ELSE eo1.summary_id END AS e2_id_normalized,
+                    eo1.document_id,
+                    CASE WHEN eo1.sentence_index = eo2.sentence_index THEN 1 ELSE 0 END as same_sentence
+                FROM entity_cooccurrences ec
+                JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
+                JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
+                WHERE eo1.summary_id IS NOT NULL 
+                AND eo2.summary_id IS NOT NULL
+                AND eo1.document_id = eo2.document_id  -- Ensure same document
+            )
+            SELECT
+                e1_id_normalized,
+                e2_id_normalized,
+                COUNT(*) as fq_document_level,
+                SUM(same_sentence) as fq_sentence_level,
+                COUNT(DISTINCT document_id) as uniq_documents
+            FROM normalized_pairs
+            GROUP BY e1_id_normalized, e2_id_normalized
+        """
+        )
 
+        # Insert or replace final results using SQLite syntax
+        self.cursor.execute(
+            """
+            INSERT OR REPLACE INTO entity_cooccurrences_summary 
+                (e1_id_normalized, e2_id_normalized, fq_document_level, 
+                fq_sentence_level, uniq_documents)
+            SELECT * FROM tmp_cooccurrences
+        """
+        )
 
+        self.cursor.execute("DROP TABLE tmp_cooccurrences")
+        self.conn.commit()
+
+        self.logger.info("Cooccurrence aggregation completed")
