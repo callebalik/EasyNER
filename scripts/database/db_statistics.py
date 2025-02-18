@@ -130,3 +130,28 @@ class DBStatistics:
         """
         self.cursor.execute("SELECT COUNT(*) FROM processed_files;")
         return self.cursor.fetchone()[0]
+
+    def get_raw_cooccurrence_counts(self):
+        """
+        Get the total number of raw cooccurrences in the database.
+
+        :return: The number of raw cooccurrences.
+        """
+        self.cursor.execute(
+            """
+            SELECT 
+                COUNT(*) as total_pairs,
+                COUNT(CASE WHEN fq_document_level IS NOT NULL THEN 1 END) as doc_level_pairs,
+                COUNT(CASE WHEN fq_sentence_level IS NOT NULL THEN 1 END) as sent_level_pairs,
+                COUNT(CASE WHEN fq_document_level IS NOT NULL AND fq_sentence_level IS NOT NULL THEN 1 END) as both_levels
+            FROM entity_cooccurrences_summary
+        """
+        )
+        stats = self.cursor.fetchone()
+        self.logger.info(
+            f"Entity co-occurrences summarization complete:"
+            f"\n- Total unique entity pairs: {stats[0]:,}"
+            f"\n- Document-level pairs: {stats[1]:,}"
+            f"\n- Sentence-level pairs: {stats[2]:,}"
+            f"\n- Pairs at both levels: {stats[3]:,}"
+        )
