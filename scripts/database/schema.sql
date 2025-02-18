@@ -29,11 +29,12 @@ CREATE TABLE
 CREATE TABLE
     entity_occurrences_summary (
         id INTEGER PRIMARY KEY NOT NULL,
-        normalized_entity_text TEXT,
+        normalized_entity_text TEXT NOT NULL,
         entity_id INTEGER NOT NULL,
         uniq_documents INTEGER,
         fq INTEGER,
-        FOREIGN KEY (entity_id) REFERENCES named_entities (id) UNIQUE (normalized_entity_text, entity_id)
+        UNIQUE(normalized_entity_text, entity_id),
+        FOREIGN KEY (entity_id) REFERENCES named_entities (id)
     );
 
 CREATE VIEW
@@ -77,6 +78,10 @@ CREATE TABLE
         FOREIGN KEY (error_id) REFERENCES entity_error_codes (error_id)
     );
 
+CREATE INDEX idx_entity_occurrences_error_check 
+ON entity_occurrences(summary_id, error_id)
+WHERE error_id IS NOT NULL;
+
 CREATE VIEW
     view_entity_occurrences AS
 SELECT
@@ -100,6 +105,30 @@ FROM
     LEFT JOIN entity_occurrences_summary eos ON eo.summary_id = eos.id
     LEFT JOIN entity_error_codes error_code ON eo.error_id = error_code.error_id;
 
+CREATE VIEW valid_entity_occurrences AS
+SELECT
+    eo.id,
+    eo.entity_text,
+    eo.span_start,
+    ne.named_entity,
+    eo.entity_id,
+    error_code.error_id,
+    doc.title,
+    eo.sentence_index,
+    eos.normalized_entity_text,
+    eos.uniq_documents,
+    eo.tf,
+    eo.inter_doc_fq,
+    eo.tf_idf,
+    eo.idf
+FROM
+    entity_occurrences eo
+    JOIN named_entities ne ON eo.entity_id = ne.id
+    JOIN documents doc ON eo.document_id = doc.id
+    LEFT JOIN entity_occurrences_summary eos ON eo.summary_id = eos.id
+    LEFT JOIN entity_error_codes error_code ON eo.error_id = error_code.error_id
+WHERE
+    eo.error_id IS NULL;
 CREATE TABLE
     entity_cooccurrences_summary (
         e1_id_normalized INTEGER NOT NULL,
@@ -133,24 +162,29 @@ FROM
     JOIN entity_occurrences_summary eos2 ON ecs.e2_id_normalized = eos2.id
     JOIN entity_occurrences eo1 ON eos1.id = eo1.id
     JOIN entity_occurrences eo2 ON eos2.id = eo2.id
-    JOIN named_entities ne1 ON eo1.entity_id = ne1.id
-    JOIN named_entities ne2 ON eo2.entity_id = ne2.id;
+    JOIN named_entities ne1 ON eos1.entity_id = ne1.id
+    JOIN named_entities ne2 ON eos2.entity_id = ne2.id;
 
 CREATE VIEW
     view_disease_phenomena_summary AS
 SELECT
-    e1.normalized_entity_text AS disease,
-    e2.normalized_entity_text AS phenomenon,
+    eos1.normalized_entity_text AS disease,
+    eos2.normalized_entity_text AS phenomenon,
     ecs.fq_document_level,
     ecs.fq_sentence_level,
-    ecs.pmi
-
+    ecs.pmi,
+    eos1.fq AS fq_disease,
+    eos2.fq AS fq_phenomenon,
+    eos1.uniq_documents AS uniq_documents_disease,
+    eos2.uniq_documents AS uniq_documents_phenomenon
 FROM
     entity_cooccurrences_summary ecs
-    JOIN entity_occurrences_summary e1 ON ecs.e1_id_normalized = e1.id
-    JOIN entity_occurrences_summary e2 ON ecs.e2_id_normalized = e2.id
+    JOIN entity_occurrences_summary eos1 ON ecs.e1_id_normalized = eos1.id
+    JOIN entity_occurrences_summary eos2 ON ecs.e2_id_normalized = eos2.id
+    
+
 WHERE
-    e1.entity_id = (
+    eos1.entity_id = (
         SELECT
             id
         FROM
@@ -158,7 +192,7 @@ WHERE
         WHERE
             named_entity = 'DIS'
     )
-    AND e2.entity_id = (
+    AND eos2.entity_id = (
         SELECT
             id
         FROM
@@ -225,3 +259,19 @@ CREATE TABLE
         file_size INTEGER,
         import_date DATETIME
     );
+
+CREATE INDEX idx_entity_occurrences_error 
+ON entity_occurrences(entity_text, error_id)
+WHERE error_id IS NOT NULL;
+
+CREATE VIEW view_entity_summary_violations AS
+SELECT DISTINCT
+    eos.id as summary_id,
+    eos.normalized_entity_text,
+    ne.named_entity,
+    eo.error_id,
+    eo.entity_text
+FROM entity_occurrences_summary eos
+JOIN entity_occurrences eo ON eo.summary_id = eos.id
+JOIN named_entities ne ON ne.id = eos.entity_id
+WHERE eo.error_id IS NOT NULL;
