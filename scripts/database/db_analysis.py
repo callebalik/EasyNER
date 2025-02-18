@@ -913,144 +913,113 @@ class DBAnalysis:
             self.logger.error(f"Unexpected error calculating PMI: {e}")
             raise
 
-    def summarize_entity_cooccurrences(self) -> None:
+    def summarize_entity_cooccurrences(self, batch_size=50000) -> None:
         """
-        Summarize the frequency of unique entity co-occurrences and record them in entity_cooccurrences_summary.
-        Uses normalized entity IDs (e1_id_normalized and e2_id_normalized) from entity_occurrences_summary.
+        Optimized implementation with:
+        - Temporary staging table
+        - Batch processing
+        - Index optimization
+        - Minimal view usage
         """
         try:
-            self.logger.info("Starting entity co-occurrences summarization...")
+            self.logger.info("Starting optimized co-occurrence summarization...")
 
-            # Recreate entity_cooccurrences_summary table with proper schema
-            self.cursor.execute("DROP TABLE IF EXISTS entity_cooccurrences_summary")
-            self.cursor.execute("""
-                CREATE TABLE entity_cooccurrences_summary (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                    e1_id_normalized INTEGER NOT NULL,
-                    e2_id_normalized INTEGER NOT NULL,
-                    fq_document_level INTEGER,
-                    fq_document_level_normalized REAL,
-                    fq_sentence_level INTEGER,
-                    fq_sentence_level_normalized REAL,
-                    FOREIGN KEY (e1_id_normalized) REFERENCES entity_occurrences_summary (id),
-                    FOREIGN KEY (e2_id_normalized) REFERENCES entity_occurrences_summary (id)
-                )
-            """)
-
-            # Summarize document-level co-occurrences
-            self.cursor.execute("""
-                INSERT INTO entity_cooccurrences_summary (
-                    e1_id_normalized, e2_id_normalized, 
-                    fq_document_level, fq_document_level_normalized
-                )
-                SELECT 
-                    CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END as e1_id_normalized,
-                    CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END as e2_id_normalized,
-                    COUNT(*) as fq_document_level,
-                    COUNT(*) * 1.0 / (SELECT COUNT(*) FROM documents) as fq_document_level_normalized
-                FROM entity_cooccurrences ec
-                JOIN entity_occurrences eo1 ON eo1.id = ec.e1_id
-                JOIN entity_occurrences eo2 ON eo2.id = ec.e2_id
-                JOIN entity_occurrences_summary eos1 ON eos1.id = eo1.summary_id
-                JOIN entity_occurrences_summary eos2 ON eos2.id = eo2.summary_id
-                WHERE ec.sentence_distance IS NULL
-                GROUP BY 
-                    CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END,
-                    CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END
-            """)
-
-            # Update sentence-level co-occurrences for existing entries
-            self.cursor.execute("""
-                WITH sentence_level_stats AS (
-                    SELECT 
-                        CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END as e1_id_normalized,
-                        CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END as e2_id_normalized,
-                        COUNT(*) as fq_sentence_level,
-                        COUNT(*) * 1.0 / (SELECT COUNT(*) FROM sentences) as fq_sentence_level_normalized
-                    FROM entity_cooccurrences ec
-                    JOIN entity_occurrences eo1 ON eo1.id = ec.e1_id
-                    JOIN entity_occurrences eo2 ON eo2.id = ec.e2_id
-                    JOIN entity_occurrences_summary eos1 ON eos1.id = eo1.summary_id
-                    JOIN entity_occurrences_summary eos2 ON eos2.id = eo2.summary_id
-                    WHERE ec.sentence_distance IS NOT NULL
-                    GROUP BY 
-                        CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END,
-                        CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END
-                )
-                UPDATE entity_cooccurrences_summary
-                SET 
-                    fq_sentence_level = (
-                        SELECT fq_sentence_level
-                        FROM sentence_level_stats
-                        WHERE sentence_level_stats.e1_id_normalized = entity_cooccurrences_summary.e1_id_normalized
-                        AND sentence_level_stats.e2_id_normalized = entity_cooccurrences_summary.e2_id_normalized
-                    ),
-                    fq_sentence_level_normalized = (
-                        SELECT fq_sentence_level_normalized
-                        FROM sentence_level_stats
-                        WHERE sentence_level_stats.e1_id_normalized = entity_cooccurrences_summary.e1_id_normalized
-                        AND sentence_level_stats.e2_id_normalized = entity_cooccurrences_summary.e2_id_normalized
-                    )
-                WHERE EXISTS (
-                    SELECT 1
-                    FROM sentence_level_stats
-                    WHERE sentence_level_stats.e1_id_normalized = entity_cooccurrences_summary.e1_id_normalized
-                    AND sentence_level_stats.e2_id_normalized = entity_cooccurrences_summary.e2_id_normalized
-                )
-            """)
-
-            # Insert new entries for sentence-level co-occurrences that don't have document-level entries
-            self.cursor.execute("""
-                INSERT INTO entity_cooccurrences_summary (
-                    e1_id_normalized, e2_id_normalized,
-                    fq_sentence_level, fq_sentence_level_normalized
-                )
-                SELECT 
-                    CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END as e1_id_normalized,
-                    CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END as e2_id_normalized,
-                    COUNT(*) as fq_sentence_level,
-                    COUNT(*) * 1.0 / (SELECT COUNT(*) FROM sentences) as fq_sentence_level_normalized
-                FROM entity_cooccurrences ec
-                JOIN entity_occurrences eo1 ON eo1.id = ec.e1_id
-                JOIN entity_occurrences eo2 ON eo2.id = ec.e2_id
-                JOIN entity_occurrences_summary eos1 ON eos1.id = eo1.summary_id
-                JOIN entity_occurrences_summary eos2 ON eos2.id = eo2.summary_id
-                WHERE ec.sentence_distance IS NOT NULL
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM entity_cooccurrences_summary s
-                    WHERE s.e1_id_normalized = CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END
-                    AND s.e2_id_normalized = CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END
-                )
-                GROUP BY 
-                    CASE WHEN eos1.id < eos2.id THEN eos1.id ELSE eos2.id END,
-                    CASE WHEN eos1.id < eos2.id THEN eos2.id ELSE eos1.id END
-            """)
-
-            # Get statistics about the summarization
-            self.cursor.execute("""
-                SELECT 
-                    COUNT(*) as total_pairs,
-                    COUNT(CASE WHEN fq_document_level IS NOT NULL THEN 1 END) as doc_level_pairs,
-                    COUNT(CASE WHEN fq_sentence_level IS NOT NULL THEN 1 END) as sent_level_pairs,
-                    COUNT(CASE WHEN fq_document_level IS NOT NULL AND fq_sentence_level IS NOT NULL THEN 1 END) as both_levels
-                FROM entity_cooccurrences_summary
-            """)
-            stats = self.cursor.fetchone()
-
-            self.conn.commit()
-            self.logger.info(
-                f"Entity co-occurrences summarization complete:"
-                f"\n- Total unique entity pairs: {stats[0]:,}"
-                f"\n- Document-level pairs: {stats[1]:,}"
-                f"\n- Sentence-level pairs: {stats[2]:,}"
-                f"\n- Pairs at both levels: {stats[3]:,}"
+            # Step 0: Cleanup and preparation
+            self.cursor.execute("DELETE FROM entity_cooccurrences_summary")
+            self.cursor.execute(
+                "CREATE TEMP TABLE temp_cooc_staging ("
+                "e1_norm INT, e2_norm INT, document_id INT, fq INT, "
+                "PRIMARY KEY (e1_norm, e2_norm, document_id)) WITHOUT ROWID"
             )
+
+            # Step 1: Batch populate staging table using direct joins
+            offset = 0
+            while True:
+                self.cursor.execute(
+                    f"""
+                    INSERT OR IGNORE INTO temp_cooc_staging
+                SELECT 
+                        MIN(eo1.summary_id, eo2.summary_id),
+                        MAX(eo1.summary_id, eo2.summary_id),
+                        eo1.document_id,
+                        COUNT(ec.e1_id)
+                FROM entity_cooccurrences ec
+                    JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
+                    JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
+                    WHERE eo1.document_id = eo2.document_id
+                    GROUP BY MIN(eo1.summary_id, eo2.summary_id), MAX(eo1.summary_id, eo2.summary_id), eo1.document_id
+                    LIMIT {batch_size} OFFSET {offset}
+                """
+                )
+
+                if self.cursor.rowcount == 0:
+                    break
+
+                offset += self.cursor.rowcount
+                self.conn.commit()
+                self.logger.info(f"Staging progress: {offset} rows")
+
+            # Step 2: Bulk insert summaries using staging data
+            base_query = """
+                INSERT INTO entity_cooccurrences_summary (e1_id_normalized, e2_id_normalized, fq_document_level, uniq_documents)
+                    SELECT 
+                    e1_norm,
+                    e2_norm,
+                    SUM(fq),
+                    COUNT(DISTINCT document_id)
+                FROM temp_cooc_staging
+                GROUP BY e1_norm, e2_norm
+            """
+            explain_query = "EXPLAIN QUERY PLAN " + base_query
+            self.cursor.execute(explain_query)
+            query_plan = self.cursor.fetchall()
+            self.logger.debug(f"Query plan for step 2: {query_plan}")
+
+            self.cursor.execute(base_query)
+
+            self.logger.info("Summarization complete")
+
+            # Step 3: Batch update summary_id using covering index
+            self.cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_cooc_pair 
+                ON entity_cooccurrences(e1_id, e2_id)
+            """
+            )
+
+            offset = 0
+            while True:
+                self.cursor.execute(
+                    f"""
+                    UPDATE entity_cooccurrences
+                    SET summary_id = (
+                        SELECT id 
+                        FROM entity_cooccurrences_summary 
+                        WHERE e1_id_normalized = MIN(eo1.summary_id, eo2.summary_id)
+                        AND e2_id_normalized = MAX(eo1.summary_id, eo2.summary_id)
+                    )
+                    FROM entity_occurrences eo1
+                    JOIN entity_occurrences eo2 ON eo2.id = entity_cooccurrences.e2_id
+                    WHERE entity_cooccurrences.e1_id = eo1.id
+                    LIMIT {batch_size} OFFSET {offset}
+                """
+                )
+
+                if self.cursor.rowcount == 0:
+                    break
+
+                offset += self.cursor.rowcount
+            self.conn.commit()
+                self.logger.info(f"Linking progress: {offset} rows")
 
         except sqlite3.Error as e:
             self.conn.rollback()
-            self.logger.error(f"Error summarizing entity co-occurrences: {e}")
+            self.logger.error(f"Summarization failed: {str(e)}")
             raise
+        finally:
+            self.cursor.execute("DROP TABLE IF EXISTS temp_cooc_staging")
+            self.cursor.execute("DROP INDEX IF EXISTS idx_cooc_pair")
+
     def aggregate_cooccurrences(self, batch_size=50000) -> None:
         """
         Aggregate entity cooccurrences based on normalized entity IDs from entity_occurrences_summary.
