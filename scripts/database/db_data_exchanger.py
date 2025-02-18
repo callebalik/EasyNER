@@ -12,8 +12,8 @@ class DBDataExchanger:
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
-        
-def _safe_count(self, table_name: str) -> int:
+
+    def _safe_count(self, table_name: str) -> int:
         """Get count with zero-value protection"""
         self.cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
         result = self.cursor.fetchone()[0]
@@ -54,7 +54,9 @@ def _safe_count(self, table_name: str) -> int:
 
     def get_document(self, doc_id: int) -> Document:
         with self.conn:
-            self.conn.row_factory = sqlite3.Row  # Configure the connection to return sqlite3.Row objects
+            self.conn.row_factory = (
+                sqlite3.Row
+            )  # Configure the connection to return sqlite3.Row objects
             try:
                 cursor = self.conn.cursor()
                 cursor.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
@@ -103,7 +105,7 @@ def _safe_count(self, table_name: str) -> int:
                 f"Error fetching entities for document {doc_id}, sentence {sentence_index}: {e}"
             )
             return []
-    
+
     def get_named_entity_id(self, named_entity: str) -> int:
         try:
             self.cursor.execute(
@@ -118,19 +120,19 @@ def _safe_count(self, table_name: str) -> int:
         except sqlite3.Error as e:
             self.logger.error(f"Error fetching named entity ID for {named_entity}: {e}")
             return None
-        
+
     def search_entities(
         self,
         type: str = None,
         doc_id: int = None,
         sentence_index: int = None,
         like: str = None,
-        sort_by: str = 'tf_idf',
-        sort_order: str = 'desc'
+        sort_by: str = "tf_idf",
+        sort_order: str = "desc",
     ):
         """
         Build and execute a query filtering by optional parameters.
-        
+
         Args:
             type: Filter by entity type
             doc_id: Filter by document ID
@@ -146,7 +148,7 @@ def _safe_count(self, table_name: str) -> int:
             WHERE 1=1
         """
         params = []
-        
+
         if type is not None:
             query += " AND entity_id = ?"
             params.append(type)
@@ -162,17 +164,17 @@ def _safe_count(self, table_name: str) -> int:
 
         # Map front-end sort columns to actual database columns
         sort_columns = {
-            'entity_text': 'eo.entity_text',
-            'named_entity': 'ne.named_entity',
-            'document_id': 'eo.document_id',
-            'sentence_index': 'eo.sentence_index',
-            'tf_idf': 'eo.tf_idf',
-            'intra_doc_fq': 'eo.intra_doc_fq'
+            "entity_text": "eo.entity_text",
+            "named_entity": "ne.named_entity",
+            "document_id": "eo.document_id",
+            "sentence_index": "eo.sentence_index",
+            "tf_idf": "eo.tf_idf",
+            "intra_doc_fq": "eo.intra_doc_fq",
         }
 
         # Add ORDER BY clause using the mapped column
-        sort_column = sort_columns.get(sort_by, 'eo.tf_idf')
-        sort_direction = 'DESC' if sort_order.lower() == 'desc' else 'ASC'
+        sort_column = sort_columns.get(sort_by, "eo.tf_idf")
+        sort_direction = "DESC" if sort_order.lower() == "desc" else "ASC"
         query += f" ORDER BY {sort_column} {sort_direction}"
 
         try:
@@ -200,12 +202,21 @@ def _safe_count(self, table_name: str) -> int:
     def get_entity_cooccurrences(self, e1_id: int, e2_id: int, level: str = "document"):
         pass
 
-    def get_cooccurrences_summary(self, page: int = 1, per_page: int = 30, include_self: bool = False, 
-                                  entity1_type: str = None, entity2_type: str = None, sort: str = 'fq_document_level', 
-                                  order: str = 'desc', entity1_search: str = None, entity2_search: str = None):
+    def get_cooccurrences_summary(
+        self,
+        page: int = 1,
+        per_page: int = 30,
+        include_self: bool = False,
+        entity1_type: str = None,
+        entity2_type: str = None,
+        sort: str = "fq_document_level",
+        order: str = "desc",
+        entity1_search: str = None,
+        entity2_search: str = None,
+    ):
         """
         Get entity co-occurrences summary with entity texts from entity_occurrences.
-        
+
         Args:
             page: Page number (1-based)
             per_page: Number of records per page
@@ -216,7 +227,7 @@ def _safe_count(self, table_name: str) -> int:
             order: Sort direction ('asc' or 'desc')
             entity1_search: Search term for entity 1
             entity2_search: Search term for entity 2
-            
+
         Returns:
             dict: Contains summaries list, has_more flag, and total count
         """
@@ -224,17 +235,21 @@ def _safe_count(self, table_name: str) -> int:
         try:
             where_clauses = []
             params = []
-            
+
             if not include_self:
                 where_clauses.append("ecs.e1_id_normalized != ecs.e2_id_normalized")
 
             if entity1_type:
-                where_clauses.append("ecs.e1_id_normalized IN (SELECT id FROM entity_occurrences WHERE entity_id = ?)")
+                where_clauses.append(
+                    "ecs.e1_id_normalized IN (SELECT id FROM entity_occurrences WHERE entity_id = ?)"
+                )
                 params.append(entity1_type)
             if entity2_type:
-                where_clauses.append("ecs.e2_id_normalized IN (SELECT id FROM entity_occurrences WHERE entity_id = ?)")
+                where_clauses.append(
+                    "ecs.e2_id_normalized IN (SELECT id FROM entity_occurrences WHERE entity_id = ?)"
+                )
                 params.append(entity2_type)
-                
+
             # Add entity text search conditions
             if entity1_search:
                 where_clauses.append("e1.entity_text LIKE ?")
@@ -251,25 +266,25 @@ def _safe_count(self, table_name: str) -> int:
                 JOIN entity_occurrences e2 ON ecs.e2_id_normalized = e2.id
                 WHERE 1=1
             """
-            
+
             if where_clauses:
                 count_sql += " AND " + " AND ".join(where_clauses)
-                
+
             self.cursor.execute(count_sql, params)
             total_count = self.cursor.fetchone()[0]
             self.logger.info(f"Total co-occurrences summary records: {total_count}")
-            
+
             if total_count == 0:
-                return {'summaries': [], 'has_more': False, 'total': 0}
+                return {"summaries": [], "has_more": False, "total": 0}
 
             # Map front-end sort columns to actual database columns
             sort_columns = {
-                'entity1_text': 'e1.entity_text',
-                'entity2_text': 'e2.entity_text',
-                'fq_document_level': 'ecs.fq_document_level',
-                'fq_document_level_normalized': 'ecs.fq_document_level_normalized',
-                'fq_sentence_level': 'ecs.fq_sentence_level',
-                'fq_sentence_level_normalized': 'ecs.fq_sentence_level_normalized'
+                "entity1_text": "e1.entity_text",
+                "entity2_text": "e2.entity_text",
+                "fq_document_level": "ecs.fq_document_level",
+                "fq_document_level_normalized": "ecs.fq_document_level_normalized",
+                "fq_sentence_level": "ecs.fq_sentence_level",
+                "fq_sentence_level_normalized": "ecs.fq_sentence_level_normalized",
             }
 
             # Main query with joins to get entity texts
@@ -292,53 +307,51 @@ def _safe_count(self, table_name: str) -> int:
                 JOIN named_entities ne1 ON e1.entity_id = ne1.id
                 JOIN named_entities ne2 ON e2.entity_id = ne2.id
             """
-            
+
             # Add WHERE clauses
             if where_clauses:
                 sql += " WHERE " + " AND ".join(where_clauses)
-                
+
             # Add ORDER BY clause using the mapped column
-            sort_column = sort_columns.get(sort, 'ecs.fq_document_level')
-            sort_direction = 'DESC' if order.lower() == 'desc' else 'ASC'
+            sort_column = sort_columns.get(sort, "ecs.fq_document_level")
+            sort_direction = "DESC" if order.lower() == "desc" else "ASC"
             sql += f" ORDER BY {sort_column} {sort_direction} NULLS LAST"
-                
+
             sql += " LIMIT ? OFFSET ?"
-            
+
             # Add pagination parameters
             params.extend([per_page + 1, offset])
-            
+
             self.cursor.execute(sql, params)
             columns = [col[0] for col in self.cursor.description]
             rows = self.cursor.fetchall()
-            
+
             # Handle pagination
             has_more = len(rows) > per_page
             rows = rows[:per_page]  # Trim the extra item we fetched
-            
+
             # Convert rows to dictionaries
             summaries = [dict(zip(columns, row)) for row in rows]
-            
+
             self.logger.info(f"Found {len(summaries)} co-occurrence summaries")
             if summaries:
                 self.logger.debug(f"Sample row: {summaries[0]}")
-            
-            return {
-                'summaries': summaries,
-                'has_more': has_more,
-                'total': total_count
-            }
+
+            return {"summaries": summaries, "has_more": has_more, "total": total_count}
         except sqlite3.Error as e:
             self.logger.error(f"Error fetching co-occurrences summary: {e}")
-            return {'summaries': [], 'has_more': False, 'total': 0}
-    
+            return {"summaries": [], "has_more": False, "total": 0}
+
     def rename_named_entity(self, old_name: str, new_name: str):
         try:
             self.cursor.execute(
-            "UPDATE named_entities SET named_entity = ? WHERE named_entity = ?",
-            (new_name, old_name)
+                "UPDATE named_entities SET named_entity = ? WHERE named_entity = ?",
+                (new_name, old_name),
             )
             self.conn.commit()
             self.logger.info(f"Renamed named entity from {old_name} to {new_name}")
         except sqlite3.Error as e:
             self.conn.rollback()
-            self.logger.error(f"Error renaming named entity from {old_name} to {new_name}: {e}")
+            self.logger.error(
+                f"Error renaming named entity from {old_name} to {new_name}: {e}"
+            )

@@ -6,38 +6,43 @@ import sqlite3
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+
 class EasyNerDBHandler:
-    def __init__(self, db_path: str = None, config_path: str ="../../config.json"):
+    def __init__(self, db_path: str = None, config_path: str = "../../config.json"):
         """
         Initialize the database handler.
 
         :param db_path: Path to the SQLite database file.
         """
         self.config = self._load_config(config_path)
-        
+
         # Check if in development mode, if so, ignore db_path provided
         if self.config["develop"]:
-                print("Setting up in development mode, ignoring database path provided")
-                pwd = os.path.dirname(os.path.abspath(__file__))
-                self.db_path = os.path.join(pwd, "development.db")
+            print("Setting up in development mode, ignoring database path provided")
+            pwd = os.path.dirname(os.path.abspath(__file__))
+            self.db_path = os.path.join(pwd, "development.db")
         else:
             if db_path is not None:
                 self.db_path = db_path
             else:
-                print("WARNING: Using No database path provided, continuing with database path provided in config")
+                print(
+                    "WARNING: Using No database path provided, continuing with database path provided in config"
+                )
                 self.db_path = self.config.get("db_path")
-        
+
         # Ensure db_path is absolute otherwise resolve it relative to the script
         if not os.path.isabs(self.db_path):
             # Resolve db_path relative to project root (config.json directory)
             project_root = os.path.dirname(os.path.abspath(config_path))
             self.db_path = os.path.join(project_root, self.db_path)
 
-        # Create Database if not present. 
+        # Create Database if not present.
         # Resolve sql schema, defaulting to schema path if user doesn't provide one after prompt
         if not os.path.exists(self.db_path):
             print(f"Database {self.db_path} does not exist. Creating database...")
-            self.schema_path = input("Please provide the path to the schema file, or press <Enter> to use the default schema path defined in config: ")
+            self.schema_path = input(
+                "Please provide the path to the schema file, or press <Enter> to use the default schema path defined in config: "
+            )
             if self.schema_path == "":
                 self.schema_path = self.config.get("schema_path")
             self.create_db(self.db_path, self.schema_path)
@@ -53,74 +58,95 @@ class EasyNerDBHandler:
 
         # Initialize components
         # Import here to avoid circular dependencies and ensure all components are initialized before use
-        from db_data_exchanger import DBDataExchanger 
+        from db_data_exchanger import DBDataExchanger
         from db_data_cleaner import DBDataCleaner
         from db_analysis import DBAnalysis
         from db_statistics import DBStatistics
 
         self.data_exchanger = DBDataExchanger(self.conn, self.cursor, self.logger)
-        self.data_cleaner = DBDataCleaner(self.conn, self.cursor, self.logger, self.data_exchanger)
-        self.analysis = DBAnalysis(self.conn, self.cursor, self.logger, self.data_exchanger)
+        self.data_cleaner = DBDataCleaner(
+            self.conn, self.cursor, self.logger, self.data_exchanger
+        )
+        self.analysis = DBAnalysis(
+            self.conn, self.cursor, self.logger, self.data_exchanger
+        )
         self.statistics = DBStatistics(self.conn, self.cursor, self.logger)
-        
+
     def _load_config(self, config_path):
         """Load the JSON configuration file."""
         if not os.path.isabs(config_path):
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), config_path)
+            config_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), config_path
+            )
         try:
             with open(config_path, "r") as f:
                 config = json.load(f).get("database", {})
                 # Test integrity of the configuration
-                if not config["develop"]: # No db path neeeded when in development mode
+                if not config["develop"]:  # No db path neeeded when in development mode
                     if "db_path" not in config:
-                        raise ValueError("Database configuration must contain 'db_path' key.")
+                        raise ValueError(
+                            "Database configuration must contain 'db_path' key."
+                        )
                 else:
-                    print("Setting up in development mode, ignoring database path provided")
+                    print(
+                        "Setting up in development mode, ignoring database path provided"
+                    )
                 if "schema_path" not in config:
-                    raise ValueError("Database configuration does not contain 'schema_path' key.")
+                    raise ValueError(
+                        "Database configuration does not contain 'schema_path' key."
+                    )
         except (FileNotFoundError, json.JSONDecodeError) as e:
             raise ValueError(f"Error loading configuration file: {e}")
-            
+
         return config
 
     def _setup_logging(self):
         """Configure logging to save to db.log in the database directory."""
-        
-        self.logger = logging.getLogger('EasyNerDB')
+
+        self.logger = logging.getLogger("EasyNerDB")
         # Set the logger level to DEBUG to capture all messages
         self.logger.setLevel(logging.DEBUG)
         if not self.logger.handlers:
-            log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs/" + self.name + ".log")
-            error_log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs/db_error.log")
+            log_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "logs/" + self.name + ".log"
+            )
+            error_log_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "logs/db_error.log"
+            )
 
             # Ensure the logs directory exists
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
-            
             # Create file handler for logging
             file_handler = logging.FileHandler(log_file)
             file_handler.setLevel(logging.DEBUG)
-            file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
             file_handler.setFormatter(file_formatter)
 
             # Create console handler for logging
             console_handler = logging.StreamHandler()
             console_handler.setLevel(logging.INFO)
-            console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            console_formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
             console_handler.setFormatter(console_formatter)
 
             # Create separate error file handler for logging errors
             error_file_handler = logging.FileHandler(error_log_file)
             error_file_handler.setLevel(logging.ERROR)
-            error_file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            error_file_formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
             error_file_handler.setFormatter(error_file_formatter)
 
             # Add handlers to the logger
             self.logger.addHandler(file_handler)
             self.logger.addHandler(console_handler)
             self.logger.addHandler(error_file_handler)
-                    
-            self.logger.info(f'Logging initialized. Log file: {log_file}')
+
+            self.logger.info(f"Logging initialized. Log file: {log_file}")
 
     def __del__(self):
         """
@@ -128,7 +154,6 @@ class EasyNerDBHandler:
         """
         if hasattr(self, "conn"):
             self.conn.close()
-
 
     def close(self):
         """
@@ -142,7 +167,7 @@ class EasyNerDBHandler:
         Empty the database.
         """
         confirmation = input("Are you sure you want to empty the database? (y/n): ")
-        if confirmation.lower() != 'y':
+        if confirmation.lower() != "y":
             print("Operation cancelled.")
             return
         self.cursor.execute("PRAGMA foreign_keys = OFF;")
@@ -165,18 +190,22 @@ class EasyNerDBHandler:
                 self.cursor.execute(query)
             else:
                 self.cursor.execute(query, args)
-                
+
             # For SELECT queries, return the results
-            if query.lstrip().upper().startswith('SELECT') or query.lstrip().upper().startswith('PRAGMA'):
+            if query.lstrip().upper().startswith(
+                "SELECT"
+            ) or query.lstrip().upper().startswith("PRAGMA"):
                 return self.cursor.fetchall()
             # For other queries (INSERT, UPDATE, DELETE, etc.), commit and return empty list
             else:
                 self.conn.commit()
                 return []
         except Exception as e:
-            self.logger.error(f"Error executing query: {query} with args: {args}. Exception: {e}")
+            self.logger.error(
+                f"Error executing query: {query} with args: {args}. Exception: {e}"
+            )
             raise
-    
+
     def commit(self):
         """
         Commit the current transaction.
@@ -262,7 +291,7 @@ class EasyNerDBHandler:
             return []
         columns = [desc[0] for desc in self.cursor.description]
         return [{columns[i]: row[i] for i in range(len(columns))} for row in rows]
-    
+
     @property
     def tables(self):
         """
@@ -282,7 +311,6 @@ class EasyNerDBHandler:
         self.conn.execute("PRAGMA synchronous = OFF")
         self.conn.execute("PRAGMA journal_size_limit = 6144000")
         self.conn.execute("PRAGMA temp_store = MEMORY")
-
 
     def optimize_db_performance_for_write(self):
         # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY

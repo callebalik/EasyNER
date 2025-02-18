@@ -1,6 +1,7 @@
 from typing import List, Optional
 from dataclasses import dataclass
 
+
 @dataclass
 class NamedEntity:
     id: int
@@ -20,6 +21,7 @@ class NamedEntity:
     pmi: float = None
     error_id: int = None
 
+
 @dataclass
 class Sentence:
     text: str
@@ -31,7 +33,7 @@ class Sentence:
     entities: Optional[List[NamedEntity]] = None
     validation_errors: List[dict] = None
 
-    def __post_init__(self, validate_entities: bool =True):    
+    def __post_init__(self, validate_entities: bool = True):
         """
         1. Ensure that span_start and span_end are non-negative.
         2. Ensure that span_start and span_end are within the bounds of the sentence.
@@ -43,29 +45,42 @@ class Sentence:
         if validate_entities:
             for entity in self.entities:
                 if entity.span_start < 0 or entity.span_end < 0:
-                    self.validation_errors.append({
-                        "entity_id": entity.id,
-                        "error": "Span start and end must be non-negative",
-                        "entity": entity
-                    })
-                elif entity.span_start >= len(self.text) or entity.span_end >= len(self.text):
-                    self.validation_errors.append({
-                        "entity_id": entity.id,
-                        "error": "Span out of bounds",
-                        "entity": entity
-                    })
+                    self.validation_errors.append(
+                        {
+                            "entity_id": entity.id,
+                            "error": "Span start and end must be non-negative",
+                            "entity": entity,
+                        }
+                    )
+                elif entity.span_start >= len(self.text) or entity.span_end >= len(
+                    self.text
+                ):
+                    self.validation_errors.append(
+                        {
+                            "entity_id": entity.id,
+                            "error": "Span out of bounds",
+                            "entity": entity,
+                        }
+                    )
                 elif entity.span_start >= entity.span_end:
-                    self.validation_errors.append({
-                        "entity_id": entity.id,
-                        "error": "Invalid span range",
-                        "entity": entity
-                    })
-                elif entity.entity_text != self.text[entity.span_start : entity.span_end]:
-                    self.validation_errors.append({
-                        "entity_id": entity.id,
-                        "error": f"Text mismatch: '{entity.entity_text}' vs '{self.text[entity.span_start : entity.span_end]}'",
-                        "entity": entity
-                    })
+                    self.validation_errors.append(
+                        {
+                            "entity_id": entity.id,
+                            "error": "Invalid span range",
+                            "entity": entity,
+                        }
+                    )
+                elif (
+                    entity.entity_text != self.text[entity.span_start : entity.span_end]
+                ):
+                    self.validation_errors.append(
+                        {
+                            "entity_id": entity.id,
+                            "error": f"Text mismatch: '{entity.entity_text}' vs '{self.text[entity.span_start : entity.span_end]}'",
+                            "entity": entity,
+                        }
+                    )
+
 
 @dataclass
 class Document:
@@ -82,7 +97,6 @@ class Document:
         s += f"\nentities: {sum(len(sentence.entities) for sentence in self.sentences)}"
         s += f"\nWord Count: {self.word_count}"
 
-    
     def print_document(self):
         print(f"Document ID: {self.id}")
         print(f"Title: {self.title}")
@@ -96,7 +110,7 @@ class Document:
 
     def to_html(self) -> str:
         has_errors = any(sentence.validation_errors for sentence in self.sentences)
-        
+
         html = f"""
         <div class="document-title">
             <h1>{self.title}</h1>
@@ -108,14 +122,14 @@ class Document:
             </div>
         </div>
         """
-        
+
         if has_errors:
             html += """
             <div class="validation-warning">
                 <p>⚠️ Some entities have validation errors. These are highlighted in red.</p>
             </div>
             """
-            
+
         for sentence in self.sentences:
             html += f"""
             <p class='sentence'>
@@ -123,7 +137,7 @@ class Document:
                 <span class='sentence-text'>{self._highlight_entities(sentence)}</span>
             </p>
             """
-            
+
         html += self._generate_entity_table()
         return html
 
@@ -136,9 +150,7 @@ class Document:
             close_tag = "</span>"
             start = entity.span_start + offset
             end = entity.span_end + offset
-            text = (
-                text[:start] + open_tag + text[start:end] + close_tag + text[end:]
-            )
+            text = text[:start] + open_tag + text[start:end] + close_tag + text[end:]
             offset += len(open_tag) + len(close_tag)
         return text
 
@@ -148,7 +160,7 @@ class Document:
             if error["entity_id"] == entity_id:
                 return error["error"]
         return ""
-    
+
     def _generate_entity_table(self) -> str:
         html = """
         <table class='entity-table'>
@@ -164,14 +176,18 @@ class Document:
             </thead>
             <tbody>
         """
-        
+
         for sentence in self.sentences:
             error_ids = {err["entity_id"] for err in sentence.validation_errors}
             for entity in sentence.entities:
                 error_class = " class='error-row'" if entity.id in error_ids else ""
                 error_message = self._get_error_message(entity.id, sentence)
-                status = f"<span class='error-status' title='{error_message}'>⚠️ Error</span>" if entity.id in error_ids else "✓ Valid"
-                
+                status = (
+                    f"<span class='error-status' title='{error_message}'>⚠️ Error</span>"
+                    if entity.id in error_ids
+                    else "✓ Valid"
+                )
+
                 html += f"""
                 <tr data-entity-id='{entity.id}'{error_class}>
                     <td>{entity.id}</td>
@@ -182,6 +198,6 @@ class Document:
                     <td>{status}</td>
                 </tr>
                 """
-                
+
         html += "</tbody></table>"
         return html
