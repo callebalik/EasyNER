@@ -102,7 +102,7 @@ class TestDBAnalysis(unittest.TestCase):
         self.cursor.execute("DROP TABLE IF EXISTS coentity_summary")
 
         # Assuming the test database already has the necessary data
-        self.db.sum_cooccurences()
+        self.db.sum_cooccurrences()
         self.cursor.execute("SELECT e1_text, e2_text, fq FROM coentity_summary")
         coentity_summary = self.cursor.fetchall()
         # print(coentity_summary)

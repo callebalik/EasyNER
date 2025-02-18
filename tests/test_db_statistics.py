@@ -15,8 +15,8 @@ from scripts.db_statistics import (
     get_number_of_articles,
     tf_idf,
     count_cooucerence_fq,
-    record_sentence_cooccurences,
-    record_document_cooccurences,
+    record_sentence_cooccurrences,
+    record_document_cooccurrences,
     count_document_cooccurence_fq,
     add_pmid_to_entity_occurrences,
     update_db_with_entity_occurrence_term_fq,
@@ -83,7 +83,7 @@ class TestDBStatistics(unittest.TestCase):
         df = tf_idf(df, num_articles)
         # df = count_cooucerence_fq(df)
         # print(df)
-        df = record_sentence_cooccurences(df)
+        df = record_sentence_cooccurrences(df)
         df.to_csv("coocurences.csv", index=False)
 
     def test_record_document_cooccurences(self):
@@ -91,7 +91,7 @@ class TestDBStatistics(unittest.TestCase):
         df = calc_entity_term_fq(df)
         num_articles = get_number_of_articles(self.conn)
         df = tf_idf(df, num_articles)
-        df = record_sentence_cooccurences(df)
+        df = record_sentence_cooccurrences(df)
         df = count_document_cooccurence_fq(df)
         df.to_csv("cooccurences_summary.csv", index=False)
 

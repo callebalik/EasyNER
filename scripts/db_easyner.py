@@ -639,7 +639,7 @@ class EasyNerDB:
             writer.writerow(["entity_text", "total_count", "entity"])
             writer.writerows(entity_frequencies)
 
-    def sum_cooccurences(self):
+    def sum_cooccurrences(self):
         """
         Summarize the cooccurrences by counting the frequency of each unique pair of entity1_text and entity2_text.
 
