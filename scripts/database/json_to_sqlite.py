@@ -370,8 +370,7 @@ if __name__ == "__main__":
     if "import_data_path" not in db.config:
         raise ValueError("Database does not 'data_path' key.")
     data_dir = db.config["import_data_path"]
-    json_to_sqlite(data_dir, db, file_span=[0, 3
-    ])
+    json_to_sqlite(data_dir, db, file_span=os.environ.get("FILE_SPAN", None))
     db = EasyNerDBHandler()
     db.data_exchanger.rename_named_entity("phenomenon", "PNM")
     db.data_exchanger.rename_named_entity("disease", "DIS")
