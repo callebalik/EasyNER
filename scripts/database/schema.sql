@@ -59,24 +59,42 @@ CREATE TABLE
     entity_occurrences (
         id INTEGER PRIMARY KEY NOT NULL,
         entity_text TEXT,
-        span_start INTEGER,
-        span_end INTEGER,
         error_id VARCHAR(20) DEFAULT NULL,
         entity_id INTEGER NOT NULL,
         document_id INTEGER NOT NULL,
         sentence_index INTEGER NOT NULL,
         summary_id INTEGER,
-        intra_doc_fq INTEGER,
-        tf REAL,
-        inter_doc_fq INTEGER,
-        tf_idf REAL,
-        idf REAL,
         FOREIGN KEY (document_id) REFERENCES documents (id),
         FOREIGN KEY (document_id, sentence_index) REFERENCES sentences (document_id, sentence_index),
         FOREIGN KEY (entity_id) REFERENCES named_entities (id),
         FOREIGN KEY (summary_id) REFERENCES entity_occurrences_summary (id),
         FOREIGN KEY (error_id) REFERENCES entity_error_codes (error_id)
     );
+
+CREATE TABLE entity_occurrence_spans (
+    id INTEGER PRIMARY KEY NOT NULL,
+    span_start INTEGER,
+    span_end INTEGER,
+    FOREIGN KEY (id) REFERENCES entity_occurrences (id) -- Important: Maintain the 1:1 relationship
+);
+
+
+CREATE VIEW view_entity_occurrences_spans AS
+SELECT
+eo.id,
+
+
+
+
+CREATE TABLE entity_occurrences_metrics (
+    id INTEGER PRIMARY KEY NOT NULL,
+    intra_doc_fq INTEGER,
+    tf REAL,
+    inter_doc_fq INTEGER,
+    tf_idf REAL,
+    idf REAL,
+    FOREIGN KEY (id) REFERENCES entity_occurrences (id) -- Important: Maintain the 1:1 relationship
+);
 
 CREATE INDEX idx_entity_occurrences_error_check 
 ON entity_occurrences(summary_id, error_id)
@@ -87,17 +105,12 @@ CREATE VIEW
 SELECT
     eo.id,
     eo.entity_text,
-    eo.span_start,
-    eo.span_end,
     ne.named_entity,
-    error_code.error_id,
-    doc.title,
-    eo.sentence_index,
     eos.normalized_entity_text,
-    eos.uniq_documents,
-    eo.tf,
-    eo.tf_idf,
-    eo.idf
+    error_code.error_id,
+    doc.title as document_title,
+    eo.document_id,
+    eos.uniq_documents
 FROM
     entity_occurrences eo
     JOIN named_entities ne ON eo.entity_id = ne.id
@@ -105,22 +118,25 @@ FROM
     LEFT JOIN entity_occurrences_summary eos ON eo.summary_id = eos.id
     LEFT JOIN entity_error_codes error_code ON eo.error_id = error_code.error_id;
 
+CREATE INDEX idx_entity_occurrences_joins 
+ON entity_occurrences(entity_id, document_id, summary_id);
+
+CREATE INDEX idx_entity_occurrences_filters ON entity_occurrences(
+    entity_text,
+    error_id
+);
+
 CREATE VIEW valid_entity_occurrences AS
 SELECT
     eo.id,
     eo.entity_text,
-    eo.span_start,
     ne.named_entity,
     eo.entity_id,
     error_code.error_id,
     doc.title,
     eo.sentence_index,
     eos.normalized_entity_text,
-    eos.uniq_documents,
-    eo.tf,
-    eo.inter_doc_fq,
-    eo.tf_idf,
-    eo.idf
+    eos.uniq_documents
 FROM
     entity_occurrences eo
     JOIN named_entities ne ON eo.entity_id = ne.id

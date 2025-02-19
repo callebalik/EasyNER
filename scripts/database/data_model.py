@@ -11,12 +11,13 @@ class NamedEntity:
     span_end: int
     document_id: int
     sentence_index: int
-    summary_id: int
-    intra_doc_fq: int
-    tf: float
-    inter_doc_fq: int
-    tf_idf: float
-    idf: float
+    summary_id: Optional[int] = None
+    normalized_entity_text: Optional[str] = None
+    intra_doc_fq: Optional[int] = None
+    tf: Optional[float] = None
+    inter_doc_fq: Optional[int] = None
+    tf_idf: Optional[float] = None
+    idf: Optional[float] = None
     overlap: bool = False
     pmi: float = None
     error_id: int = None
