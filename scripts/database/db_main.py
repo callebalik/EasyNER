@@ -58,7 +58,9 @@ class EasyNerDBHandler:
         # Connect to the database
         self.logger.info(f"Connecting to database {self.name}")
         self.conn = sqlite3.connect(self.db_path)
+        # self._set_default_settings()
         self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
+        self.cursor.row_factory = sqlite3.Row # Return rows as dictionaries for easy access
         self.logger.info(f"Connected to database {self.db_path} and created cursor")
 
         # Initialize components
@@ -70,12 +72,24 @@ class EasyNerDBHandler:
 
         self.data_exchanger = DBDataExchanger(self.conn, self.cursor, self.logger)
         self.data_cleaner = DBDataCleaner(
-            self.conn, self.cursor, self.logger, self.data_exchanger
+            self.conn, self.cursor, self.logger, self.data_exchanger, config=self.config
         )
         self.analysis = DBAnalysis(
             self.conn, self.cursor, self.logger, self.data_exchanger
         )
         self.statistics = DBStatistics(self.conn, self.cursor, self.logger, self.data_exchanger)
+
+    def _set_default_settings(self):
+        """
+        Set default settings for the database connection.
+        """
+        self.execute("PRAGMA foreign_keys = ON;")
+        self.execute("PRAGMA journal_mode = WAL;")
+        self.execute("PRAGMA synchronous = NORMAL;")
+        self.execute("PRAGMA journal_size_limit = 6144000;")
+        self.execute("PRAGMA temp_store = MEMORY;")
+        self.execute("PRAGMA busy_timeout = 10000;")
+
 
     def _load_config(self, config_path):
         """Load the JSON configuration file."""
