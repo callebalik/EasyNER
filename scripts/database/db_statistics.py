@@ -297,3 +297,95 @@ class DBStatistics:
             f"\n- Sentence-level pairs: {stats[2]:,}"
             f"\n- Pairs at both levels: {stats[3]:,}"
         )
+
+    def plot_document_sentence_count_distribution(self):
+        all_counts = []
+
+        for chunk in pd.read_sql_query("SELECT document_id, COUNT(*) AS sentence_count FROM sentences GROUP BY document_id", self.conn, chunksize=100000):
+            all_counts.extend(chunk['sentence_count'].tolist())
+
+        # Plotting with seaborn (using the accumulated list)
+        sns.histplot(all_counts, bins=20, kde=True) # or sns.countplot(x=all_counts) if you have a smaller number of distinct sentence counts
+
+        plt.xlabel("Sentence Count")
+        plt.ylabel("Frequency")
+        plt.title("Distribution of Document Sentence Counts")
+        plt.tight_layout()
+
+        plot_file = os.path.join(self._results_dir, "document_sentence_count_distribution.png")
+        plt.savefig(plot_file)
+        plt.close()
+        self.logger.info(f"Document sentence count distribution plot saved to {plot_file}")
+        
+    def plot_document_word_count_distribution(self):
+        """
+        Plot the distribution of abstract word counts using seaborn.
+        """
+        self.cursor.execute("SELECT word_count FROM documents;")
+        word_counts = [row[0] for row in self.cursor.fetchall()]
+        sns.histplot(word_counts, bins=20, kde=True)
+        plt.xlabel("Word Count")
+        plt.ylabel("Frequency")
+        plt.title("Distribution of Abstract Word Counts")
+        plt.tight_layout()
+        
+        # Save plot
+        plot_file = os.path.join(self._results_dir, "document_word_count_distribution.png")
+        plt.savefig(plot_file)
+        plt.close()
+        self.logger.info(f"Document word count distribution plot saved to {plot_file}")
+
+
+    def plot_document_distributions(self):
+        """
+        Plot the distribution of both sentence counts and word counts per document in a single figure with two subplots.
+        """
+        # Create figure with two subplots side by side
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+        # Plot sentence count distribution
+        all_counts = []
+        for chunk in pd.read_sql_query(
+            "SELECT document_id, COUNT(*) AS sentence_count FROM sentences GROUP BY document_id", 
+            self.conn, 
+            chunksize=100000
+        ):
+            all_counts.extend(chunk['sentence_count'].tolist())
+        
+        sns.histplot(all_counts, bins=20, kde=True, ax=ax1)
+        ax1.set_xlabel("Sentences per Document")
+        ax1.set_ylabel("Frequency")
+        ax1.set_title("Distribution of Document Sentence Counts")
+
+        # Plot word count distribution
+        self.cursor.execute("SELECT word_count FROM documents;")
+        word_counts = [row[0] for row in self.cursor.fetchall()]
+        sns.histplot(word_counts, bins=20, kde=True, ax=ax2)
+        ax2.set_xlabel("Words per Document")
+        ax2.set_ylabel("Frequency")
+        ax2.set_title("Distribution of Document Word Counts")
+
+        # Adjust layout and save
+        plt.tight_layout()
+        plot_file = os.path.join(self._results_dir, "document_distributions.png")
+        plt.savefig(plot_file)
+        plt.close()
+        self.logger.info(f"Document distributions plot saved to {plot_file}")
+
+    def export_overview_table(self):
+        """
+        Get an overview of the tables in the database.
+        """
+        doc_count = self.get_document_count()
+        sent_count = self.get_sentence_count()
+        eo_count = self.get_entity_occurrence_count()
+        ec_count = self.get_entity_cooccurrence_count()
+
+        df = pd.DataFrame(
+            {
+                "Table": ["documents", "sentences", "entity_occurrences", "entity_cooccurrences"],
+                "Count": [doc_count, sent_count, eo_count, ec_count],
+            }
+        )
+
+        self._export_df_(df, "database_overview.csv")
