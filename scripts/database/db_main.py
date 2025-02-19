@@ -104,7 +104,7 @@ class EasyNerDBHandler:
             raise ValueError(f"Error loading configuration file: {e}")
 
         return config
-
+    
     def _setup_logging(self):
         """Configure logging to save to db.log in the database directory."""
 
@@ -167,7 +167,7 @@ class EasyNerDBHandler:
         if hasattr(self, "conn"):
             self.conn.close()
 
-    def empty_database(self):
+    def _empty_database_(self):
         """
         Empty the database.
         """
@@ -181,7 +181,35 @@ class EasyNerDBHandler:
         self.cursor.execute("PRAGMA foreign_keys = ON;")
         self.conn.commit()
         self.cursor.execute("VACUUM;")
-
+    def _backup_database_(self, backup_path: str = None):
+        """
+        Backup the database to a specified path.
+        
+        Args:
+            backup_path (str, optional): Path where to save the backup. 
+                                    If None, appends '.backup' to current db path.
+        """
+        if backup_path is None:
+            backup_path = self.db_path + ".backup"
+        else:
+            if not os.path.isabs(backup_path):
+                backup_path = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), backup_path
+                )
+                
+        self.logger.info(f"Backing up database to {backup_path}")
+        
+        try:
+            # Open the backup destination
+            with sqlite3.connect(backup_path) as dest_conn:
+                # Perform the backup
+                self.conn.backup(dest_conn)
+                
+            self.logger.info(f"Database backed up successfully to {backup_path}")
+        except sqlite3.Error as e:
+            self.logger.error(f"Backup failed: {str(e)}")
+            raise
+        
     def execute(self, query, args=None):
         """
         Execute a SQL query.
