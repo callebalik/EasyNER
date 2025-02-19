@@ -124,9 +124,9 @@ def home():
             'db_size': _format_size(db.statistics.size),
             'source_size': _format_size(db.statistics.total_source_size),
             'compression_ratio': f"{db.statistics.compression_ratio:.2f}",
-            'document_count': db.statistics.get_document_count(),
-            'sentence_count': db.statistics.get_sentence_count(),
-            'named_entity_count': db.statistics.get_named_entity_count()
+            'document_count': db.statistics.document_count,
+            'sentence_count': db.statistics.sentence_count,
+            'named_entity_count': db.statistics.named_entity_count
         }
         
         return render_template('home.html', tables=tables_info, stats=stats)

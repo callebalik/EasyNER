@@ -19,8 +19,8 @@ class DBAnalysis:
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
-        self.statistics = DBStatistics(conn, cursor, logger)  # Initialize DBStatistics
         self.data_exchanger = data_exchanger
+        self.statistics = DBStatistics(conn, cursor, logger, data_exchanger=data_exchanger)  # Initialize DBStatistics
 
     def calc_document_counts(self, batch_size=100000):
         """

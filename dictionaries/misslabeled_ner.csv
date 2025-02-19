@@ -22,6 +22,7 @@ PNM,currents,AMBIG
 PNM,haziness,AMBIG
 PNM,waves,AMBIG
 PNM,wave,AMBIG
-PNM,precipitation, AMBIG
-PNM,precipitations, AMBIG
+PNM,precipitation,AMBIG
+PNM,precipitations,AMBIG
 PNM,stream,AMBIG
+PNM,streams,AMBIG
