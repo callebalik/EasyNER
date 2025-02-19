@@ -141,7 +141,7 @@ class DBDataCleaner:
 
     def set_error_entity_error_codes(
         self,
-        error_info: str = "dictionaries/misslabeled_ner.csv",
+        error_info: str = "/home/carloa/Desktop/EasyNer/dictionaries/misslabeled_ner.csv",
         error_codes_path: str = "entity_error_codes.json",
     ) -> None:
         """
