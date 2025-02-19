@@ -4,21 +4,25 @@ import os
 
 from pandas import DataFrame
 
+from db_data_exchanger import DBDataExchanger # Import pandas
+
 
 class DBStatistics:
 
     def __init__(
         self,
-        connection: sqlite3.Connection,
+        conn: sqlite3.Connection,
         cursor: sqlite3.Cursor,
         logger: logging.Logger,
+        data_exchanger: DBDataExchanger,
     ):
-        self.connection = connection
-        self.cursor = connection.cursor()
+        self.conn = conn
+        self.cursor = conn.cursor()
         self.logger = logger
         self._results_dir = os.path.join(
             os.path.dirname(__file__), "..", "..", "results"
         )
+        self.data_exchanger = data_exchanger
 
     def _export_df_(self, results: DataFrame, filename, overwrite: bool=True):
         """

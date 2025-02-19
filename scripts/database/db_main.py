@@ -75,7 +75,7 @@ class EasyNerDBHandler:
         self.analysis = DBAnalysis(
             self.conn, self.cursor, self.logger, self.data_exchanger
         )
-        self.statistics = DBStatistics(self.conn, self.cursor, self.logger)
+        self.statistics = DBStatistics(self.conn, self.cursor, self.logger, self.data_exchanger)
 
     def _load_config(self, config_path):
         """Load the JSON configuration file."""
