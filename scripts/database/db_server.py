@@ -926,16 +926,25 @@ def show_indexes():
     try:
         db = get_db()
         indexes_info = {}
-        
+        table_schemas = {}  # Store table schemas
+        indexed_columns_by_table = {}  # Store indexed columns for each table
+
         # Get list of tables
         tables = db.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        
+
         for table in tables:
             table_name = table[0]
+
+            # Get table schema
+            schema_sql = f"PRAGMA table_info({table_name})"
+            schema = db.execute(schema_sql)
+            table_schemas[table_name] = [dict(zip(['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'], col)) for col in schema]
+
             # Get indexes for each table
             indexes = db.execute(f"SELECT * FROM sqlite_master WHERE type='index' AND tbl_name=?", 
                                [table_name])
-            
+
+            indexed_columns = set()
             indexes_info[table_name] = []
             for idx in indexes:
                 index_info = {
@@ -944,9 +953,14 @@ def show_indexes():
                     'columns': _parse_index_columns(idx[4])
                 }
                 indexes_info[table_name].append(index_info)
-        
+                indexed_columns.update(index_info['columns'])  # Collect indexed columns
+
+            indexed_columns_by_table[table_name] = indexed_columns  # Store indexed columns
+
         return render_template('indexes.html', 
-                             indexes=indexes_info)
+                             indexes=indexes_info,
+                             table_schemas=table_schemas,
+                             indexed_columns_by_table=indexed_columns_by_table)  # Pass indexed columns to the template
     except Exception as e:
         db.logger.error(f"Error loading indexes: {e}")
         return render_template('error.html', message="Error loading indexes"), 500
