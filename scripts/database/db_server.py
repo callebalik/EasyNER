@@ -69,11 +69,9 @@ def close_db(e=None):
         except Exception as e:
             db.logger.error(f"Error closing database: {e}")
 
-# Remove @app.before_first_request and initialize db in a context
-def init_db():
-    with app.app_context():
-        db = get_db()
-        try:
+
+def align_with_schema():
+    try:
             # Use existing schema alignment method
             schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
             db.align_with_schema(schema_path)
@@ -90,13 +88,12 @@ def init_db():
                             continue
             db.logger.info("Database indexes applied successfully")
             
-        except Exception as e:
-            db.logger.error(f"Error initializing database: {e}")
-            raise
-            
-        db.logger.info("Flask application initialized")
-        return db
-
+    except Exception as e:
+        db.logger.error(f"Error initializing database: {e}")
+        raise
+        
+    db.logger.info("Flask application initialized")
+    return db
 def get_available_entities(db):
     try:
         return db.execute("SELECT id, named_entity FROM named_entities ORDER BY named_entity")
@@ -299,62 +296,12 @@ def get_named_entity_types():
         db.logger.error(f"Error fetching named entity types: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route("/entities")
-def list_entities():
-    try:
-        db = get_db()
-        page = int(request.args.get('page', 1))
-        query = request.args.get('query', '')
-        doc_id = request.args.get('doc_id')
-        entity_type = request.args.get('type')
-        sort = request.args.get('sort', 'tf_idf')
-        order = request.args.get('order', 'desc')
-        per_page = 30
-        offset = (page - 1) * per_page
-        
-        # Get all entity types for the filter dropdown
-        entity_types = db.execute("SELECT id, named_entity FROM named_entities ORDER BY named_entity")
-        
-        # Use enhanced search_entities with sorting
-        entities_data = db.data_exchanger.search_entities(
-            type=entity_type if entity_type else None,
-            doc_id=int(doc_id) if doc_id else None,
-            like=query if query else None,
-            sort_by=sort,
-            sort_order=order
-        )
-        
-        # Handle pagination
-        total_results = len(entities_data)
-        has_more = total_results > (offset + per_page)
-        paginated_data = entities_data[offset:offset + per_page]
-        
-        # Convert to NamedEntity objects
-        entities = []
-        for entity_data in paginated_data:
-            entity_type_name = entity_data.pop('named_entity')
-            entity_data.pop('overlap', None)  # Remove 'overlap' parameter
-            entity = NamedEntity(**entity_data)
-            entity.named_entity = entity_type_name
-            entities.append(entity)
-
-        # Calculate next sort order
-        next_order = 'asc' if order == 'desc' else 'desc'
-
-        return render_template('entities.html',
-                             entities=entities,
-                             entity_types=[dict(zip(['id', 'named_entity'], et)) for et in entity_types],
-                             page=page,
-                             query=query,
-                             doc_id=doc_id,
-                             type=entity_type,
-                             sort=sort,
-                             order=order,
-                             next_order=next_order,
-                             has_more=has_more)
-    except Exception as e:
-        db.logger.error(f"Error loading entities page: {e}")
-        return render_template('error.html', message="Error loading entities"), 500
+@app.route("/entity-occurrences")
+def list_entity_occurrences():
+    result = display_table('view_entity_occurrences ')
+    if 'error' in result:
+        return render_template('error.html', message=result['error']), 500
+    return render_template('table_view.html', table_name='view_entity_occurrences ', **result)
 
 @app.route('/document/<int:doc_id>')
 def show_document(doc_id):
@@ -966,12 +913,56 @@ def disease_phenomena_sankey():
         db.logger.error(f"Error generating Sankey diagram: {e}")
         return render_template('error.html', message="Error generating Sankey diagram"), 500
 
+@app.route('/indexes')
+def show_indexes():
+    try:
+        db = get_db()
+        indexes_info = {}
+        
+        # Get list of tables
+        tables = db.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        
+        for table in tables:
+            table_name = table[0]
+            # Get indexes for each table
+            indexes = db.execute(f"SELECT * FROM sqlite_master WHERE type='index' AND tbl_name=?", 
+                               [table_name])
+            
+            indexes_info[table_name] = []
+            for idx in indexes:
+                index_info = {
+                    'name': idx[1],
+                    'sql': idx[4],
+                    'columns': _parse_index_columns(idx[4])
+                }
+                indexes_info[table_name].append(index_info)
+        
+        return render_template('indexes.html', 
+                             indexes=indexes_info)
+    except Exception as e:
+        db.logger.error(f"Error loading indexes: {e}")
+        return render_template('error.html', message="Error loading indexes"), 500
+
+def _parse_index_columns(create_sql):
+    """Extract column names from CREATE INDEX statement"""
+    if not create_sql:
+        return []
+    try:
+        # Find text between parentheses
+        import re
+        match = re.search(r'\((.*?)\)', create_sql)
+        if match:
+            # Split columns and clean up
+            return [col.strip() for col in match.group(1).split(',')]
+    except Exception:
+        pass
+    return []
 
 if __name__ == "__main__":
     with app.app_context():
         try:
             # Initialize database before running the server
-            db = init_db()
+            db = get_db()
             db.logger.info("Starting Flask server...")
             
             app.run(host="127.0.0.1", 

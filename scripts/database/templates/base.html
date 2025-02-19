@@ -7,15 +7,16 @@
 </head>
 <body>
     <div class="nav">
-        <a href="/">Home</a>
-        <a href="/tables">Tables</a>
-        <a href="/documents">Documents</a>
-        <a href="/named-entities">Named Entities</a>
-        <a href="/entities">Entity Occurrences</a>
-        <a href="/raw-cooccurrences">Raw Co-occurrences</a>
-        <a href="/summary-cooccurrences">Summary Co-occurrences</a>
-        <a href="/disease-phenomena-sankey">Disease-Phenomena Sankey</a>
-        <a href="/health">Health Check</a>
+        <a href="{{ url_for('home') }}">Home</a>
+        <a href="{{ url_for('get_tables') }}">Tables</a>
+        <a href="{{ url_for('list_documents') }}">Documents</a>
+        <a href="{{ url_for('list_named_entities') }}">Named Entities</a>
+        <a href="{{ url_for('list_entity_occurrences') }}">Entity Occurrences</a>
+        <a href="{{ url_for('raw_cooccurrences') }}">Raw Co-occurrences</a>
+        <a href="{{ url_for('summary_cooccurrences') }}">Summary Co-occurrences</a>
+        <a href="{{ url_for('disease_phenomena_sankey') }}">Disease-Phenomena Sankey</a>
+        <a href="{{ url_for('health_check') }}">Health Check</a>
+        <a class="nav-link" href="{{ url_for('show_indexes') }}">Indexes</a>
     </div>
     <div class="container">
         {% block content %}{% endblock %}
