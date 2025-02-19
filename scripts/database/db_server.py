@@ -744,17 +744,25 @@ def display_table(table_name):
         db.cursor.execute(f"PRAGMA table_info({table_name})")
         columns_info = db.cursor.fetchall()
         columns = [col[1] for col in columns_info]
+        column_types = {col[1]: col[2].upper() for col in columns_info}  # Store column types
         text_columns = [col[1] for col in columns_info if col[2].upper() == 'TEXT']
+
+        # Extract search queries for each column
+        column_search_queries = {col: request.args.get(f'{col}_search', '') for col in text_columns}
 
         # Build the base SQL query
         sql = f"SELECT * FROM {table_name}"
         params = []
 
         # Add search functionality for TEXT columns
-        if search_query and text_columns:
-            search_conditions = [f"{col} LIKE ?" for col in text_columns]
-            sql += " WHERE " + " OR ".join(search_conditions)
-            params.extend([f'%{search_query}%'] * len(text_columns))
+        search_conditions = []
+        for col, query in column_search_queries.items():
+            if query:
+                search_conditions.append(f"{col} LIKE ?")
+                params.append(f'%{query}%')
+
+        if search_conditions:
+            sql += " WHERE " + " AND ".join(search_conditions)
 
         # Add sorting
         if sort_by in columns:
@@ -785,12 +793,12 @@ def display_table(table_name):
             'has_more': has_more,
             'sort_by': sort_by,
             'sort_order': sort_order,
-            'search_query': search_query
+            'column_types': column_types,  # Pass column types to the template
+            'column_search_queries': column_search_queries # Pass search queries to the template
         }
     except Exception as e:
         db.logger.error(f"Error displaying table {table_name}: {e}")
         return {'error': str(e)}
-
 
 @app.route('/table/<table_name>')
 def table_view(table_name):
