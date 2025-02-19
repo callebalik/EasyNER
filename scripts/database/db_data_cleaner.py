@@ -16,11 +16,13 @@ class DBDataCleaner:
         cursor: sqlite3.Cursor,
         logger: logging.Logger,
         data_exchanger: DBDataExchanger,
+        config: dict,
     ):
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
         self.data_exchanger = data_exchanger
+        self.config = config
 
     def clean_entity_text_by_pattern(
         self, patterns: List[str], dry_run: bool = True
@@ -110,9 +112,23 @@ class DBDataCleaner:
 
         if entity_type is None:
             raise ValueError("entity_type must be specified")
-
+        else: 
+            entity_id = self.data_exchanger.get_named_entity_id(entity_type)
         try:
-            entities = self.data_exchanger.search_entities(type=entity_type)
+            
+
+            # Get all spans for entities of the specified type
+            query = """
+            SELECT 
+                eos.id,
+                eos.span_end
+            FROM entity_occurrence_spans eos
+            JOIN entity_occurrences eo ON eos.id = eo.id
+            WHERE eo.entity_id = ?
+            """
+            self.cursor.execute(query, (entity_id,)) 
+            entities = self.cursor.fetchall()
+
 
             update_data = []
             for entity in entities:
@@ -120,7 +136,7 @@ class DBDataCleaner:
 
             if update_data:
                 update_query = """
-                UPDATE entity_occurrences
+                UPDATE entity_occurrence_spans
                 SET span_end = ?
                 WHERE id = ?
                 """
@@ -181,20 +197,22 @@ class DBDataCleaner:
 
         try:
             # 2. Check if error_id column exists
-            self.cursor.execute("PRAGMA table_info(entity_occurrences)")
-            columns = [column[1] for column in self.cursor.fetchall()]
-            if "error_id" not in columns:
-                # Add error_id column if it doesn't exist
-                self.cursor.execute(
+            if self.config["develop"]:
+                self.logger.info("Checking for error_id column in entity_occurrences")
+                self.cursor.execute("PRAGMA table_info(entity_occurrences)")
+                columns = [column[1] for column in self.cursor.fetchall()]
+                if "error_id" not in columns:
+                    # Add error_id column if it doesn't exist
+                    self.cursor.execute(
+                        """
+                        ALTER TABLE entity_occurrences
+                        ADD COLUMN error_id VARCHAR(20) DEFAULT NULL
                     """
-                    ALTER TABLE entity_occurrences
-                    ADD COLUMN error_id VARCHAR(20) DEFAULT NULL
-                """
-                )
-            else:
-                self.logger.info("Column error_id already exists in entity_occurrences, clearing")
-                self.cursor.execute("UPDATE entity_occurrences SET error_id = NULL")
-                self.conn.commit()  
+                    )
+                else:
+                    self.logger.info("Column error_id already exists in entity_occurrences, clearing")
+                    self.cursor.execute("UPDATE entity_occurrences SET error_id = NULL")
+                    self.conn.commit()  
 
             # 3. Bulk insert error codes
             error_code_data = [(label, desc) for label, desc in error_codes.items()]
@@ -211,10 +229,10 @@ class DBDataCleaner:
 
             # 4. Load entity errors from CSV and prepare for bulk update
             entity_updates = []
-            entity_id_cache = {}  # Initialize the cache
             with open(error_info, "r") as f:
                 reader = csv.reader(f)
                 next(reader)  # Skip header row
+
                 for row in reader:
                     entity_type, entity_text, error_id = row
 
@@ -231,57 +249,41 @@ class DBDataCleaner:
                         self.logger.warning(f"Invalid error_id: {error_id}. Must be string <= 10 chars. Skipping.")
                         continue
 
-
-                    # Check if entity_id is in the cache
-                    if (entity_type, entity_text) in entity_id_cache:
-                        entity_id = entity_id_cache[(entity_type, entity_text)]
-                    else:
-                        # Get the entity_id using get_named_entity_id
-                        self.cursor.execute(
-                            "SELECT id FROM named_entities WHERE named_entity = ?",
-                            (entity_type,),
-                        )
-                        result = self.cursor.fetchone()
-                        if result:
-                            entity_id = result[0]
-                            entity_id_cache[(entity_type, entity_text)] = (
-                                entity_id  # Add to cache
-                            )
-                        else:
-                            self.logger.warning(
-                                f"No entity ID found for type: {entity_type} and text: {entity_text}"
-                            )
-                            continue
+                    # Directly convert entity_type to ID
+                    entity_id = self.data_exchanger.get_named_entity_id(entity_type)
+                    if not entity_id:
+                        self.logger.warning(f"Misslabeled NER: No entity ID found for type: {entity_type} and text: {entity_text}")
+                        continue
 
                     entity_updates.append(
                         (error_id, entity_text, entity_id)
                     )
 
-            # Print the first 5 updates
-            self.logger.info(f"First 5 entity updates: {entity_updates[:5]}")
+            # Proceed if we have any updates
+            if entity_updates:
+                try:
+                    # Add error_id for WHERE clause
+                    entity_updates = [(error_id, entity_text, entity_id, error_id) for error_id, entity_text, entity_id in entity_updates]
+                    self.logger.info(f"processing {len(entity_updates)} entity errors code updates...")
+                    self.logger.info(f"First 5 entity updates: {entity_updates[:5]}") # Print the first 5 updates
 
+                    # Bulk update entity_occurrences for not already set error_ids
+                    update_query = """
+                    UPDATE entity_occurrences
+                    SET error_id = ?
+                    WHERE LOWER(entity_text) = LOWER(?) 
+                    AND entity_id = ?
+                    AND (error_id IS NULL OR error_id != ?)
+                    """
 
-            # 5. Bulk update entity_occurrences
-            update_query = """
-            UPDATE entity_occurrences
-            SET error_id = ?
-            WHERE LOWER(entity_text) = LOWER(?) AND entity_id = ?
-            """
-            self.cursor.executemany(update_query, entity_updates)
-            
-            # Get actual matches from entity_occurrences
-            matched_query = """
-            SELECT DISTINCT entity_text, error_id 
-            FROM entity_occurrences 
-            WHERE error_id IS NOT NULL
-            """
-            self.cursor.execute(matched_query)
-            updated_entities = set((text, error) for text, error in self.cursor.fetchall())
-            
-            self.logger.info(f"Updated {len(entity_updates)} entity occurrences")
-            self.logger.info(f"Matched entities with errors: {updated_entities}")
-            self.conn.commit()
-
+                    self.cursor.executemany(update_query, entity_updates)
+                    self.conn.commit()
+                    self.logger.info(f"Updated {len(entity_updates)} entity occurrences")
+                except KeyboardInterrupt:
+                    self.logger.warning("User interrupted. Rolling back changes.")
+                    self.conn.rollback()
+                    return
+                    
         except FileNotFoundError as e:
             self.logger.error(f"Error: File not found: {e.filename}")
             raise
@@ -289,3 +291,4 @@ class DBDataCleaner:
             self.logger.error(f"Error attaching error information: {e}")
             self.conn.rollback()
             raise
+        
