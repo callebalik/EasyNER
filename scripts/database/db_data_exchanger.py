@@ -92,12 +92,23 @@ class DBDataExchanger:
         try:
             cursor = self.conn.cursor()
             cursor.execute(
-                """
-                SELECT * FROM entity_occurrences 
-                WHERE document_id = ? AND sentence_index = ?
-                """,
-                (doc_id, sentence_index),
-            )
+            """
+            SELECT 
+                veo.id,
+                veo.entity_text,
+                veo.named_entity,
+                veo.normalized_entity_text,
+                veo.document_id,
+                eo.sentence_index,
+                eos.span_start,
+                eos.span_end
+            FROM view_entity_occurrences veo
+            JOIN entity_occurrences eo ON veo.id = eo.id
+            LEFT JOIN entity_occurrence_spans eos ON veo.id = eos.id
+            WHERE veo.document_id = ? AND eo.sentence_index = ?
+            """,
+            (doc_id, sentence_index),
+        )
             entities = cursor.fetchall()
             return [NamedEntity(**self._row_to_dict(entity)) for entity in entities]
         except sqlite3.Error as e:
@@ -120,6 +131,8 @@ class DBDataExchanger:
         except sqlite3.Error as e:
             self.logger.error(f"Error fetching named entity ID for {named_entity}: {e}")
             return None
+
+
 
     def search_entities(
         self,
