@@ -129,8 +129,8 @@
         "db_path": "results/co_occurrences.db"
     },
     "database": {
-        "develop": true,
-        "db_path": "/lunarc/nobackup/projects/snic2020-6-41/carl/",
+        "develop": false,
+        "db_path": "/lunarc/nobackup/projects/snic2020-6-41/carl/envidis.db",
         "schema_path": "/home/carloa/Desktop/EasyNer/scripts/database/schema.sql",
         "import_data_path": "/lunarc/nobackup/projects/snic2020-6-41/carl/ner_merged_plurals_and_word_count/"
     }
