@@ -104,16 +104,8 @@ class DBStatistics:
         self.cursor.execute("SELECT COUNT(*) FROM documents;")
         return self.cursor.fetchone()[0]
 
-    def get_document_count(self):
-        """
-        Get the total number of documents in the database.
-
-        :return: The number of documents.
-        """
-        self.cursor.execute("SELECT COUNT(*) FROM documents;")
-        return self.cursor.fetchone()[0]
-
-    def get_sentence_count(self):
+    @property
+    def sentence_count(self):
         """
         Get the total number of sentences in the database.
 
@@ -122,7 +114,8 @@ class DBStatistics:
         self.cursor.execute("SELECT COUNT(*) FROM sentences;")
         return self.cursor.fetchone()[0]
 
-    def get_named_entity_count(self):
+    @property
+    def named_entity_count(self):
         """
         Get the total number of named entities in the database.
 
