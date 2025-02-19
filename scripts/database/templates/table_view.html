@@ -2,6 +2,7 @@
 
 {% block content %}
     <h1>{{ table_name }} Table View</h1>
+    <form id="search-form" onSubmit="return false;">
     <table id="table-view" class="data-table">
         <thead>
             <tr>
@@ -13,6 +14,12 @@
                            class="sort-header {% if sort_by == column %}sorted-{{ sort_order }}{% endif %}">
                             {{ column }}
                         </a>
+                        {% if column_types[column] == 'TEXT' %}
+                        <input type="text" 
+                               name="{{ column }}_search"
+                               placeholder="Search {{ column }}..."
+                               value="{{ column_search_queries[column] }}">
+                        {% endif %}
                     </th>
                     {% endif %}
                 {% endfor %}
@@ -38,7 +45,37 @@
             {% endfor %}
         </tbody>
     </table>
+    </form>
     {% if has_more %}
-    <a href="{{ url_for('table_view', table_name=table_name, page=page+1, sort_by=sort_by, sort_order=sort_order) }}">Load More</a>
+    <a href="{{ url_for('table_view', table_name=table_name, page=page+1, sort_by=sort_by, sort_order=sort_order) }}{% for column in columns %}{% if column_types[column] == 'TEXT' %}&{{ column }}_search={{ column_search_queries[column] }}{% endif %}{% endfor %}">Load More</a>
     {% endif %}
+{% endblock %}
+
+{% block head %}
+{{ super() }}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchForm = document.getElementById('search-form');
+        const searchInputs = searchForm.querySelectorAll('input[type="text"]');
+
+        searchInputs.forEach(input => {
+            input.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter') {
+                    // Prevent the default action to stop form from submitting
+                    event.preventDefault();
+                    
+                    // Construct the URL with the search parameters
+                    let url = new URL(window.location.href);
+                    
+                    // Add or update the search parameter for the current input
+                    const paramName = this.name;
+                    url.searchParams.set(paramName, this.value);
+                    
+                    // Redirect to the new URL
+                    window.location.href = url.href;
+                }
+            });
+        });
+    });
+</script>
 {% endblock %}
