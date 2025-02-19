@@ -40,11 +40,16 @@ class EasyNerDBHandler:
         # Resolve sql schema, defaulting to schema path if user doesn't provide one after prompt
         if not os.path.exists(self.db_path):
             print(f"Database {self.db_path} does not exist. Creating database...")
-            self.schema_path = input(
-                "Please provide the path to the schema file, or press <Enter> to use the default schema path defined in config: "
-            )
-            if self.schema_path == "":
+            
+            if os.getenv("DB_RUN", False) == True or not sys.stdin.isatty(): # Check if running in a non-interactive environment
+                print("Running in non-interactive environment, using default schema path defined in config")
                 self.schema_path = self.config.get("schema_path")
+            else:
+                self.schema_path = input(
+                    "Please provide the path to the schema file, or press <Enter> to use the default schema path defined in config: "
+                )
+                if self.schema_path == "":
+                    self.schema_path = self.config.get("schema_path")
             self.create_db(self.db_path, self.schema_path)
 
         self.name = os.path.basename(self.db_path)
