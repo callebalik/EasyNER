@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=cleanup       # Job name
+#SBATCH --job-name=analysis          # Job name
 #SBATCH -o %x_%j.out                 # Standard output with job name prefix
 #SBATCH -e %x_%j.err                 # Standard error with job name prefix
-#SBATCH --time=05:00:00             # Time limit hrs:min:sec
+#SBATCH --time=09:00:00              # Time limit hrs:min:sec
 
 # write this script to stdout-file - useful for scripting errors
 cat $0
@@ -22,7 +22,12 @@ export PYTHONPATH=$PYTHONPATH:/home/carloa/Desktop/EasyNer
 export DB_RUN=True
 # export FILE_SPAN=None
 echo "DB_RUN is set to: $DB_RUN"
-echo "FILE_SPAN is set to: $FILE_SPAN"
 
+
+# Import database class from python database module to the slurm script
 # Run the conversion script (all configuration is in config.json)
-python /home/carloa/Desktop/EasyNer/scripts/database/cleanup.py
+python /home/carloa/Desktop/EasyNer/scripts/database/analysis.py
+
+
+
+
