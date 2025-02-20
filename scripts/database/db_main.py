@@ -61,6 +61,8 @@ class EasyNerDBHandler:
         # self._set_default_settings()
         self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
         self.cursor.row_factory = sqlite3.Row # Return rows as dictionaries for easy access
+        self.execute_with_log = self.execute_with_log
+        self.log_query_plan = self._log_query_plan
         self.logger.info(f"Connected to database {self.db_path} and created cursor")
 
         # Initialize components
@@ -74,9 +76,7 @@ class EasyNerDBHandler:
         self.data_cleaner = DBDataCleaner(
             self.conn, self.cursor, self.logger, self.data_exchanger, config=self.config
         )
-        self.analysis = DBAnalysis(
-            self.conn, self.cursor, self.logger, self.data_exchanger
-        )
+        self.analysis = DBAnalysis(self.conn, self.cursor, self.logger, self.data_exchanger, self.log_query_plan, self.execute_with_log )
         self.statistics = DBStatistics(self.conn, self.cursor, self.logger, self.data_exchanger)
 
     def _set_default_settings(self):
@@ -224,6 +224,26 @@ class EasyNerDBHandler:
             self.logger.error(f"Backup failed: {str(e)}")
             raise
         
+    def _log_query_plan(self, sql, params=None):
+        """ 
+        Executes a query, logs its query plan, and returns the results. 
+        """
+        try:
+            if params:
+                self.cursor.execute(f"EXPLAIN QUERY PLAN {sql}", params)
+            else:
+                self.cursor.execute(f"EXPLAIN QUERY PLAN {sql}")
+
+            plan = self.cursor.fetchall()
+            s = f"EXPLAIN QUERY PLAN {sql};\n"
+            for step in plan:
+                s += str(dict(step)) + "\n"
+            self.logger.debug(s)
+
+        except sqlite3.Error as e:
+            print(f"SQLite error: {e}")
+            return None
+        
     def execute(self, query, args=None):
         """
         Execute a SQL query.
@@ -252,6 +272,21 @@ class EasyNerDBHandler:
                 f"Error executing query: {query} with args: {args}. Exception: {e}"
             )
             raise
+    
+    def execute_with_log(self, query, args=None):
+        """
+        Execute a SQL query and log the query plan.
+
+        :param query: The SQL query to execute.
+        :param args: Optional arguments for the SQL query.
+        :return: The result of the query.
+        """
+        self._log_query_plan(query, args)
+
+        if args is None:
+            self.cursor.execute(query)
+        else:
+            self.cursor.execute(query, args)
 
     def commit(self):
         """
