@@ -15,12 +15,20 @@ class DBAnalysis:
         cursor: sqlite3.Cursor,
         logger: logging.Logger,
         data_exchanger: DBDataExchanger,
+        log_query_plan,
+        execute_with_log
+
     ):
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
         self.data_exchanger = data_exchanger
-        self.statistics = DBStatistics(conn, cursor, logger, data_exchanger=data_exchanger)  # Initialize DBStatistics
+        self.statistics = DBStatistics(
+            conn, cursor, logger, data_exchanger=data_exchanger
+        )  # Initialize DBStatistics
+        self.log_query_plan = log_query_plan
+        self.execute_with_log = execute_with_log
+
 
     def calc_document_counts(self, batch_size=100000):
         """
