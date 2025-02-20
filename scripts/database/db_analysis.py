@@ -867,59 +867,83 @@ class DBAnalysis:
             self.logger.error(f"Error summarizing entity occurrences: {e}")
             raise
 
-    def initialize_entity_summary_batched_simplified_stage1(self, batch_size=300000): # Function name indicating simplified Stage 1
-        self.logger.info("Stage 1 (Simplified): Initializing entity_occurrences_summary (batched)")
+    def initialize_entity_aggregated_batched_simplified_stage1_optimized(self, batch_size=300000): # Optimized Stage 1 - 'summary' replaced with 'aggregated' for clarity, ID linking corrected, error handling added
+        self.logger.info("Stage 1 (Simplified - Optimized): Initializing entity_occurrences_aggregated (batched - ID Linking) with Error Handling") # Updated log message
 
         # --- Get total count of records to process for progress bar estimation ---
         self.cursor.execute("SELECT COUNT(*) FROM entity_occurrences WHERE error_id IS NULL AND overlap = FALSE")
         total_records_to_process = self.cursor.fetchone()[0]
         processed_count = 0
 
+        self.cursor.execute("DELETE FROM aggregated_eo") # Clear the table ONCE before processing
+        self.conn.commit() # Commit the deletion immediately
+
+        # Create index for faster processing of entity_occurrences
+        self.cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_entity_occurrences_error_overlap_id 
+            ON entity_occurrences (error_id, overlap, id)
+            """
+        )
+
+        try: # Start of try block for error handling
+            min_id = 0  # Initialize minimum ID for keyset pagination
         with tqdm(total=total_records_to_process, desc="Entity Occurrences -> Aggregated entity occurrences") as pbar:
             while True:
-                batch_query = f"""
+                    batch_query = """
                     SELECT id, LOWER(entity_text) as normalized_text, entity_id
                     FROM entity_occurrences
-                    WHERE error_id IS NULL AND overlap = FALSE
-                    LIMIT {batch_size}
+                        WHERE error_id IS NULL AND overlap = FALSE AND id > ?
+                        ORDER BY id
+                        LIMIT ?
                 """
-                self.cursor.execute(batch_query)
+                    self.cursor.execute(batch_query, (min_id, batch_size))
                 batch_data = self.cursor.fetchall()
                 if not batch_data:
-                    break
+                        break # No more data, exit loop
 
-                eo_summary_id_updates = []
+                    eo_aggregated_id_updates = []
                 records_processed_in_batch = 0
-                self.cursor.execute("DELETE FROM aggregated_eo") # Clear the table before inserting new data
 
-                for eo_id, normalized_text, entity_id in batch_data:
-                    # --- 1. INSERT into entity_occurrences_summary (simplified INSERT - no UNIQUE handling) ---
-                    insert_summary_query = """
-                        INSERT INTO aggregated_eo (normalized_entity_text, entity_id)
-                        VALUES (?, ?)
+                    # --- 1. & 2. INSERT into aggregated_eo (using eo_id as aggregated_eo.id) and Prepare UPDATE using List Comprehension ---
+                    insert_data_for_aggregated_eo = [(eo_id, normalized_text, entity_id) for eo_id, normalized_text, entity_id in batch_data] # Include eo_id for aggregated_eo.id
+                    insert_aggregated_query = """
+                        INSERT INTO aggregated_eo (id, normalized_entity_text, entity_id)  -- Include 'id' in INSERT query
+                        VALUES (?, ?, ?)  -- Values now include id
                     """
-                    self.cursor.execute(insert_summary_query, (normalized_text, entity_id))
-                    summary_id_to_set = self.cursor.lastrowid  # Get generated ID
+                    self.cursor.executemany(insert_aggregated_query, insert_data_for_aggregated_eo)
 
-                    # --- 2. Prepare UPDATE for entity_occurrences.summary_id ---
-                    eo_summary_id_updates.append({'summary_id': summary_id_to_set, 'eo_id': eo_id})
-                    records_processed_in_batch += 1
+                    eo_aggregated_id_updates = [{'aggregated_id': eo_id, 'eo_id': eo_id} # aggregated_id is now simply eo_id
+                                            for eo_id, _, _ in batch_data] # Iterate over batch_data to get eo_id
 
-                if eo_summary_id_updates:
+                    if eo_aggregated_id_updates:
                     # --- 3. Batch UPDATE entity_occurrences.summary_id ---
                     update_query = """
-                        UPDATE entity_occurrences SET summary_id = :summary_id WHERE id = :eo_id
+                        UPDATE entity_occurrences SET summary_id = :aggregated_id WHERE id = :eo_id
                     """
-                    self.cursor.executemany(update_query, eo_summary_id_updates)
-                    self.conn.commit()
+                        self.cursor.executemany(update_query, eo_aggregated_id_updates)
+                        self.conn.commit() # Commit inside try block - only commit if batch is successful
 
+                        records_processed_in_batch = len(batch_data)
                     processed_count += records_processed_in_batch
                     pbar.update(records_processed_in_batch)
-                    self.logger.debug(f"Stage 1 (Simplified): Processed {processed_count}/{total_records_to_process} records")
+                        self.logger.debug(f"Stage 1 (Simplified - Optimized): Processed {processed_count}/{total_records_to_process} records")
+
+                        min_id = batch_data[-1][0]  # Update min_id to the last ID in the batch for next iteration
                 else:
                     break
 
-        self.logger.info("Stage 1 (Simplified): Initial entity_occurrences_summary initialization complete")
+            self.logger.info("Stage 1 (Simplified - Optimized): Initial entity_occurrences_aggregated initialization complete (ID Linking)") # Success log message
+
+        except KeyboardInterrupt:
+            self.conn.rollback()
+            self.logger.error("Stage 1 (Simplified - Optimized): KeyboardInterrupt detected. Operations rolled back.")
+            raise # Re-raise KeyboardInterrupt to allow caller to handle it if needed
+
+        except Exception as e: # Catch other exceptions
+            self.conn.rollback()
+            self.logger.error(f"Stage 1 (Simplified - Optimized): Exception occurred: {e}. Operations rolled back.", exc_info=True) # Log full exception info
+            raise # Re-raise the exception to allow caller to handle it
 
     def normalize_entity_summary_text_batched_with_progressbar(self, batch_size=100000):
         self.logger.info("Stage 2: Normalizing normalized_entity_text in aggregated_eo (batched)")
