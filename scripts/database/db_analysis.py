@@ -955,14 +955,14 @@ class DBAnalysis:
 
         with tqdm(total=total_records_to_normalize, desc="Stage 2 Progress") as pbar: # Initialize tqdm progress bar
             while True:
-                batch_query = f"""
+                batch_query = """
                     SELECT id, normalized_entity_text
                     FROM aggregated_eo
-                    WHERE id > {processed_count} -- Simple batching based on ID, adjust as needed
+                    WHERE id > ? -- Simple batching based on ID, adjust as needed
                     ORDER BY id
-                    LIMIT {batch_size}
+                    LIMIT ?
                 """
-                self.cursor.execute(batch_query)
+                self.cursor.execute(batch_query, (processed_count, batch_size))
                 batch_data = self.cursor.fetchall()
                 if not batch_data:
                     break
