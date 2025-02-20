@@ -747,6 +747,70 @@ class DBAnalysis:
 
         except sqlite3.Error as e:
             print(f"Database error: {e}")
+    def create_aggregated_entities_from_temp(self, batch_size=
+    5000, target_table="temp_entity_occurrences_summary"):
+        """
+        Idempotent method to create aggregated entities from temp_normalized_linked_entities.
+        """
+        try:
+            self.logger.info("Creating aggregated entities from temp table...")
+
+            # Create index for faster processing of entity_occurrences
+            # GROUP BY clause:
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_eo_document_id ON entity_occurrences (document_id)"
+            )
+            # COUNT(DISTINCT eo.document_id)
+            self.cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ne_text_entity_id ON ? (normalized_entity_text, entity_id)", (target_table,)
+            )
+
+            offset = 0
+
+            while True:
+                # Execute the batch insert query with WHERE NOT EXISTS
+                self.cursor.execute(
+                    """
+                    INSERT INTO ? (normalized_entity_text, entity_id)
+                    SELECT DISTINCT
+                        ne.normalized_entity_text,
+                        ne.entity_id
+                        
+                    FROM temp_normalized_linked_entities ne
+                    JOIN entity_occurrences eo ON eo.id = ne.id
+                    WHERE NOT EXISTS ( -- Ensure no duplicates, this filters selection on reruns 
+                        SELECT 1
+                        FROM ? teos
+                        WHERE teos.normalized_entity_text = ne.normalized_entity_text
+                        AND teos.entity_id = ne.entity_id
+                    )
+                    ON CONFLICT(normalized_entity_text, entity_id) DO NOTHING
+                    LIMIT ? OFFSET ?;
+                    """,
+                    (target_table, target_table, batch_size, offset)
+                )
+                self.connection.commit()
+
+                row_count = self.cursor.rowcount
+                if row_count < batch_size:
+                    break
+                offset += batch_size
+
+                print(f"Batch processed, rows inserted/attempted: {row_count}, offset: {offset}") # Added feedback
+
+            print("Batch processing complete with WHERE NOT EXISTS.")
+
+            self.conn.commit()
+            rows_before = self.cursor.execute("SELECT COUNT(*) FROM ?").fetchone()[0]
+            rows_after = self.cursor.execute("SELECT COUNT(*) FROM ?", (target_table,)).fetchone()[0]
+            self.logger.info(f"Aggregated entities created from temp table. Raw entity count: {rows_before}, Aggregated entity count: {rows_after}")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating aggregated entities: {e}")
+            self.conn.rollback()
+        except KeyboardInterrupt:
+            self.conn.rollback()
+            self.logger.error("Aggregated entity creation cancelled by user")
     def aggregate_entity_occurrences(
         self, batch_size=10000, ignore_error_occurrences: bool = True
     ) -> None:
