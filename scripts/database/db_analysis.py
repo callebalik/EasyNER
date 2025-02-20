@@ -1519,7 +1519,8 @@ class DBAnalysis:
                 write_summary_id_batch_handler,
                 num_reader_threads=num_reader_threads,
                 logger=self.logger,
-                max_queue_size=queue_size
+                max_queue_size=queue_size,
+                total_count=total_records
             )
 
             # 3. Run the ReaderWriterPair
