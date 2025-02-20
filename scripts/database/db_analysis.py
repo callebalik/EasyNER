@@ -818,6 +818,97 @@ class DBAnalysis:
         except KeyboardInterrupt:
             self.conn.rollback()
             self.logger.error("Aggregated entity creation cancelled by user")
+
+    def update_entity_summary_ids(self, overwrite: bool = False, batch_size=100000, link_lookup_table="temp_normalized_linked_entities", target_table="temp_entity_occurrences_summary"):
+        try:
+
+            if overwrite:
+                self.logger.info("Set to overwrite Resetting summary_id references")
+                self.cursor.execute("DROP INDEX IF EXISTS idx_entity_occurrences_summary_id")
+                self.cursor.execute(
+                    f"""
+                    UPDATE entity_occurrences
+                    SET summary_id = NULL                    
+                    """
+                )
+
+                self.conn.commit()
+                # Recreate index
+                self.cursor.execute(
+                    f"""
+                    CREATE INDEX IF NOT EXISTS idx_entity_occurrences_summary_id
+                    ON entity_occurrences (summary_id)
+                    """
+                )
+                self.cursor.execute("ANALYZE entity_occurrences")
+
+            # Create composite index for WHERE clause
+
+
+            self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_eo_error_summary ON entity_occurrences (error_id, summary_id)")
+
+            # self.cursor.execute(f"ANALYZE entity_occurrences")
+            # self.cursor.execute(f"ANALYZE {link_lookup_table}")
+            # self.cursor.execute(f"ANALYZE {target_table}")
+
+
+            # Get total count of records to update 
+            query = f"""
+                SELECT COUNT(*)
+                FROM entity_occurrences eo
+                WHERE eo.error_id IS NULL
+                AND eo.summary_id IS NULL
+                """
+            self.log_query_plan(query)
+            self.cursor.execute(query)
+
+            total_records = self.cursor.fetchone()[0]
+
+            self.logger.info(
+                f"Updating summary_id references for {total_records} records in batches of {batch_size}"
+            )
+
+            with tqdm(total=total_records, desc="Updating summary_id references") as pbar:
+                offset = 0
+                while offset < total_records:
+                    self.cursor.execute(
+                        f"""
+                        SELECT eo.id, s.id as summary_id
+                        FROM entity_occurrences eo
+                        JOIN {link_lookup_table} ne ON ne.id = eo.id
+                        JOIN {target_table} s 
+                            ON s.normalized_entity_text = ne.normalized_entity_text 
+                            AND s.entity_id = ne.entity_id
+                        WHERE eo.error_id IS NULL AND eo.summary_id IS NULL
+                        LIMIT ? OFFSET ?
+                        """,
+                        (batch_size, offset),
+                    )
+                    batch = self.cursor.fetchall()
+
+                    if not batch:
+                        break  # No more records
+
+                    self.cursor.executemany(
+                        "UPDATE entity_occurrences SET summary_id = ? WHERE id = ?",
+                        [(summary_id, eo_id) for eo_id, summary_id in batch],
+                    )
+                    self.conn.commit()
+                    pbar.update(len(batch))
+                    offset += len(batch)
+                    self.logger.debug(
+                        f"Processed {min(offset, total_records)}/{total_records} records"
+                    )
+
+        except KeyboardInterrupt:
+            self.conn.rollback()
+            self.logger.error("KeyboardInterrupt detected. Operations rolled back.")
+            raise
+        except Exception as e:
+            self.conn.rollback()
+            self.logger.error(f"Error updating summary_id references: {e}")
+            raise
+
     def aggregate_entity_occurrences(
         self, batch_size=10000, ignore_error_occurrences: bool = True
     ) -> None:
