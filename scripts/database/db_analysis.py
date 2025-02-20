@@ -5,7 +5,7 @@ import sqlite3
 from db_statistics import DBStatistics
 from db_data_exchanger import DBDataExchanger
 import math
-
+from tqdm import tqdm
 
 class DBAnalysis:
 
