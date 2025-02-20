@@ -997,7 +997,7 @@ class DBAnalysis:
         self.logger.info("Stage 2 (Progress Bar): Text normalization in aggregated_eo complete")
 
 
-    def merge_duplicate_aggregated_eos_batched_with_progressbar(self, batch_size=1000): # Function name updated to indicate progress bar
+    def merge_duplicate_aggregated_eos_batched_with_progressbar(self, batch_size=100): # Function name updated to indicate progress bar
         self.logger.info("Stage 3 (Progress Bar): Merging duplicate aggregated_eo (batched)") # Log message updated
         # Create index for faster grouping:
         # QUERY PLAN
@@ -1044,6 +1044,12 @@ class DBAnalysis:
                         break # No more duplicates found in this batch, assume all merged for now
 
                     merge_count_batch = 0
+                    update_eo_params_batch = [] # List to collect parameters for executemany (UPDATE entity_occurrences)
+                    delete_eo_params_batch = [] # List to collect parameters for executemany (DELETE aggregated_eo)
+
+                    batch_normalized_text_prefix = "N/A" # Default prefix if no groups in batch
+                    first_group_processed_in_batch = False # Flag to track first group in batch
+
                     for normalized_text, entity_id, ids_to_merge_str, keep_id in duplicate_groups:
                         ids_to_merge = [int(x) for x in ids_to_merge_str.split(',')] # Convert IDs to integers
                         ids_to_delete = [id_val for id_val in ids_to_merge if id_val != keep_id]
@@ -1051,31 +1057,55 @@ class DBAnalysis:
                         if not ids_to_delete: # Should not happen, but safety check
                             continue
 
-                        # --- 2. Update entity_occurrences.summary_id (Efficient JOIN-based UPDATE) ---
+                        # Prepare parameters for executemany (UPDATE entity_occurrences)
+                        for id_to_delete in ids_to_delete:
+                            update_eo_params_batch.append((keep_id, id_to_delete)) # Tuple of (keep_id, id_to_delete)
+
+                        # Prepare parameters for executemany (DELETE aggregated_eo)
+                        delete_eo_params_batch.extend([(id_val,) for id_val in ids_to_delete]) # List of tuples (id_to_delete,)
+
+
+                        merge_count_batch += 1 # Increment merge count for each group processed (even if actual DB operations batched later)
+
+                        if not first_group_processed_in_batch: # Capture prefix from the first group in batch
+                            batch_normalized_text_prefix = normalized_text[:3] if normalized_text else "N/A"
+                            first_group_processed_in_batch = True
+
+                    if update_eo_params_batch: # Only execute if there are updates to perform in batch
+                        # --- 2. Update entity_occurrences.summary_id (Efficient batch UPDATE with executemany) ---
                         update_eo_summary_id_query = """
                             UPDATE entity_occurrences
                             SET summary_id = ?
-                            WHERE summary_id IN ({})
-                        """.format(','.join(['?']*len(ids_to_delete))) # Dynamic placeholders - still needed
-                        self.cursor.execute(update_eo_summary_id_query, [keep_id] + ids_to_delete) # <--- Parameterized keep_id and ids_to_delete
+                            WHERE summary_id = ?
+                        """
+                        start_time = time.time() # Profiling start for UPDATE
+                        self.cursor.executemany(update_eo_summary_id_query, update_eo_params_batch) # <--- Batch UPDATE with executemany
+                        update_eo_time = time.time() - start_time # Profiling end for UPDATE
+                        self.logger.debug(f"  Batch UPDATE entity_occurrences with executemany, count={len(update_eo_params_batch)}, time: {update_eo_time:.4f}s, time/count = {update_eo_time/len(update_eo_params_batch):.4f}s")
 
-                        # --- 3. DELETE merged summary rows from aggregated_eo and aggregated_eo_stats ---
+
+                    if delete_eo_params_batch: # Only execute if there are deletes to perform in batch
+                        # --- 3. DELETE merged summary rows from aggregated_eo (batch DELETE with executemany) ---
                         delete_summaries_query = """
                             DELETE FROM aggregated_eo
-                            WHERE id IN ({})
-                        """.format(','.join(['?']*len(ids_to_delete))) # Dynamic placeholders - still needed
-                        self.cursor.execute(delete_summaries_query, ids_to_delete) # <--- Parameterized ids_to_delete
+                            WHERE id = ?
+                        """
+                        start_time = time.time() # Profiling start for DELETE
+                        self.cursor.executemany(delete_summaries_query, delete_eo_params_batch) # <--- Batch DELETE with executemany
+                        delete_summaries_time = time.time() - start_time # Profiling end for DELETE
+                        self.logger.debug(f"  Batch DELETE aggregated_eo with executemany, count={len(delete_eo_params_batch)}, time: {delete_summaries_time:.4f}s, time/counnt = {delete_summaries_time/len(delete_eo_params_batch):.4f}s")
 
-                        self.logger.debug(f"Merged {len(ids_to_delete)} duplicate aggregated_eo for '{normalized_text}' (entity_id: {entity_id})")
-
-                        merge_count_batch += 1
-
-                    merge_iterations += 1
+                    start_time = time.time() # Profiling start for COMMIT
                     self.conn.commit() # Commit after each batch of merges
-                    self.logger.debug(f") Progress Bar: Merged {merge_count_batch} duplicate groups in iteration {merge_iterations}. Committed")
+                    commit_time = time.time() - start_time # Profiling end for COMMIT
+                    self.logger.debug(f") Progress Bar: Merged {merge_count_batch} duplicate groups (prefix: '{batch_normalized_text_prefix}...'). Iteration {merge_iterations}. Committed in {commit_time:.4f}s") # Use batch prefix in commit log too
+                    merge_iterations += 1
                     pbar.update(merge_count_batch) # Update progress bar by number of groups merged in batch
+
                     if merge_count_batch == 0: # No merges in this batch, probably no more duplicates for now
                         break
+
+
         except KeyboardInterrupt: # <----- EXCEPT BLOCK for Keyboard Interupt
             self.conn.rollback() # Rollback transaction in case of error
             self.logger.error(f"Stage 3 (Progress Bar): KeyboardInterrupt during merge process: Rolling back transaction") # Log error
@@ -1084,6 +1114,9 @@ class DBAnalysis:
             self.conn.rollback() # Rollback transaction in case of error
             self.logger.error(f"Stage 3 (Progress Bar): Error during merge process: {e}") # Log error
             raise # Re-raise the exception to signal failure
+        # finally: # <---- FINALLY block to ensure stats are calculated even if errors occur in merging but transaction is still valid
+            # if self.conn: # Check if connection is still valid (to prevent errors if connection itself failed earlier)
+            #     self._calculate_and_insert_aggregated_eo_stats() # <---- CALL THE NEW STATS FUNCTION HERE, after all merging iterations
 
         self.logger.info(f"Stage 3 (Progress Bar): Duplicate aggregated_eo merging complete in {merge_iterations} iterations") # Log message updated
 
