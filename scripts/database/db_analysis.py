@@ -695,6 +695,58 @@ class DBAnalysis:
         except sqlite3.Error as e:
             self.logger.error(f"Error creating temporary normalized entities table: {e}")
 
+
+    def normalize_entity_text_column(self, table_name: str = "temp_normalized_linked_entities", column_name: str = "normalized_entity_text"):
+        """
+        Normalizes a specified text column in a SQLite database table by:
+        1. Removing leading whitespace.
+        2. Removing the leading prefix '" ' (double quote followed by space).
+
+        Args:
+            database_file (str): Path to the SQLite database file.
+            table_name (str): Name of the table containing the column to normalize.
+            column_name (str): Name of the column to normalize (e.g., 'normalized_entity_text').
+        """
+
+        try:
+            # 2. SQL statement to remove leading whitespace
+            sql_remove_leading_whitespace = f"""
+                UPDATE {table_name}
+                SET {column_name} = LTRIM({column_name});
+            """
+
+            # 3. SQL statement to remove leading '" ' after removing whitespace
+            sql_remove_leading_quote_space = f"""
+                UPDATE {table_name}
+                SET {column_name} =
+                CASE
+                    WHEN SUBSTR({column_name}, 1, 2) = '" ' THEN
+                        SUBSTR({column_name}, 3)
+                    WHEN SUBSTR({column_name}, 1, 3) = '% )' THEN
+                        SUBSTR({column_name}, 4)
+                    WHEN SUBSTR({column_name}, 1, 2) = '% ' THEN
+                        SUBSTR({column_name}, 3)
+                    ELSE
+                    {column_name}
+                END;
+            """
+
+            # 4. Execute the SQL statements
+
+            print(f"Step 1: Removing leading whitespace from column '{column_name}' in table '{table_name}'...")
+            self.cursor.execute(sql_remove_leading_whitespace)
+            print("Leading whitespace removal completed.")
+
+            print(f"Step 2: Removing leading '\" ' from column '{column_name}' in table '{table_name}'...")
+            self.cursor.execute(sql_remove_leading_quote_space)
+            print("Leading '\" ' removal completed.")
+
+            # 5. Commit the changes to the database
+            self.conn.commit()
+            print("Changes committed to the database.")
+
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
     def aggregate_entity_occurrences(
         self, batch_size=10000, ignore_error_occurrences: bool = True
     ) -> None:
