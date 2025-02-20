@@ -291,3 +291,17 @@ FROM entity_occurrences_summary eos
 JOIN entity_occurrences eo ON eo.summary_id = eos.id
 JOIN named_entities ne ON ne.id = eos.entity_id
 WHERE eo.error_id IS NOT NULL;
+
+CREATE TABLE aggregated_eo (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    normalized_entity_text TEXT,
+    entity_id INTEGER NOT NULL,
+    FOREIGN KEY (entity_id) REFERENCES named_entities (id) 
+);
+
+CREATE TABLE IF NOT EXISTS aggregated_eo_stats (
+    agg_eo_id INTEGER PRIMARY KEY, -- Foreign key to aggregated_eo.id
+    uniq_documents INTEGER DEFAULT 0,
+    fq INTEGER DEFAULT 0,
+    FOREIGN KEY (agg_eo_id) REFERENCES aggregated_eo(id) ON DELETE CASCADE -- Enforce relationship, cascade delete for data integrity. If aggregated entity is deleted, delete stats as well
+);
