@@ -7,6 +7,7 @@ from db_data_exchanger import DBDataExchanger
 import math
 from tqdm import tqdm
 import time
+from db_engine import ReaderWriterPair
 
 class DBAnalysis:
 
@@ -17,7 +18,9 @@ class DBAnalysis:
         logger: logging.Logger,
         data_exchanger: DBDataExchanger,
         log_query_plan,
-        execute_with_log
+        execute_with_log,
+        conn_params_dict,
+
 
     ):
         self.conn = conn
@@ -29,6 +32,7 @@ class DBAnalysis:
         )  # Initialize DBStatistics
         self.log_query_plan = log_query_plan
         self.execute_with_log = execute_with_log
+        self.conn_params_dict = conn_params_dict
 
 
     def calc_document_counts(self, batch_size=100000):
@@ -1412,68 +1416,128 @@ class DBAnalysis:
 
         self.logger.info(f"Stage 3 (Progress Bar): Duplicate aggregated_eo merging complete in {merge_iterations} iterations") # Log message updated
 
-    def init_aggregated_entity_occurrences(self, batch_size=50000):
-        self.logger.info(
-            "Stage 1: Initializing aggregated table for entity occurrences (batched)"
+    def optimized_update_entity_summary_ids(self, overwrite: bool = False, queue_size = 40, batch_size=5000, num_reader_threads=16, link_lookup_table="temp_normalized_linked_entities", target_table="temp_entity_occurrences_summary"):
+        """
+        Optimized version of update_entity_summary_ids using Reader and Writer classes.
+        """
+        try:
+            if overwrite:
+                self.logger.info("Set to overwrite Resetting summary_id references")
+                self.cursor.execute("DROP INDEX IF EXISTS idx_entity_occurrences_summary_id")
+                self.cursor.execute(
+                    f"""
+                    UPDATE entity_occurrences
+                    SET summary_id = NULL
+                    """
+                )
+                self.conn.commit()
+                # Recreate index
+                self.cursor.execute(
+                    f"""
+                    CREATE INDEX IF NOT EXISTS idx_entity_occurrences_summary_id
+                    ON entity_occurrences (summary_id)
+                    """
         )
-        # Get total count of entity_occurrences
-        self.cursor.execute("SELECT COUNT(*) FROM entity_occurrences")
+                self.cursor.execute("ANALYZE entity_occurrences")
+
+            # Create composite index for WHERE clause if not exists - ensure idempotency
+            self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_eo_error_summary ON entity_occurrences (error_id, summary_id)")
+
+            # Get total count of records to update (for progress bar)
+            count_query = """
+                SELECT COUNT(*)
+                FROM entity_occurrences eo
+                WHERE eo.error_id IS NULL
+                AND eo.summary_id IS NULL
+            """
+            self.log_query_plan(count_query) # Log query plan for count query
+            self.cursor.execute(count_query)
         total_records = self.cursor.fetchone()[0]
+            self.logger.info(f"Updating summary_id references for {total_records} records using Reader/Writer.")
 
-        processed_count = 0
-        with tqdm(total=total_records, desc="Initializing aggregated table") as pbar:
-            while True:
-                batch_query = f"""
-                    SELECT id, LOWER(entity_text) as normalized_text, entity_id
-                    FROM entity_occurrences
-                    WHERE error_id IS NULL 
-                    AND overlap = FALSE 
-                    AND summary_id IS NULL -- Process only un-summarized, clean records
-                    LIMIT {batch_size}
+            # 2. Reader Query
+            reader_query = f"""
+                SELECT eo.id, ne.normalized_entity_text, ne.entity_id
+                FROM entity_occurrences eo
+                JOIN {link_lookup_table} ne ON ne.id = eo.id
+                JOIN {target_table} s
+                    ON s.normalized_entity_text = ne.normalized_entity_text
+                    AND s.entity_id = ne.entity_id
+                WHERE eo.error_id IS NULL AND eo.summary_id IS NULL
+            """
+            self.log_query_plan(reader_query) # Log query plan for reader query
+
+            def process_entity_batch_handler(batch, conn_params): # Corrected function definition
                 """
-                self.cursor.execute(batch_query)
-                batch_data = self.cursor.fetchall()
-                if not batch_data:
-                    break  # No more records to process
+                Processes a batch of entity occurrences to lookup summary_ids within EasyNerDBHandler context.
+                """
+                conn = sqlite3.connect(**conn_params)
+                cursor = conn.cursor()
+                processed_items = []
+                for eo_row in batch:
+                    eo_id = eo_row[0]
+                    normalized_entity_text = eo_row[1]
+                    entity_id = eo_row[2]
 
-                summary_records = []
-                eo_summary_id_updates = []
-                for eo_id, normalized_text, entity_id in batch_data:
-                    summary_records.append(
-                        {
-                            "id": eo_id,
-                            "normalized_entity_text": normalized_text,
-                            "entity_id": entity_id,
-                        }
+                    # Lookup summary_id from target_table (temp_entity_occurrences_summary)
+                    cursor.execute(
+                        """
+                        SELECT id FROM temp_entity_occurrences_summary
+                        WHERE normalized_entity_text = ? AND entity_id = ?
+                        """,
+                        (normalized_entity_text, entity_id)
                     )
-                    eo_summary_id_updates.append(
-                        {"summary_id": eo_id, "eo_id": eo_id}
-                    )  # Initial summary_id same as eo_id
+                    summary_row = cursor.fetchone()
+                    summary_id = summary_row[0] if summary_row else None
 
-                if summary_records:
-                    # Batch INSERT into entity_occurrences_summary
-                    insert_query = """
-                        INSERT OR IGNORE INTO aggregated_eo (id, normalized_entity_text, entity_id)
-                        VALUES (:id, :normalized_entity_text, :entity_id)
-                    """
-                    self.cursor.executemany(insert_query, summary_records)
+                    if summary_id:
+                        processed_items.append((summary_id, eo_id))
+                conn.close()
+                return processed_items
 
-                    # Batch UPDATE entity_occurrences.summary_id
-                    update_query = """
-                        UPDATE entity_occurrences SET summary_id = :summary_id WHERE id = :eo_id
-                    """
-                    self.cursor.executemany(update_query, eo_summary_id_updates)
-                    self.conn.commit()  # Commit after each batch
 
-                    processed_count += len(batch_data)
-                    self.logger.debug(f"Stage 1: Processed {processed_count} records")
-                    pbar.update(len(batch_data))
-                else:
-                    break  # Exit loop if no batch data
+            # 4. Write Function (defined within EasyNerDBHandler) - using self to access cursor and conn
+            def write_summary_id_batch_handler(batch, cursor, conn):
+                """
+                Writes a batch of summary_id updates to the entity_occurrences table within EasyNerDBHandler context.
+                """
+                updates = [(summary_id, eo_id) for summary_id, eo_id in batch]
+                if updates: # Ensure updates is not empty
+                    cursor.executemany(
+                        "UPDATE entity_occurrences SET summary_id = ? WHERE id = ?",
+                        updates
+                    )
+                    conn.commit() # Commit batch of updates
 
-            self.logger.info(
-                "Stage 1: Initial entity_occurrences_summary initialization complete"
+
+            # 2. Instantiate ReaderWriterPair - now manages Reader and Writer and their queue
+            reader_writer_pair = ReaderWriterPair(
+                self.conn_params_dict,
+                reader_query,
+                batch_size,
+                process_entity_batch_handler,
+                write_summary_id_batch_handler,
+                num_reader_threads=num_reader_threads,
+                logger=self.logger,
+                max_queue_size=queue_size
             )
+
+            # 3. Run the ReaderWriterPair
+            self.logger.info(f"Starting ReaderWriterPair process.")
+            reader_writer_pair.run() # Run both Reader and Writer, handles queue joining internally
+
+            self.logger.info("Optimized summary_id update process completed using ReaderWriterPair.")
+
+        except KeyboardInterrupt:
+            self.conn.rollback()
+            self.logger.error("KeyboardInterrupt detected. Operations rolled back.")
+            raise
+        except Exception as e:
+            self.conn.rollback()
+            self.logger.error(f"Error updating summary_id references (optimized): {e}")
+            raise
+
+    
 
     def count_entity_intra_doc_fq(self) -> None:
         """
