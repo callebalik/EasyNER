@@ -1198,6 +1198,16 @@ class DBAnalysis:
         - Entity co-occurrence aggregation
         - PMI calculation
         """
-        self.aggregate_entity_cooccurrences(batch_size=batch_size)
-        self.aggregate_cooccurrences(batch_size=batch_size)
-        self.calculate_pmi(batch_size=batch_size)
+
+        # Baseline analysis
+        self.count_named_entity_fq()
+
+        # Entity occurrence analysis 
+        self.find_overlapping_entities()
+        self.aggregate_entity_occurrences()
+        self.count_entity_intra_doc_fq()
+
+        # Entity co-occurrence analysis
+        self.count_entity_cooccurrences(level="document")
+        self.aggregate_cooccurrences()
+        self.calculate_pmi()
