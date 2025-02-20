@@ -640,20 +640,20 @@ class DBAnalysis:
             self.logger.info("Starting entity occurrences summarization...")
 
             # Recreate entity_occurrences_summary table with entity_id
-            self.cursor.execute("DROP TABLE IF EXISTS entity_occurrences_summary")
-            self.cursor.execute(
-                """
-                CREATE TABLE entity_occurrences_summary (
-                    id INTEGER PRIMARY KEY NOT NULL,
-                    normalized_entity_text TEXT NOT NULL,
-                    entity_id INTEGER NOT NULL,
-                    uniq_documents INTEGER,
-                    fq INTEGER,
-                    UNIQUE(normalized_entity_text, entity_id),
-                    FOREIGN KEY (entity_id) REFERENCES named_entities (id)
-                )
-            """
-            )
+            # self.cursor.execute("DROP TABLE IF EXISTS entity_occurrences_summary")
+            # self.cursor.execute(
+            #     """
+            #     CREATE TABLE entity_occurrences_summary (
+            #         id INTEGER PRIMARY KEY NOT NULL,
+            #         normalized_entity_text TEXT NOT NULL,
+            #         entity_id INTEGER NOT NULL,
+            #         uniq_documents INTEGER,
+            #         fq INTEGER,
+            #         UNIQUE(normalized_entity_text, entity_id),
+            #         FOREIGN KEY (entity_id) REFERENCES named_entities (id)
+            #     )
+            # """
+            # )
 
             # Drop temporary table if it exists
             self.cursor.execute("DROP TABLE IF EXISTS temp_normalized_entities")
