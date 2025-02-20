@@ -40,8 +40,6 @@ class DBAnalysis:
         Args:
             batch_size (int): The number of documents to process in each batch.
         """
-        from tqdm import tqdm
-        import time
 
         self.logger.info("Starting document counts calculation")
         start_time = time.time()
