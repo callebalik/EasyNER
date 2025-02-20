@@ -147,7 +147,7 @@ class EasyNerDBHandler:
             file_handler = logging.FileHandler(log_file)
             file_handler.setLevel(logging.DEBUG)
             file_formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             file_handler.setFormatter(file_formatter)
 
@@ -155,7 +155,7 @@ class EasyNerDBHandler:
             console_handler = logging.StreamHandler()
             console_handler.setLevel(logging.INFO)
             console_formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             console_handler.setFormatter(console_formatter)
 
@@ -163,7 +163,7 @@ class EasyNerDBHandler:
             error_file_handler = logging.FileHandler(error_log_file)
             error_file_handler.setLevel(logging.ERROR)
             error_file_formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             error_file_handler.setFormatter(error_file_formatter)
 
