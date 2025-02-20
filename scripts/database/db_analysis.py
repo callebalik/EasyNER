@@ -617,6 +617,84 @@ class DBAnalysis:
         except sqlite3.Error as e:
             self.logger.error(f"Error counting named entity frequencies: {e}")
 
+    def create_temp_normalized_entities(self):
+        """
+        Create a temporary table with normalized entity text and entity_id.
+        """
+        try:
+            self.logger.info("Creating temporary normalized entities table...")
+
+            # Drop temporary table if it exists
+            self.cursor.execute("DROP TABLE IF EXISTS temp_normalized_linked_entities")
+
+            # Entity Linking Lookup Table
+            create_table = f"""
+                CREATE TABLE temp_normalized_linked_entities (
+                    id INTEGER,
+                    entity_id INTEGER,
+                    normalized_entity_text TEXT,
+                    FOREIGN KEY (id) REFERENCES entity_occurrences(id)
+                    )"""
+            self.cursor.execute(create_table)
+
+            self.logger.info("Temporary normalized entities table created.")
+
+            query_string = f"""
+                INSERT INTO temp_normalized_linked_entities (id, entity_id, normalized_entity_text)    
+                SELECT 
+                    id,
+                    entity_id,
+                    LOWER(entity_text) as normalized_entity_text
+                FROM entity_occurrences
+                WHERE entity_text IS NOT NULL
+                AND overlap = FALSE
+                AND error_id IS NULL
+                """
+            
+            explain_query = f"EXPLAIN QUERY PLAN {query_string}"
+            self.cursor.execute(explain_query)
+            self.logger.debug(
+                f"Query plan for entity normalization: {str(self.cursor.fetchall())}"
+            )
+
+            # Create temporary table with normalized entities
+            self.cursor.execute(query_string)
+
+            # Check validity of normalized entities, by getting count of entities with error codes via JOIN
+            self.cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM temp_normalized_linked_entities ne
+                JOIN entity_occurrences eo ON eo.id = ne.id
+                WHERE eo.error_id IS NOT NULL
+                """
+            )
+            error_count = self.cursor.fetchone()[0]
+
+            self.cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM temp_normalized_linked_entities ne
+                JOIN entity_occurrences eo ON eo.id = ne.id
+                WHERE overlap IS TRUE
+                """
+            )
+            overlap_count = self.cursor.fetchone()[0]
+
+            if error_count | overlap_count > 0:
+                self.logger.warning(
+                    f"Found {error_count} entities with error codes in temp_normalized_linked_entities \n Found {overlap_count} entities with overlap flag set"
+                )
+
+            self.logger.info(
+                f"Normalized entity texts prepared, {error_count} error counts, {overlap_count} overlap counts"
+            )
+
+            self.conn.commit()
+            self.logger.info("Temporary normalized entities table created.")
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating temporary normalized entities table: {e}")
+
     def aggregate_entity_occurrences(
         self, batch_size=10000, ignore_error_occurrences: bool = True
     ) -> None:
