@@ -980,6 +980,49 @@ def _parse_index_columns(create_sql):
         pass
     return []
 
+@app.route("/aggregated-entity-occurrences")
+def list_aggregated_entity_occurrences():
+    result = display_table('view_entity_occurrences_summary')
+    if 'error' in result:
+        return render_template('error.html', message=result['error']), 500
+    return render_template('table_view.html', table_name='view_entity_occurrences_summary', **result)
+
+import re
+
+@app.route("/explain-query")
+def explain_query():
+    query = request.args.get('query')
+    try:
+        db = get_db()
+        
+        # Extract parameters from the request
+        params = []
+        
+        # Parse the SQL query to identify the parameters used
+        used_params = set(re.findall(r'LIKE \?', query))
+        
+        # Extract only the used parameters from the request
+        extracted_params = []
+        for key, value in request.args.items():
+            if key != 'query' and any(key in s for s in used_params):
+                extracted_params.append(value)
+        
+        # Parameters for LIMIT and OFFSET
+        extracted_params.append(31)
+        extracted_params.append(0)
+        
+        db.cursor.execute(f"EXPLAIN QUERY PLAN {query}", extracted_params)
+        rows = db.cursor.fetchall()
+        
+        # Format the results as a list of dictionaries
+        column_names = [col[0] for col in db.cursor.description]
+        result = [dict(zip(column_names, row)) for row in rows]
+        
+        return jsonify(result)
+    except Exception as e:
+        db.logger.error(f"Error explaining query: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == "__main__":
     with app.app_context():
         try:
