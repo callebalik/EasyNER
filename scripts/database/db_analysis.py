@@ -867,6 +867,261 @@ class DBAnalysis:
             self.logger.error(f"Error summarizing entity occurrences: {e}")
             raise
 
+    def initialize_entity_summary_batched_simplified_stage1(self, batch_size=300000): # Function name indicating simplified Stage 1
+        self.logger.info("Stage 1 (Simplified): Initializing entity_occurrences_summary (batched)")
+
+        # --- Get total count of records to process for progress bar estimation ---
+        self.cursor.execute("SELECT COUNT(*) FROM entity_occurrences WHERE error_id IS NULL AND overlap = FALSE")
+        total_records_to_process = self.cursor.fetchone()[0]
+        processed_count = 0
+
+        with tqdm(total=total_records_to_process, desc="Entity Occurrences -> Aggregated entity occurrences") as pbar:
+            while True:
+                batch_query = f"""
+                    SELECT id, LOWER(entity_text) as normalized_text, entity_id
+                    FROM entity_occurrences
+                    WHERE error_id IS NULL AND overlap = FALSE
+                    LIMIT {batch_size}
+                """
+                self.cursor.execute(batch_query)
+                batch_data = self.cursor.fetchall()
+                if not batch_data:
+                    break
+
+                eo_summary_id_updates = []
+                records_processed_in_batch = 0
+                self.cursor.execute("DELETE FROM aggregated_eo") # Clear the table before inserting new data
+
+                for eo_id, normalized_text, entity_id in batch_data:
+                    # --- 1. INSERT into entity_occurrences_summary (simplified INSERT - no UNIQUE handling) ---
+                    insert_summary_query = """
+                        INSERT INTO aggregated_eo (normalized_entity_text, entity_id)
+                        VALUES (?, ?)
+                    """
+                    self.cursor.execute(insert_summary_query, (normalized_text, entity_id))
+                    summary_id_to_set = self.cursor.lastrowid  # Get generated ID
+
+                    # --- 2. Prepare UPDATE for entity_occurrences.summary_id ---
+                    eo_summary_id_updates.append({'summary_id': summary_id_to_set, 'eo_id': eo_id})
+                    records_processed_in_batch += 1
+
+                if eo_summary_id_updates:
+                    # --- 3. Batch UPDATE entity_occurrences.summary_id ---
+                    update_query = """
+                        UPDATE entity_occurrences SET summary_id = :summary_id WHERE id = :eo_id
+                    """
+                    self.cursor.executemany(update_query, eo_summary_id_updates)
+                    self.conn.commit()
+
+                    processed_count += records_processed_in_batch
+                    pbar.update(records_processed_in_batch)
+                    self.logger.debug(f"Stage 1 (Simplified): Processed {processed_count}/{total_records_to_process} records")
+                else:
+                    break
+
+        self.logger.info("Stage 1 (Simplified): Initial entity_occurrences_summary initialization complete")
+
+    def normalize_entity_summary_text_batched_with_progressbar(self, batch_size=100000):
+        self.logger.info("Stage 2: Normalizing normalized_entity_text in aggregated_eo (batched)")
+
+        # --- Get total count of records for normalization for progress bar---
+        self.cursor.execute("SELECT COUNT(*) FROM aggregated_eo")
+        total_records_to_normalize = self.cursor.fetchone()[0]
+        processed_count = 0
+
+        with tqdm(total=total_records_to_normalize, desc="Stage 2 Progress") as pbar: # Initialize tqdm progress bar
+            while True:
+                batch_query = f"""
+                    SELECT id, normalized_entity_text
+                    FROM aggregated_eo
+                    WHERE id > {processed_count} -- Simple batching based on ID, adjust as needed
+                    ORDER BY id
+                    LIMIT {batch_size}
+                """
+                self.cursor.execute(batch_query)
+                batch_data = self.cursor.fetchall()
+                if not batch_data:
+                    break
+
+                update_records = []
+                records_normalized_in_batch = 0 # Counter for records normalized in this batch
+                for eos_id, current_text in batch_data:
+                    normalized_text = current_text
+                    if normalized_text.endswith("'s"):
+                        normalized_text = normalized_text[:-2] # Remove possessive 's - Example rule
+                    # Add more normalization rules here (plural removal, punctuation, etc.)
+                    normalized_text = normalized_text.lower().strip() # Example: Lowercase and trim
+
+                    if normalized_text != current_text: # Only update if normalization changed text
+                        update_records.append({'id': eos_id, 'normalized_entity_text': normalized_text})
+                        records_normalized_in_batch += 1 # Increment counter for normalized records
+
+                if update_records:
+                    update_query = """
+                        UPDATE aggregated_eo
+                        SET normalized_entity_text = :normalized_entity_text
+                        WHERE id = :id
+                    """
+                    self.cursor.executemany(update_query, update_records)
+                    self.conn.commit()
+                    processed_count += len(batch_data) # Track processed based on fetched, not updated (as updates are conditional)
+                    pbar.update(records_normalized_in_batch) # Update progress bar by the number of records *actually normalized*
+                    self.logger.debug(f"Stage 2 (Progress Bar): Normalized text for {processed_count}/{total_records_to_normalize} records (fetched)")
+                else:
+                    break # Exit loop if no batch data
+
+        self.logger.info("Stage 2 (Progress Bar): Text normalization in aggregated_eo complete")
+
+    def merge_duplicate_aggregated_eos_batched_with_progressbar(self, batch_size=100): # Function name updated to indicate progress bar
+        self.logger.info("Stage 3 (Progress Bar): Merging duplicate aggregated_eo (batched)") # Log message updated
+        merge_iterations = 0
+        try: # <----- TRY BLOCK START for Rollback on Error
+            with tqdm(desc="Stage 3 Progress (Merging)") as pbar: # Initialize tqdm progress bar (unknown total initially)
+                while True: # Iterate until no more duplicates are found in a batch
+                    merge_groups_query = f"""
+                        WITH DuplicateGroups AS (
+                            SELECT
+                                normalized_entity_text, entity_id,
+                                GROUP_CONCAT(id) as ids_to_merge,
+                                COUNT(*) as duplicate_count,
+                                MIN(id) as keep_id
+                            FROM aggregated_eo
+                            GROUP BY normalized_entity_text, entity_id
+                            HAVING COUNT(*) > 1
+                            LIMIT {batch_size} -- Limit the number of duplicate groups to process in each batch
+                        )
+                        SELECT normalized_entity_text, entity_id, ids_to_merge, keep_id
+                        FROM DuplicateGroups;
+                    """
+                    self.cursor.execute(merge_groups_query)
+                    duplicate_groups = self.cursor.fetchall()
+
+                    if not duplicate_groups:
+                        break # No more duplicates found in this batch, assume all merged for now
+
+                    merge_count_batch = 0
+                    for normalized_text, entity_id, ids_to_merge_str, keep_id in duplicate_groups:
+                        ids_to_merge = [int(x) for x in ids_to_merge_str.split(',')] # Convert IDs to integers
+                        ids_to_delete = [id_val for id_val in ids_to_merge if id_val != keep_id]
+
+                        if not ids_to_delete: # Should not happen, but safety check
+                            continue
+
+                        # --- 1. Aggregate stats and INSERT into aggregated_eo_stats ---
+                        aggregate_stats_query = f"""
+                            SELECT SUM(aes.uniq_documents), SUM(aes.fq)
+                            FROM aggregated_eo_stats aes -- Select from aggregated_eo_stats now
+                            WHERE summary_id IN ({','.join(['?']*len(ids_to_merge))})
+                        """
+                        self.cursor.execute(aggregate_stats_query, ids_to_merge)
+                        total_uniq_docs, total_fq = self.cursor.fetchone()
+
+                        insert_stats_query = """
+                            INSERT OR REPLACE INTO aggregated_eo_stats (summary_id, uniq_documents, fq)
+                            VALUES (?, ?, ?)
+                        """
+                        self.cursor.execute(insert_stats_query, (keep_id, total_uniq_docs, total_fq))
+
+
+                        # --- 2. Update entity_occurrences.summary_id (Efficient JOIN-based UPDATE) ---
+                        update_eo_summary_id_query = """
+                            UPDATE entity_occurrences
+                            SET summary_id = ?
+                            WHERE summary_id IN ({','.join(['?']*len(ids_to_delete))})
+                        """
+                        self.cursor.execute(update_eo_summary_id_query, [keep_id] + ids_to_delete) # Parameterized query
+
+                        # --- 3. DELETE merged summary rows from aggregated_eo and aggregated_eo_stats ---
+                        delete_summaries_query = f"""
+                            DELETE FROM aggregated_eo
+                            WHERE id IN ({','.join(['?']*len(ids_to_delete))})
+                        """
+                        self.cursor.execute(delete_summaries_query, ids_to_delete) # Parameterized query
+
+                        delete_stats_query = f"""
+                            DELETE FROM aggregated_eo_stats
+                            WHERE summary_id IN ({','.join(['?']*len(ids_to_delete))})
+                        """
+                        self.cursor.execute(delete_stats_query, ids_to_delete)
+
+                        self.conn.commit() # Commit after each merge group
+                        merge_count_batch += 1
+
+                    merge_iterations += 1
+                    pbar.update(merge_count_batch) # Update progress bar by number of groups merged in batch
+                    self.logger.debug(f"Stage 3 (Progress Bar): Merged {merge_count_batch} duplicate groups in iteration {merge_iterations}")
+                    if merge_count_batch == 0: # No merges in this batch, probably no more duplicates for now
+                        break
+        except sqlite3.Error as e: # <----- EXCEPT BLOCK for Rollback on Error
+            self.conn.rollback() # Rollback transaction in case of error
+            self.logger.error(f"Stage 3 (Progress Bar): Error during merge process: {e}") # Log error
+            raise # Re-raise the exception to signal failure
+
+        self.logger.info(f"Stage 3 (Progress Bar): Duplicate aggregated_eo merging complete in {merge_iterations} iterations") # Log message updated
+
+    def init_aggregated_entity_occurrences(self, batch_size=50000):
+        self.logger.info(
+            "Stage 1: Initializing aggregated table for entity occurrences (batched)"
+        )
+        # Get total count of entity_occurrences
+        self.cursor.execute("SELECT COUNT(*) FROM entity_occurrences")
+        total_records = self.cursor.fetchone()[0]
+
+        processed_count = 0
+        with tqdm(total=total_records, desc="Initializing aggregated table") as pbar:
+            while True:
+                batch_query = f"""
+                    SELECT id, LOWER(entity_text) as normalized_text, entity_id
+                    FROM entity_occurrences
+                    WHERE error_id IS NULL 
+                    AND overlap = FALSE 
+                    AND summary_id IS NULL -- Process only un-summarized, clean records
+                    LIMIT {batch_size}
+                """
+                self.cursor.execute(batch_query)
+                batch_data = self.cursor.fetchall()
+                if not batch_data:
+                    break  # No more records to process
+
+                summary_records = []
+                eo_summary_id_updates = []
+                for eo_id, normalized_text, entity_id in batch_data:
+                    summary_records.append(
+                        {
+                            "id": eo_id,
+                            "normalized_entity_text": normalized_text,
+                            "entity_id": entity_id,
+                        }
+                    )
+                    eo_summary_id_updates.append(
+                        {"summary_id": eo_id, "eo_id": eo_id}
+                    )  # Initial summary_id same as eo_id
+
+                if summary_records:
+                    # Batch INSERT into entity_occurrences_summary
+                    insert_query = """
+                        INSERT OR IGNORE INTO aggregated_eo (id, normalized_entity_text, entity_id)
+                        VALUES (:id, :normalized_entity_text, :entity_id)
+                    """
+                    self.cursor.executemany(insert_query, summary_records)
+
+                    # Batch UPDATE entity_occurrences.summary_id
+                    update_query = """
+                        UPDATE entity_occurrences SET summary_id = :summary_id WHERE id = :eo_id
+                    """
+                    self.cursor.executemany(update_query, eo_summary_id_updates)
+                    self.conn.commit()  # Commit after each batch
+
+                    processed_count += len(batch_data)
+                    self.logger.debug(f"Stage 1: Processed {processed_count} records")
+                    pbar.update(len(batch_data))
+                else:
+                    break  # Exit loop if no batch data
+
+            self.logger.info(
+                "Stage 1: Initial entity_occurrences_summary initialization complete"
+            )
+
     def count_entity_intra_doc_fq(self) -> None:
         """
         For each entity, calculate the frequency of the entity within each document.
