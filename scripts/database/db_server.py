@@ -780,6 +780,9 @@ def display_table(table_name):
         sql += " LIMIT ? OFFSET ?"
         params.extend([per_page + 1, offset])
 
+        # Store the generated SQL query
+        generated_sql = sql
+
         # Execute the query
         db.cursor.execute(sql, params)
         rows = db.cursor.fetchall()
@@ -794,7 +797,8 @@ def display_table(table_name):
             'sort_by': sort_by,
             'sort_order': sort_order,
             'column_types': column_types,  # Pass column types to the template
-            'column_search_queries': column_search_queries # Pass search queries to the template
+            'column_search_queries': column_search_queries, # Pass search queries to the template
+            'generated_sql': generated_sql  # Pass the generated SQL query
         }
     except Exception as e:
         db.logger.error(f"Error displaying table {table_name}: {e}")

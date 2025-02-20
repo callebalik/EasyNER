@@ -2,6 +2,18 @@
 
 {% block content %}
     <h1>{{ table_name }} Table View</h1>
+
+    <p><b>SQL Query:</b> <code>{{ generated_sql }}</code></p>
+
+    <details>
+        <summary>Explain Query Plan
+            <button id="copy-chatbot" title="Copy for Chatbot">
+                <i class="fas fa-copy"></i>
+            </button>
+        </summary>
+        <div id="explain-query-result"></div>
+    </details>
+
     <form id="search-form" onSubmit="return false;">
     <table id="table-view" class="data-table">
         <thead>
@@ -53,6 +65,18 @@
 
 {% block head %}
 {{ super() }}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<style>
+    #copy-chatbot {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1em;
+        margin-left: 0.5em;
+        vertical-align: middle;
+        padding: 0.25em;
+    }
+</style>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const searchForm = document.getElementById('search-form');
@@ -75,6 +99,70 @@
                     window.location.href = url.href;
                 }
             });
+        });
+
+        document.querySelector('details').addEventListener('toggle', function() {
+            if (this.open) {
+                const query = "{{ generated_sql }}";
+                let url = '/explain-query?query=' + encodeURIComponent(query);
+
+                // Add parameters to the URL
+                {% for column in columns %}
+                    {% if column_search_queries and column in column_search_queries %}
+                        url += '&{{ column }}_search=' + encodeURIComponent("{{ column_search_queries[column] }}");
+                    {% endif %}
+                {% endfor %}
+
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            document.getElementById('explain-query-result').innerText = 'Error: ' + data.error;
+                        } else {
+                            let tableHTML = '<table class="data-table">';
+                            tableHTML += '<thead><tr><th>id</th><th>parent</th><th>notused</th><th>detail</th></tr></thead>';
+                            tableHTML += '<tbody>';
+                            data.forEach(row => {
+                                tableHTML += `<tr><td>${row.id}</td><td>${row.parent}</td><td>${row.notused}</td><td>${row.detail}</td></tr>`;
+                            });
+                            tableHTML += '</tbody></table>';
+                            document.getElementById('explain-query-result').innerHTML = tableHTML;
+                        }
+                    });
+            } else {
+                document.getElementById('explain-query-result').innerHTML = '';
+            }
+        });
+
+        document.getElementById('copy-chatbot').addEventListener('click', function(event) {
+            event.stopPropagation(); // Prevent the details element from toggling
+            const query = "{{ generated_sql }}";
+            let url = '/explain-query?query=' + encodeURIComponent(query);
+
+            // Add parameters to the URL
+            {% for column in columns %}
+                {% if column_search_queries and column in column_search_queries %}
+                    url += '&{{ column }}_search=' + encodeURIComponent("{{ column_search_queries[column] }}");
+                {% endif %}
+            {% endfor %}
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error fetching explain query plan: ' + data.error);
+                    } else {
+                        let explainPlanText = '';
+                        data.forEach(row => {
+                            explainPlanText += `id: ${row.id}, parent: ${row.parent}, notused: ${row.notused}, detail: ${row.detail}\n`;
+                        });
+
+                        const chatbotText = `SQL Query:\n${query}\n\nExplain Query Plan:\n${explainPlanText}`;
+
+                        navigator.clipboard.writeText(chatbotText)
+                            .catch(err => console.error('Could not copy text: ', err));
+                    }
+                });
         });
     });
 </script>
