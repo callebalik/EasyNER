@@ -575,17 +575,29 @@ class DBAnalysis:
         """
         try:
             self.logger.info("Counting named entity frequencies...")
+            # Create temporary table for entity counts
+            self.cursor.execute(
+                """
+                CREATE TEMPORARY TABLE temp_entity_counts AS
+                SELECT entity_id, COUNT(*) AS entity_count
+                FROM entity_occurrences
+                WHERE error_id IS NULL
+                GROUP BY entity_id;
+                """
+            )
+
+            # Update named_entities table with counts from temporary table
             self.cursor.execute(
                 """
                 UPDATE named_entities
-                SET fq = (
-                    SELECT COUNT(*)
-                    FROM entity_occurrences
-                    WHERE entity_occurrences.entity_id = named_entities.id
-                    AND entity_occurrences.error_id IS NULL
-                )
+                SET fq = (SELECT entity_count FROM temp_entity_counts WHERE temp_entity_counts.entity_id = named_entities.id);
                 """
             )
+
+            # Drop the temporary table
+            self.cursor.execute("DROP TABLE temp_entity_counts;")
+
+            
             self.conn.commit()
             self.logger.info(
                 "Named entity frequencies updated in named_entities table."
