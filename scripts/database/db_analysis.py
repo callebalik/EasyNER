@@ -996,13 +996,33 @@ class DBAnalysis:
 
         self.logger.info("Stage 2 (Progress Bar): Text normalization in aggregated_eo complete")
 
-    def merge_duplicate_aggregated_eos_batched_with_progressbar(self, batch_size=100): # Function name updated to indicate progress bar
+
+    def merge_duplicate_aggregated_eos_batched_with_progressbar(self, batch_size=1000): # Function name updated to indicate progress bar
         self.logger.info("Stage 3 (Progress Bar): Merging duplicate aggregated_eo (batched)") # Log message updated
+        # Create index for faster grouping:
+        # QUERY PLAN
+        # |--CO-ROUTINE DuplicateGroups
+        # |  `--SCAN aggregated_eo USING COVERING INDEX idx_aggregated_eo_dupe_group
+        # `--SCAN DuplicateGroups
+
+        # Previous query plan:
+        # QUERY PLAN
+        # |--CO-ROUTINE DuplicateGroups
+        # |  |--SCAN aggregated_eo
+        # |  `--USE TEMP B-TREE FOR GROUP BY
+        # `--SCAN DuplicateGroups
+
+        self.cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_aggregated_eo_dupe_group
+            ON aggregated_eo (normalized_entity_text, entity_id)
+            """
+        )
         merge_iterations = 0
         try: # <----- TRY BLOCK START for Rollback on Error
             with tqdm(desc="Stage 3 Progress (Merging)") as pbar: # Initialize tqdm progress bar (unknown total initially)
                 while True: # Iterate until no more duplicates are found in a batch
-                    merge_groups_query = f"""
+                    merge_groups_query = """
                         WITH DuplicateGroups AS (
                             SELECT
                                 normalized_entity_text, entity_id,
@@ -1012,12 +1032,12 @@ class DBAnalysis:
                             FROM aggregated_eo
                             GROUP BY normalized_entity_text, entity_id
                             HAVING COUNT(*) > 1
-                            LIMIT {batch_size} -- Limit the number of duplicate groups to process in each batch
+                            LIMIT ? -- Limit the number of duplicate groups to process in each batch
                         )
                         SELECT normalized_entity_text, entity_id, ids_to_merge, keep_id
                         FROM DuplicateGroups;
                     """
-                    self.cursor.execute(merge_groups_query)
+                    self.cursor.execute(merge_groups_query, (batch_size,)) # <--- Parameterized batch_size
                     duplicate_groups = self.cursor.fetchall()
 
                     if not duplicate_groups:
@@ -1031,51 +1051,35 @@ class DBAnalysis:
                         if not ids_to_delete: # Should not happen, but safety check
                             continue
 
-                        # --- 1. Aggregate stats and INSERT into aggregated_eo_stats ---
-                        aggregate_stats_query = f"""
-                            SELECT SUM(aes.uniq_documents), SUM(aes.fq)
-                            FROM aggregated_eo_stats aes -- Select from aggregated_eo_stats now
-                            WHERE summary_id IN ({','.join(['?']*len(ids_to_merge))})
-                        """
-                        self.cursor.execute(aggregate_stats_query, ids_to_merge)
-                        total_uniq_docs, total_fq = self.cursor.fetchone()
-
-                        insert_stats_query = """
-                            INSERT OR REPLACE INTO aggregated_eo_stats (summary_id, uniq_documents, fq)
-                            VALUES (?, ?, ?)
-                        """
-                        self.cursor.execute(insert_stats_query, (keep_id, total_uniq_docs, total_fq))
-
-
                         # --- 2. Update entity_occurrences.summary_id (Efficient JOIN-based UPDATE) ---
                         update_eo_summary_id_query = """
                             UPDATE entity_occurrences
                             SET summary_id = ?
-                            WHERE summary_id IN ({','.join(['?']*len(ids_to_delete))})
-                        """
-                        self.cursor.execute(update_eo_summary_id_query, [keep_id] + ids_to_delete) # Parameterized query
+                            WHERE summary_id IN ({})
+                        """.format(','.join(['?']*len(ids_to_delete))) # Dynamic placeholders - still needed
+                        self.cursor.execute(update_eo_summary_id_query, [keep_id] + ids_to_delete) # <--- Parameterized keep_id and ids_to_delete
 
                         # --- 3. DELETE merged summary rows from aggregated_eo and aggregated_eo_stats ---
-                        delete_summaries_query = f"""
+                        delete_summaries_query = """
                             DELETE FROM aggregated_eo
-                            WHERE id IN ({','.join(['?']*len(ids_to_delete))})
-                        """
-                        self.cursor.execute(delete_summaries_query, ids_to_delete) # Parameterized query
+                            WHERE id IN ({})
+                        """.format(','.join(['?']*len(ids_to_delete))) # Dynamic placeholders - still needed
+                        self.cursor.execute(delete_summaries_query, ids_to_delete) # <--- Parameterized ids_to_delete
 
-                        delete_stats_query = f"""
-                            DELETE FROM aggregated_eo_stats
-                            WHERE summary_id IN ({','.join(['?']*len(ids_to_delete))})
-                        """
-                        self.cursor.execute(delete_stats_query, ids_to_delete)
+                        self.logger.debug(f"Merged {len(ids_to_delete)} duplicate aggregated_eo for '{normalized_text}' (entity_id: {entity_id})")
 
-                        self.conn.commit() # Commit after each merge group
                         merge_count_batch += 1
 
                     merge_iterations += 1
+                    self.conn.commit() # Commit after each batch of merges
+                    self.logger.debug(f") Progress Bar: Merged {merge_count_batch} duplicate groups in iteration {merge_iterations}. Committed")
                     pbar.update(merge_count_batch) # Update progress bar by number of groups merged in batch
-                    self.logger.debug(f"Stage 3 (Progress Bar): Merged {merge_count_batch} duplicate groups in iteration {merge_iterations}")
                     if merge_count_batch == 0: # No merges in this batch, probably no more duplicates for now
                         break
+        except KeyboardInterrupt: # <----- EXCEPT BLOCK for Keyboard Interupt
+            self.conn.rollback() # Rollback transaction in case of error
+            self.logger.error(f"Stage 3 (Progress Bar): KeyboardInterrupt during merge process: Rolling back transaction") # Log error
+            raise # Re-raise the exception to signal failure
         except sqlite3.Error as e: # <----- EXCEPT BLOCK for Rollback on Error
             self.conn.rollback() # Rollback transaction in case of error
             self.logger.error(f"Stage 3 (Progress Bar): Error during merge process: {e}") # Log error
