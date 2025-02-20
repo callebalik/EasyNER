@@ -675,7 +675,8 @@ class DBAnalysis:
                     ) as normalized_entity_text,
                     error_id
                 FROM entity_occurrences
-                WHERE entity_text IS NOT NULL
+                WHERE entity_text IS NOT NULL 
+                AND overlap = FALSE
                 AND error_id IS NULL  -- Explicitly filter out error entities here
             """
             self.logger.debug(f"Query string for entity occurrence aggregation: {query_string}")
