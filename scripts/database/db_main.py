@@ -76,8 +76,15 @@ class EasyNerDBHandler:
         self.data_cleaner = DBDataCleaner(
             self.conn, self.cursor, self.logger, self.data_exchanger, config=self.config
         )
-        self.analysis = DBAnalysis(self.conn, self.cursor, self.logger, self.data_exchanger, self.log_query_plan, self.execute_with_log )
+        self.analysis = DBAnalysis(self.conn, self.cursor, self.logger, self.data_exchanger, self.log_query_plan, self.execute_with_log, self.conn_params_dict)
         self.statistics = DBStatistics(self.conn, self.cursor, self.logger, self.data_exchanger)
+
+    @property
+    def conn_params_dict(self):
+        """
+        Returns the connection parameters as a dictionary for Reader/Writer classes.
+        """
+        return {"database": self.db_path} # Return connection parameters as dict
 
     def _set_default_settings(self):
         """
