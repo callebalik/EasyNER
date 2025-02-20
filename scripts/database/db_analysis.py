@@ -325,7 +325,7 @@ class DBAnalysis:
         )
         return output_path
 
-    def find_overlapping_entities(self) -> None:
+    def find_overlapping_entities(self, overwrite: bool = False) -> None:
         """
         Find entities in the same sentence where span_start and span_end overlap between the two entities.
         Record into new column of TABLE entity_occurrences [overlap: boolean].
@@ -355,7 +355,7 @@ class DBAnalysis:
                     ADD COLUMN overlap BOOLEAN DEFAULT FALSE
                 """
                 )
-            else:
+            if overwrite:
                 # Reset all overlap flags to FALSE
                 self.cursor.execute(
                     """
@@ -363,6 +363,13 @@ class DBAnalysis:
                     SET overlap = FALSE
                 """
                 )
+
+            self.cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_entity_occurrences_document_id 
+                ON entity_occurrences(document_id, sentence_index, id)
+                """
+            ) # Create index for faster processing, This index will allow SQLite to directly locate the matching rows without scanning a range.
 
             self.logger.info("Finding overlapping entities...")
 
@@ -381,17 +388,22 @@ class DBAnalysis:
                     JOIN entity_occurrences e2 ON 
                         e1.document_id = e2.document_id AND
                         e1.sentence_index = e2.sentence_index AND
-                        e1.id < e2.id AND
+                        e1.id < e2.id
+                    JOIN entity_occurrence_spans s1 ON s1.id = e1.id
+                    JOIN entity_occurrence_spans s2 ON s2.id = e2.id
+                    WHERE 
+                        e1.overlap = FALSE AND
+                        e2.overlap = FALSE AND
                         NOT (
-                            e1.span_end <= e2.span_start OR
-                            e2.span_end <= e1.span_start
-                        )
+                                s1.span_end <= s2.span_start OR
+                                s2.span_end <= s1.span_start
+                            )
                 )
                 UPDATE entity_occurrences
                 SET overlap = TRUE
                 WHERE id IN (
                     SELECT id1 FROM overlapping_pairs
-                    UNION
+                    UNION ALL
                     SELECT id2 FROM overlapping_pairs
                 )
             """
