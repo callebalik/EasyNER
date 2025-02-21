@@ -370,5 +370,5 @@ if __name__ == "__main__":
     db.data_exchanger.rename_named_entity("phenomenon", "PNM")
     db.data_exchanger.rename_named_entity("disease", "DIS")
     db.data_cleaner.clean_inclusive_entity_spans("PNM")
-    db.analysis.calc_document_counts()
+    db.analysis.doc_calc_word_counts()
     db.data_cleaner.set_error_entity_error_codes()
