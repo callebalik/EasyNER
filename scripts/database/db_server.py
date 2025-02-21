@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, g, render_template, request
 from db_main import EasyNerDBHandler
 import os
-from data_model import Document, Sentence, NamedEntity
+from .data_model.data_model import Document, Sentence, NamedEntity
 import sass
 import subprocess
 import plotly.graph_objects as go
@@ -281,8 +281,8 @@ def list_named_entities():
     result = display_table('named_entities')
     if 'error' in result:
         return render_template('error.html', message=result['error']), 500
-    return render_template('named_entities.html', **result)
-    
+    return render_template('table_view.html', table_name='named_entities', **result)
+
 @app.route('/named-entities/types')
 def get_named_entity_types():
     try:

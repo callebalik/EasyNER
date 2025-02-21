@@ -33,9 +33,10 @@ CREATE TABLE
         entity_id INTEGER NOT NULL,
         uniq_documents INTEGER,
         fq INTEGER,
-        UNIQUE(normalized_entity_text, entity_id),
+        UNIQUE(normalized_entity_text, entity_id), -- Automatically enforce uniqueness, automatic index
         FOREIGN KEY (entity_id) REFERENCES named_entities (id)
     );
+
 
 CREATE VIEW
     view_entity_occurrences_summary AS
@@ -63,7 +64,8 @@ CREATE TABLE
         entity_id INTEGER NOT NULL,
         document_id INTEGER NOT NULL,
         sentence_index INTEGER NOT NULL,
-        summary_id INTEGER,
+        summary_id INTEGER DEFAULT NULL,
+        overlap BOOLEAN DEFAULT Null,
         FOREIGN KEY (document_id) REFERENCES documents (id),
         FOREIGN KEY (document_id, sentence_index) REFERENCES sentences (document_id, sentence_index),
         FOREIGN KEY (entity_id) REFERENCES named_entities (id),
@@ -81,10 +83,19 @@ CREATE TABLE entity_occurrence_spans (
 
 CREATE VIEW view_entity_occurrences_spans AS
 SELECT
-eo.id,
-
-
-
+    eo.id,
+    eo.entity_text,
+    ne.named_entity,
+    eos.normalized_entity_text,
+    eo.document_id,
+    eo.sentence_index,
+    spans.span_start,
+    spans.span_end
+FROM
+    entity_occurrences eo
+    JOIN named_entities ne ON eo.entity_id = ne.id
+    LEFT JOIN entity_occurrences_summary eos ON eo.summary_id = eos.id
+    LEFT JOIN entity_occurrence_spans spans ON eo.id = spans.id;
 
 CREATE TABLE entity_occurrences_metrics (
     id INTEGER PRIMARY KEY NOT NULL,
@@ -95,10 +106,6 @@ CREATE TABLE entity_occurrences_metrics (
     idf REAL,
     FOREIGN KEY (id) REFERENCES entity_occurrences (id) -- Important: Maintain the 1:1 relationship
 );
-
-CREATE INDEX idx_entity_occurrences_error_check 
-ON entity_occurrences(summary_id, error_id)
-WHERE error_id IS NOT NULL;
 
 CREATE VIEW
     view_entity_occurrences AS
@@ -276,9 +283,6 @@ CREATE TABLE
         import_date DATETIME
     );
 
-CREATE INDEX idx_entity_occurrences_error 
-ON entity_occurrences(entity_text, error_id)
-WHERE error_id IS NOT NULL;
 
 CREATE VIEW view_entity_summary_violations AS
 SELECT DISTINCT
@@ -300,8 +304,24 @@ CREATE TABLE aggregated_eo (
 );
 
 CREATE TABLE IF NOT EXISTS aggregated_eo_stats (
-    agg_eo_id INTEGER PRIMARY KEY, -- Foreign key to aggregated_eo.id
+    summary_id INTEGER PRIMARY KEY, -- Foreign key to aggregated_eo.id
     uniq_documents INTEGER DEFAULT 0,
     fq INTEGER DEFAULT 0,
-    FOREIGN KEY (agg_eo_id) REFERENCES aggregated_eo(id) ON DELETE CASCADE -- Enforce relationship, cascade delete for data integrity. If aggregated entity is deleted, delete stats as well
+    FOREIGN KEY (summary_id) REFERENCES aggregated_eo(id) ON DELETE CASCADE -- Enforce relationship, cascade delete for data integrity. If aggregated entity is deleted, delete stats as well
 );
+
+
+CREATE VIEW view_aggregated_eo AS
+SELECT
+    aeo.id,
+    eo.summary_id,
+    aeo.normalized_entity_text as text_normalized,
+    eo.entity_text as text,
+    ne.named_entity,
+    aes.uniq_documents,
+    aes.fq
+FROM
+    aggregated_eo aeo
+    JOIN named_entities ne ON aeo.entity_id = ne.id
+    JOIN aggregated_eo_stats aes ON aeo.id = aes.summary_id
+    JOIN entity_occurrences eo ON eo.summary_id = aeo.id;

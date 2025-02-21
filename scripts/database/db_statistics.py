@@ -1,11 +1,11 @@
-import sqlite3
+from turtle import pd
+from pandas import DataFrame
+from matplotlib import pyplot as plt
+from .db_data_exchanger import DBDataExchanger
 import logging
 import os
-
-from pandas import DataFrame
-
-from db_data_exchanger import DBDataExchanger # Import pandas
-
+import sqlite3
+import seaborn as sns
 
 class DBStatistics:
 
@@ -389,3 +389,28 @@ class DBStatistics:
         )
 
         self._export_df_(df, "database_overview.csv")
+
+    def cooccurrence_stats(self, level: str = "document"):
+        """
+        Get statistics on entity co-occurrences.
+        """
+        # Retrieve and log final co-occurrence statistics
+        query = f"""
+            SELECT
+                COUNT(*) as total_pairs,
+                (SELECT COUNT(DISTINCT entity_id)
+                FROM entity_occurrences
+                WHERE id IN (SELECT e1_id FROM entity_cooccurrences UNION SELECT e2_id FROM entity_cooccurrences)) as total_entities,
+                {"COALESCE(AVG(sentence_distance), 0) as avg_distance " if level == "sentence" else ""}
+            FROM entity_cooccurrences
+            """
+        
+        self.cursor.execute(query)
+        
+        total_stats = self.cursor.fetchone()
+        self.logger.info(
+            f"\nCo-occurrence identification complete:"
+            f"\n- Total unique pairs: {total_stats[0]:,}"
+            f"\n- Unique entities involved: {total_stats[1]:,}"
+            + (f"\n- Average sentence distance: {total_stats[2]:.2f}" if level == "sentence" else "")
+        )

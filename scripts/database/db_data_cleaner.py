@@ -1,7 +1,7 @@
 import re
 from typing import List, Tuple, Optional
 import sqlite3
-from db_data_exchanger import DBDataExchanger
+from .db_data_exchanger import DBDataExchanger
 import logging
 import csv
 import json
@@ -295,13 +295,14 @@ class DBDataCleaner:
                     # Create index if not exists - Provides significant speedup for error_id queries where it's used to filter out NULL values
                     self.cursor.execute("""
                     CREATE INDEX IF NOT EXISTS idx_entity_occurrences_entity_id_error_null
-                    ON entity_occurrences (entity_id)
+                    ON entity_occurrences(entity_text, summary_id, error_id)
                     WHERE error_id IS NULL
                     """)
 
 
                     self.conn.commit()
                     self.logger.info(f"Updated {len(entity_updates)} entity occurrences")
+
                 except KeyboardInterrupt:
                     self.logger.warning("User interrupted. Rolling back changes.")
                     self.conn.rollback()

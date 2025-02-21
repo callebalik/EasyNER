@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 import sqlite3
-from data_model import Document, Sentence, NamedEntity
+from .data_model.data_model import Document, Sentence, NamedEntity
 import logging
 
 

@@ -1,10 +1,9 @@
-import sys
 import os
+import sys
 import logging
 import json
 import sqlite3
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
 class EasyNerDBHandler:
@@ -56,21 +55,21 @@ class EasyNerDBHandler:
         self._setup_logging()
 
         # Connect to the database
-        self.logger.info(f"Connecting to database {self.name}")
         self.conn = sqlite3.connect(self.db_path)
         # self._set_default_settings()
         self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
         self.cursor.row_factory = sqlite3.Row # Return rows as dictionaries for easy access
         self.execute_with_log = self.execute_with_log
         self.log_query_plan = self._log_query_plan
-        self.logger.info(f"Connected to database {self.db_path} and created cursor")
+        self.logger.debug(f"Connected to database {self.db_path} and created cursor")
 
         # Initialize components
         # Import here to avoid circular dependencies and ensure all components are initialized before use
-        from db_data_exchanger import DBDataExchanger
-        from db_data_cleaner import DBDataCleaner
-        from db_analysis import DBAnalysis
-        from db_statistics import DBStatistics
+        from .db_data_exchanger import DBDataExchanger
+        from .db_data_cleaner import DBDataCleaner
+        from .analysis.db_analysis import DBAnalysis
+        from .db_statistics import DBStatistics
+        from .data_model.entities import EntityOccurrence
 
         self.data_exchanger = DBDataExchanger(self.conn, self.cursor, self.logger)
         self.data_cleaner = DBDataCleaner(
@@ -78,6 +77,8 @@ class EasyNerDBHandler:
         )
         self.analysis = DBAnalysis(self.conn, self.cursor, self.logger, self.data_exchanger, self.log_query_plan, self.execute_with_log, self.conn_params_dict)
         self.statistics = DBStatistics(self.conn, self.cursor, self.logger, self.data_exchanger)
+
+        self.eo = EntityOccurrence(self.conn, self.cursor, self.logger, log_query_plan=self._log_query_plan, conn_params_dict=self.conn_params_dict)
 
     @property
     def conn_params_dict(self):
@@ -150,7 +151,7 @@ class EasyNerDBHandler:
                 "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             file_handler.setFormatter(file_formatter)
-
+            
             # Create console handler for logging
             console_handler = logging.StreamHandler()
             console_handler.setLevel(logging.INFO)
@@ -248,9 +249,9 @@ class EasyNerDBHandler:
             self.logger.debug(s)
 
         except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
+            print(f"SQLite error: {e} while logging query plan.")
             return None
-        
+
     def execute(self, query, args=None):
         """
         Execute a SQL query.
@@ -294,7 +295,7 @@ class EasyNerDBHandler:
             self.cursor.execute(query)
         else:
             self.cursor.execute(query, args)
-
+            
     def commit(self):
         """
         Commit the current transaction.

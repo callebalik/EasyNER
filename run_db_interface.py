@@ -1,4 +1,4 @@
-from db_main import EasyNerDBHandler  # Ensure db_main is imported
+from scripts.database.db_main import EasyNerDBHandler  # Ensure db_main is imported
 from IPython import embed
 # import code
 
