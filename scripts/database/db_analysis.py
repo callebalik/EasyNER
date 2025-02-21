@@ -582,13 +582,78 @@ class DBAnalysis:
                 )
             )
 
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            self.logger.error(f"Error identifying co-occurrences: {e}")
-            raise
+    def count_entity_cooccurrences_rw_pair(
+        self, level: str = "document", batch_size=200000, num_reader_threads=4
+    ) -> None:
+        """
+        Counts entity co-occurrences using ReaderWriterPair.
+        """
+        if level not in ["document", "sentence"]:
+            raise ValueError("Level must be either 'document' or 'sentence'")
 
-        finally:
-            self.cursor.execute("DROP TABLE IF EXISTS temp_new_cooccurrences")
+        def reader_query_fn(level): # Define reader_query as a function
+            return f"""
+                SELECT DISTINCT
+                    e1.id,
+                    e2.id,
+                    {"ABS(e1.sentence_index - e2.sentence_index)" if level == "sentence" else "NULL"}
+                FROM entity_occurrences e1
+                JOIN entity_occurrences e2 ON
+                    e1.document_id = e2.document_id AND
+                    e1.id <= e2.id
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM entity_cooccurrences ec
+                    WHERE ec.e1_id = e1.id AND ec.e2_id = e2.id
+                )
+                AND (e1.overlap = FALSE)
+                AND (e2.overlap = FALSE)
+                {"AND ABS(e1.sentence_index - e2.sentence_index) <= 5" if level == "sentence" else ""}
+            """
+
+        self.log_query_plan(reader_query_fn(level))
+
+        def cooccurrence_process_function(batch, conn_params):
+            """Processes a batch of entity co-occurrence data."""
+            return batch # For now, minimal processing, it done database side - just pass the batch through
+
+        def cooccurrence_write_function(batch, cursor, conn):
+            """Writes a batch of entity co-occurrences to the database."""
+            placeholders = ", ".join(["(?, ?, ?, ?)"] * len(batch))
+            entries = []
+            for e1_id, e2_id, sentence_distance in batch:
+                entries.append((e1_id, e2_id, False, sentence_distance)) # overlap=False as default
+
+            sql = f"""
+                INSERT INTO entity_cooccurrences (e1_id, e2_id, overlap, sentence_distance)
+                VALUES {placeholders}
+            """
+            cursor.execute(sql, [item for entry in entries for item in entry]) # Flatten entries list
+
+
+        # --- COUNT QUERY TO GET ACCURATE total_count ---
+        count_query = "SELECT COUNT(*) FROM (" + reader_query_fn(level) + ")"
+        self.cursor.execute(count_query)
+        total_count = self.cursor.fetchone()[0]
+        self.logger.info(f"Estimated total co-occurrence pairs to process: {total_count:,}")
+
+
+        rw_pair = ReaderWriterPair(
+            conn_params=self.conn_params,
+            reader_query=reader_query_fn(level), # Pass reader query function
+            batch_size=batch_size,
+            process_function=cooccurrence_process_function,
+            write_function=cooccurrence_write_function,
+            num_reader_threads=num_reader_threads,
+            logger=self.logger,
+            max_queue_size=50,
+            total_count=total_count # Use the accurate count
+        )
+
+        self.logger.info(f"Starting ReaderWriterPair to count entity co-occurrences at {level} level.")
+        rw_pair.run()
+        self.logger.info(f"ReaderWriterPair process finished for {level} level co-occurrence counting.")
+
 
     def count_named_entity_fq(self):
         """
@@ -912,6 +977,54 @@ class DBAnalysis:
             self.conn.rollback()
             self.logger.error(f"Error updating summary_id references: {e}")
             raise
+
+    def calculate_entity_occurrence_statistics(self, batch_size=10000):
+        """
+        Calculate unique document count and frequency for each normalized entity in entity_occurrences_summary.
+        JOINS with entites by entity_occurrences.summary_id 
+        Unique document count is calculated as the number of distinct document IDs associated with each summary_id
+        Frequency is calculated as the total number of occurrences of entities with each summary_id
+        """
+        try:
+            self.logger.info("Calculating entity occurrence statistics...")
+
+            # Get total number of entity_occurrences_summary records
+            self.cursor.execute("SELECT COUNT(*) FROM entity_occurrences_summary")
+            total_records = self.cursor.fetchone()[0]
+
+            offset = 0
+            with tqdm(total=total_records, desc="Updating entity statistics") as pbar:
+                while offset < total_records:
+                    # Update in batches
+                    self.cursor.execute(
+                        """
+                        UPDATE entity_occurrences_summary
+                        SET uniq_documents = (
+                            SELECT COUNT(DISTINCT document_id)
+                            FROM entity_occurrences eo
+                            WHERE eo.summary_id = entity_occurrences_summary.id
+                        ),
+                        fq = (
+                            SELECT COUNT(*)
+                            FROM entity_occurrences eo
+                            WHERE eo.summary_id = entity_occurrences_summary.id
+                        )
+                        WHERE id IN (SELECT id FROM entity_occurrences_summary LIMIT ? OFFSET ?)
+                        """,
+                        (batch_size, offset),
+                    )
+
+                    self.conn.commit()
+                    updated_records = self.cursor.rowcount
+                    offset += batch_size
+                    pbar.update(updated_records)
+
+            self.logger.info("Entity occurrence statistics updated.")
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Error calculating entity occurrence statistics: {e}")
+            raise
+
 
     def aggregate_entity_occurrences(
         self, batch_size=10000, ignore_error_occurrences: bool = True
