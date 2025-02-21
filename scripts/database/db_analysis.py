@@ -582,9 +582,7 @@ class DBAnalysis:
                 )
             )
 
-    def count_entity_cooccurrences_rw_pair(
-        self, level: str = "document", batch_size=200000, num_reader_threads=4
-    ) -> None:
+    def count_entity_cooccurrences_multithreaded(self, level: str = "document", batch_size=5000, num_reader_threads=32) -> None:
         """
         Counts entity co-occurrences using ReaderWriterPair.
         """
@@ -617,18 +615,20 @@ class DBAnalysis:
             """Processes a batch of entity co-occurrence data."""
             return batch # For now, minimal processing, it done database side - just pass the batch through
 
-        def cooccurrence_write_function(batch, cursor, conn):
-            """Writes a batch of entity co-occurrences to the database."""
-            placeholders = ", ".join(["(?, ?, ?, ?)"] * len(batch))
-            entries = []
-            for e1_id, e2_id, sentence_distance in batch:
-                entries.append((e1_id, e2_id, False, sentence_distance)) # overlap=False as default
 
+        def cooccurrence_write_function(batch, cursor, conn):
+            """Writes a batch of entity co-occurrences to the database using executemany."""
             sql = f"""
-                INSERT INTO entity_cooccurrences (e1_id, e2_id, overlap, sentence_distance)
-                VALUES {placeholders}
+                INSERT INTO entity_cooccurrences (e1_id, e2_id {", sentence_distance" if level == "sentence" else ""})
+                VALUES (?, ? {", ?" if level == "sentence" else ""})
             """
-            cursor.execute(sql, [item for entry in entries for item in entry]) # Flatten entries list
+            try:
+                cursor.executemany(sql, batch) # Directly use the batch from reader as it's pre-formatted
+            except Exception as e:
+                conn.rollback() # Rollback transaction on error for the current batch
+                print(f"Error in write_function: {e}. Transaction rolled back for current batch.")
+                return False # Indicate failure (optional error handling)
+            return True # Indicate success (optional success indication)
 
 
         # --- COUNT QUERY TO GET ACCURATE total_count ---
@@ -639,7 +639,7 @@ class DBAnalysis:
 
 
         rw_pair = ReaderWriterPair(
-            conn_params=self.conn_params,
+            conn_params=self.conn_params_dict,
             reader_query=reader_query_fn(level), # Pass reader query function
             batch_size=batch_size,
             process_function=cooccurrence_process_function,
@@ -647,13 +647,17 @@ class DBAnalysis:
             num_reader_threads=num_reader_threads,
             logger=self.logger,
             max_queue_size=50,
-            total_count=total_count # Use the accurate count
+            profiling_writer_enabled=True,
+            profiling_reader_enabled=True,
+            writer_batch_chunking=4,
+            total_count=total_count, # Use the accurate count
+            process_title=f"Co-occurrence counting at {level} level",
+            
         )
 
         self.logger.info(f"Starting ReaderWriterPair to count entity co-occurrences at {level} level.")
         rw_pair.run()
         self.logger.info(f"ReaderWriterPair process finished for {level} level co-occurrence counting.")
-
 
     def count_named_entity_fq(self):
         """
@@ -1561,6 +1565,7 @@ class DBAnalysis:
                 SELECT COUNT(*)
                 FROM entity_occurrences eo
                 WHERE eo.error_id IS NULL
+                AND overlap = FALSE
                 AND eo.summary_id IS NULL
             """
             self.log_query_plan(count_query) # Log query plan for count query
@@ -1576,7 +1581,9 @@ class DBAnalysis:
                 JOIN {target_table} s
                     ON s.normalized_entity_text = ne.normalized_entity_text
                     AND s.entity_id = ne.entity_id
-                WHERE eo.error_id IS NULL AND eo.summary_id IS NULL
+                WHERE eo.error_id IS NULL
+                AND AND overlap = FALSE
+                AND eo.summary_id IS NULL
             """
             self.log_query_plan(reader_query) # Log query plan for reader query
 
