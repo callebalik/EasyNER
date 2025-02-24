@@ -1,13 +1,11 @@
 from flask import Flask, jsonify, g, render_template, request
-from .db_main import EasyNerDBHandler
+from db_main import EasyNerDBHandler
 import os
-from data_model import Document, Sentence, NamedEntity
 import sass
-import subprocess
 import plotly.graph_objects as go
 
 # Set template directory to current directory/templates
-template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
+template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 app = Flask(__name__, template_folder=template_dir)
 
 # Compile SCSS to CSS on server load
