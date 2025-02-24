@@ -368,8 +368,10 @@ class EntityOccurrence:
 
     def _normalize_entity_text_column(
         self,
-        table_name: str = eo_lookup_table_name,
-        column_name: str = "normalized_entity_text",
+        table_name: str = TABLE_NE_LOOKUP,
+        column_name: str = COL_NE_TXT_NORM,
+        batch_size: int = 100000,
+        offset: int = 0,
     ):
         """
         Normalizes a specified text column in a SQLite database table by:
@@ -379,15 +381,30 @@ class EntityOccurrence:
         Args:
             database_file (str): Path to the SQLite database file.
             table_name (str): Name of the table containing the column to normalize.
-            column_name (str): Name of the column to normalize (e.g., 'normalized_entity_text').
+            column_name (str): Name of the column to normalize (e.g., 'txt_norm').
         """
 
         try:
             # 2. SQL statement to remove leading whitespace
-            sql_remove_leading_whitespace = f"""
+            sql_remove_leading_whitespace = f"""--sql
                 UPDATE {table_name}
-                SET {column_name} = LTRIM({column_name});
+                SET {column_name} = LTRIM({column_name})
+                WHERE {column_name} <> LTRIM({column_name})
+                LIMIT ? OFFSET ?;
             """
+
+            sql_remove_leading_whitespace = f"""--sql
+                UPDATE {table_name}
+                SET {column_name} = LTRIM({column_name})
+                WHERE rowid IN (
+                    SELECT rowid
+                    FROM {table_name}
+                    WHERE {column_name} <> LTRIM({column_name})
+                    LIMIT ? OFFSET ?
+                );
+            """
+
+            self.log_query_plan(sql_remove_leading_whitespace)
 
             # 3. SQL statement to remove leading '" ' after removing whitespace
             sql_remove_leading_quote_space = f"""
@@ -405,27 +422,87 @@ class EntityOccurrence:
                 END;
             """
 
+            sql_remove_leading_quote_space_batched = f"""--sql
+                UPDATE {table_name}
+                SET {column_name} =
+                    CASE
+                        WHEN SUBSTR({column_name}, 1, 2) = '" ' THEN SUBSTR({column_name}, 3)
+                        WHEN SUBSTR({column_name}, 1, 3) = '% )' THEN SUBSTR({column_name}, 4)
+                        WHEN SUBSTR({column_name}, 1, 2) = '% ' THEN SUBSTR({column_name}, 3)
+                        ELSE {column_name}
+                    END
+                WHERE rowid IN (
+                    SELECT rowid
+                    FROM {table_name}
+                    WHERE (SUBSTR({column_name}, 1, 2) = '" '
+                        OR SUBSTR({column_name}, 1, 3) = '% )'
+                        OR SUBSTR({column_name}, 1, 2) = '% ')
+                    LIMIT ? OFFSET ?
+                );
+            """
+
+            self.log_query_plan(sql_remove_leading_quote_space)
             # 4. Execute the SQL statements
 
-            print(
-                f"Step 1: Removing leading whitespace from column '{column_name}' in table '{table_name}'..."
-            )
-            self.cursor.execute(sql_remove_leading_whitespace)
+            total_count = self.cursor.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM {table_name}
+                """
+            ).fetchone()[0]
+
+            with tqdm(
+                total=total_count,
+                desc=f"Step 1: Removing leading whitespace from column '{column_name}' in table '{table_name}",
+            ) as pbar:
+                while True:
+                    self.cursor.execute(
+                        sql_remove_leading_whitespace,
+                        (batch_size, offset),
+                    )
+                    row_count = self.cursor.rowcount
+                    if (
+                        row_count < batch_size or row_count == 0
+                    ):  # Added condition to break if no rows are updated
+                        pbar.update(row_count)
             print("Leading whitespace removal completed.")
+                        break
+                    offset += batch_size
+                    pbar.update(row_count)
 
             print(
                 f"Step 2: Removing leading '\" ' from column '{column_name}' in table '{table_name}'..."
             )
-            self.cursor.execute(sql_remove_leading_quote_space)
-            print("Leading '\" ' removal completed.")
+            # self.cursor.execute(sql_remove_leading_quote_space)
+            # print("Leading '\" ' removal completed.")
 
-            # 5. Commit the changes to the database
+            offset = 0
+            with tqdm(
+                total=total_count,
+                desc=f"Step 2: Removing leading '\" ' from '{column_name}' in '{table_name}'",
+            ) as pbar:
+                while True:
+                    self.cursor.execute(
+                        sql_remove_leading_quote_space_batched, (batch_size, offset)
+                    )
+                    row_count = self.cursor.rowcount
+                    if row_count == 0:
+                        pbar.update(0)  # No rows updated in this batch, we're done.
+                        print("Leading quote/prefix removal completed.")
+                        break
+                    offset += row_count
             self.conn.commit()
-            print("Changes committed to the database.")
+                    pbar.update(row_count)
+
+        # # 5. Commit the changes to the database
+        # self.conn.commit()
+        # print("Changes committed to the database.")
 
         except sqlite3.Error as e:
             print(f"Database error: {e}")
-
+        except KeyboardInterrupt:
+            self.conn.rollback()
+            print("Operation cancelled by user.")
         # class AggregatedData:
         """
         Contains methods for updating aggregated_entities table.
