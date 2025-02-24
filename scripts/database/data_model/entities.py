@@ -57,7 +57,7 @@ class NamedEntity:
             self.logger.info("Counting named entity frequencies...")
             # Create temporary table for entity counts
             self.cursor.execute(
-                """
+                """--sql
                 CREATE TEMPORARY TABLE temp_entity_counts AS
                 SELECT entity_id, COUNT(*) AS entity_count
                 FROM entity_occurrences
@@ -124,7 +124,7 @@ class EntityOccurrence:
 
         self.stmt_table_ne_lookup = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_NE_LOOKUP} (
-                    id INTEGER PRIMARY KEY,
+                    id INTEGER PRIMARY KEY, -- 1:1 relation with {TABLE_NE}
                     {COL_NE_CLASS_ID} INTEGER,
                     {COL_NE_TXT_NORM} TEXT,
                     {COL_NE_NORM_ID} INTEGER,
@@ -159,8 +159,8 @@ class EntityOccurrence:
             # Add overlap column if it doesn't exist
             self.cursor.execute(
                 """
-                SELECT COUNT(*) 
-                FROM pragma_table_info('entity_occurrences') 
+                SELECT COUNT(*)
+                FROM pragma_table_info('entity_occurrences')
                 WHERE name='overlap'
             """
             )
@@ -174,7 +174,7 @@ class EntityOccurrence:
 
             self.cursor.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_entity_occurrences_document_id 
+                CREATE INDEX IF NOT EXISTS idx_entity_occurrences_document_id
                 ON entity_occurrences(document_id, sentence_index, id)
                 """
             )
@@ -189,13 +189,13 @@ class EntityOccurrence:
                         e1.id as id1,
                         e2.id as id2
                     FROM entity_occurrences e1
-                    JOIN entity_occurrences e2 ON 
+                    JOIN entity_occurrences e2 ON
                         e1.document_id = e2.document_id AND
                         e1.sentence_index = e2.sentence_index AND
                         e1.id < e2.id
                     JOIN entity_occurrence_spans s1 ON s1.id = e1.id
                     JOIN entity_occurrence_spans s2 ON s2.id = e2.id
-                    WHERE 
+                    WHERE
                         e1.overlap = FALSE AND
                         e2.overlap = FALSE AND
                         NOT (
@@ -216,7 +216,7 @@ class EntityOccurrence:
             # Get statistics about overlapping entities
             self.cursor.execute(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as total_entities,
                     SUM(CASE WHEN overlap THEN 1 ELSE 0 END) as overlapping_entities,
                     COUNT(DISTINCT document_id) as affected_documents,
@@ -263,7 +263,7 @@ class EntityOccurrence:
 
             stmt_populate_lookup_table = f"""--sql
                 INSERT INTO {TABLE_NE_LOOKUP} (id, {COL_NE_CLASS_ID}, {COL_NE_TXT_NORM})
-                SELECT 
+                SELECT
                     id,
                     {COL_NE_CLASS_ID},
                     LOWER({COL_NE_TXT}) as {COL_NE_TXT_NORM}
@@ -465,7 +465,7 @@ class EntityOccurrence:
                         row_count < batch_size or row_count == 0
                     ):  # Added condition to break if no rows are updated
                         pbar.update(row_count)
-            print("Leading whitespace removal completed.")
+                        print("Leading whitespace removal completed.")
                         break
                     offset += batch_size
                     pbar.update(row_count)
@@ -491,7 +491,7 @@ class EntityOccurrence:
                         print("Leading quote/prefix removal completed.")
                         break
                     offset += row_count
-            self.conn.commit()
+                    self.conn.commit()
                     pbar.update(row_count)
 
         # # 5. Commit the changes to the database
@@ -503,10 +503,10 @@ class EntityOccurrence:
         except KeyboardInterrupt:
             self.conn.rollback()
             print("Operation cancelled by user.")
-        # class AggregatedData:
-        """
-        Contains methods for updating aggregated_entities table.
-        """
+            # class AggregatedData:
+            """
+            Contains methods for updating aggregated_entities table.
+            """
 
     def aggregate_normalized_text__CORRECT(
         self,
