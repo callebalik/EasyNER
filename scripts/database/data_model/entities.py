@@ -808,11 +808,15 @@ class EntityOccurrence:
         except sqlite3.Error as e:
             self.logger.error(f"Error creating view_entity_occurrences view: {e}")
             raise
+
+    def Deprecated_generate_aggregated_table(self, batch_size=50000, target_table=TABLE_NE_AGGR):
         """
         Idempotent method to create aggregated entities from temp_normalized_linked_entities.
         """
         try:
-            self.logger.info("Creating aggregated entities from temp table...")
+            self.logger.info(
+                f"Aggregate Entities to {TABLE_NE_AGGR} using {TABLE_NE_LOOKUP} to do reference lookups"
+            )
 
             # Create index for faster processing of entity_occurrences
             # GROUP BY clause:
@@ -821,32 +825,38 @@ class EntityOccurrence:
             )
             # COUNT(DISTINCT eo.document_id)
             self.cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_ne_text_entity_id ON ? (normalized_entity_text, entity_id)",
+                "CREATE INDEX IF NOT EXISTS idx_ne_text_entity_id ON ? (txt_norm, entity_id)",
                 (target_table,),
             )
+
+            # Create the aggregated entities table if it doesn't exist
+            self.cursor.execute(self.stmt_table_ne_aggregated)
 
             offset = 0
 
             while True:
                 # Execute the batch insert query with WHERE NOT EXISTS
-                self.cursor.execute(
-                    """
-                    INSERT INTO ? (normalized_entity_text, entity_id)
+                query = f"""--sql
+
+                    INSERT INTO ? ({COL_NE_TXT_NORM}, {COL_NE_CLASS_ID})
                     SELECT DISTINCT
-                        ne.normalized_entity_text,
+                        ne.txt_norm,
                         ne.entity_id
-                        
-                    FROM temp_normalized_linked_entities ne
+
+                    FROM {TABLE_NE_LOOKUP} ne
                     JOIN entity_occurrences eo ON eo.id = ne.id
-                    WHERE NOT EXISTS ( -- Ensure no duplicates, this filters selection on reruns 
+                    WHERE NOT EXISTS ( -- Ensure no duplicates, this filters selection on reruns for performance gain
                         SELECT 1
                         FROM ? teos
-                        WHERE teos.normalized_entity_text = ne.normalized_entity_text
+                        WHERE teos.txt_norm = ne.txt_norm
                         AND teos.entity_id = ne.entity_id
                     )
-                    ON CONFLICT(normalized_entity_text, entity_id) DO NOTHING
+                    ON CONFLICT(txt_norm, entity_id) DO NOTHING
                     LIMIT ? OFFSET ?;
-                    """,
+                    """
+
+                self.cursor.execute(
+                    query,
                     (target_table, target_table, batch_size, offset),
                 )
                 self.connection.commit()
@@ -939,12 +949,12 @@ class EntityOccurrence:
             self.logger.error(f"Error calculating intra-document frequencies: {e}")
             raise
 
-    def set_aggregated_ref_id(
+    def Deprecated__set_aggregated_ref_id(
         self,
         overwrite: bool = False,
         batch_size=100000,
-        link_lookup_table=eo_lookup_table_name,
-        target_table=eo_aggregated_table_name,
+        link_lookup_table=TABLE_NE_LOOKUP,
+        target_table=TABLE_NE_AGGR,
     ):
         try:
             if overwrite:
@@ -981,8 +991,8 @@ class EntityOccurrence:
                             SELECT eo.id, s.id as summary_id
                             FROM entity_occurrences eo
                             JOIN {link_lookup_table} ne ON ne.id = eo.id
-                            JOIN {target_table} s 
-                                ON s.normalized_entity_text = ne.normalized_entity_text 
+                            JOIN {target_table} s
+                                ON s.txt_norm = ne.txt_norm
                                 AND s.entity_id = ne.entity_id
                             WHERE eo.error_id IS NULL
                             AND eo.summary_id IS NULL
@@ -990,8 +1000,8 @@ class EntityOccurrence:
                         )
                         UPDATE entity_occurrences
                         SET summary_id = (
-                            SELECT summary_id 
-                            FROM to_update 
+                            SELECT summary_id
+                            FROM to_update
                             WHERE to_update.id = entity_occurrences.id
                         )
                         WHERE id IN (SELECT id FROM to_update)
