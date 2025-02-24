@@ -809,85 +809,6 @@ class EntityOccurrence:
             self.logger.error(f"Error creating view_entity_occurrences view: {e}")
             raise
 
-    def Deprecated_generate_aggregated_table(self, batch_size=50000, target_table=TABLE_NE_AGGR):
-        """
-        Idempotent method to create aggregated entities from temp_normalized_linked_entities.
-        """
-        try:
-            self.logger.info(
-                f"Aggregate Entities to {TABLE_NE_AGGR} using {TABLE_NE_LOOKUP} to do reference lookups"
-            )
-
-            # Create index for faster processing of entity_occurrences
-            # GROUP BY clause:
-            self.cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_eo_document_id ON entity_occurrences (document_id)"
-            )
-            # COUNT(DISTINCT eo.document_id)
-            self.cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_ne_text_entity_id ON ? (txt_norm, entity_id)",
-                (target_table,),
-            )
-
-            # Create the aggregated entities table if it doesn't exist
-            self.cursor.execute(self.stmt_table_ne_aggregated)
-
-            offset = 0
-
-            while True:
-                # Execute the batch insert query with WHERE NOT EXISTS
-                query = f"""--sql
-
-                    INSERT INTO ? ({COL_NE_TXT_NORM}, {COL_NE_CLASS_ID})
-                    SELECT DISTINCT
-                        ne.txt_norm,
-                        ne.entity_id
-
-                    FROM {TABLE_NE_LOOKUP} ne
-                    JOIN entity_occurrences eo ON eo.id = ne.id
-                    WHERE NOT EXISTS ( -- Ensure no duplicates, this filters selection on reruns for performance gain
-                        SELECT 1
-                        FROM ? teos
-                        WHERE teos.txt_norm = ne.txt_norm
-                        AND teos.entity_id = ne.entity_id
-                    )
-                    ON CONFLICT(txt_norm, entity_id) DO NOTHING
-                    LIMIT ? OFFSET ?;
-                    """
-
-                self.cursor.execute(
-                    query,
-                    (target_table, target_table, batch_size, offset),
-                )
-                self.connection.commit()
-
-                row_count = self.cursor.rowcount
-                if row_count < batch_size:
-                    break
-                offset += batch_size
-
-                print(
-                    f"Batch processed, rows inserted/attempted: {row_count}, offset: {offset}"
-                )  # Added feedback
-
-            print("Batch processing complete with WHERE NOT EXISTS.")
-
-            self.conn.commit()
-            rows_before = self.cursor.execute("SELECT COUNT(*) FROM ?").fetchone()[0]
-            rows_after = self.cursor.execute(
-                "SELECT COUNT(*) FROM ?", (target_table,)
-            ).fetchone()[0]
-            self.logger.info(
-                f"Aggregated entities created from temp table. Raw entity count: {rows_before}, Aggregated entity count: {rows_after}"
-            )
-
-        except sqlite3.Error as e:
-            self.logger.error(f"Error creating aggregated entities: {e}")
-            self.conn.rollback()
-        except KeyboardInterrupt:
-            self.conn.rollback()
-            self.logger.error("Aggregated entity creation cancelled by user")
-
     def calc_intra_doc_fq(self) -> None:
         """
         For each entity, calculate the frequency of the entity within each document.
@@ -949,85 +870,97 @@ class EntityOccurrence:
             self.logger.error(f"Error calculating intra-document frequencies: {e}")
             raise
 
-    def Deprecated__set_aggregated_ref_id(
-        self,
-        overwrite: bool = False,
-        batch_size=100000,
-        link_lookup_table=TABLE_NE_LOOKUP,
-        target_table=TABLE_NE_AGGR,
-    ):
+    def validate_backreferences(self):
+        """
+        Validate that backreferences between lookup and aggregated tables are consistent.
+        This checks both the existing references and potential normalization issues.
+        """
         try:
-            if overwrite:
-                self.cursor.execute("UPDATE entity_occurrences SET summary_id = NULL")
+            self.logger.info("Validating backreferences...")
 
-            # Create composite index for WHERE clause
-            self.cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_eo_error_summary ON entity_occurrences (error_id, summary_id)"
-            )
+            # First check: Find cases where same normalized text maps to different norm_ids within same class
+            normalization_query = f"""
+                WITH duplicates AS (
+                    SELECT
+                        {COL_NE_TXT_NORM},
+                        {COL_NE_CLASS_ID},
+                        COUNT(DISTINCT {COL_NE_NORM_ID}) as norm_id_count
+                    FROM {TABLE_NE_LOOKUP}
+                    WHERE {COL_NE_NORM_ID} IS NOT NULL
+                    GROUP BY {COL_NE_TXT_NORM}, {COL_NE_CLASS_ID}
+                    HAVING norm_id_count > 1
+                )
+                SELECT
+                    l.id,
+                    l.{COL_NE_TXT},
+                    l.{COL_NE_TXT_NORM},
+                    l.{COL_NE_CLASS_ID},
+                    l.{COL_NE_NORM_ID},
+                    l.{COL_NE_DOC_ID}
+                FROM {TABLE_NE_LOOKUP} l
+                JOIN duplicates d ON
+                    l.{COL_NE_TXT_NORM} = d.{COL_NE_TXT_NORM}
+                    AND l.{COL_NE_CLASS_ID} = d.{COL_NE_CLASS_ID}
+                ORDER BY l.{COL_NE_TXT_NORM}, l.{COL_NE_CLASS_ID}, l.{COL_NE_NORM_ID}
+                LIMIT 100
+            """
 
-            # Get total count of records to update
-            query = f"""
-                SELECT COUNT(*)
-                FROM entity_occurrences eo
-                WHERE eo.error_id IS NULL
-                AND eo.summary_id IS NULL
-                """
-            self.cursor.execute(query)
-            total_records = self.cursor.fetchone()[0]
+            self.cursor.execute(normalization_query)
+            normalization_issues = self.cursor.fetchall()
 
-            self.logger.info(
-                f"Updating summary_id references for {total_records} records in batches of {batch_size}"
-            )
+            if normalization_issues:
+                self.logger.error(f"Found {len(normalization_issues)} normalization issues:")
+                self.logger.error("Same normalized text mapping to different norm_ids within same class:")
+                current_norm = None
+                for row in normalization_issues:
+                    if current_norm != row[2]:  # New normalized text group
+                        current_norm = row[2]
+                        self.logger.error(f"\nNormalized text: {row[2]}, Class: {row[3]}")
+                    self.logger.error(f"  ID: {row[0]}, Original: {row[1]}, norm_id: {row[4]}, Doc: {row[5]}")
+                return False
 
-            offset = 0
-            with tqdm(
-                total=total_records, desc="Updating summary_id references"
-            ) as pbar:
-                while offset < total_records:
-                    # Update summary_ids for a batch of records
-                    self.cursor.execute(
-                        f"""
-                        WITH to_update AS (
-                            SELECT eo.id, s.id as summary_id
-                            FROM entity_occurrences eo
-                            JOIN {link_lookup_table} ne ON ne.id = eo.id
-                            JOIN {target_table} s
-                                ON s.txt_norm = ne.txt_norm
-                                AND s.entity_id = ne.entity_id
-                            WHERE eo.error_id IS NULL
-                            AND eo.summary_id IS NULL
-                            LIMIT ? OFFSET ?
-                        )
-                        UPDATE entity_occurrences
-                        SET summary_id = (
-                            SELECT summary_id
-                            FROM to_update
-                            WHERE to_update.id = entity_occurrences.id
-                        )
-                        WHERE id IN (SELECT id FROM to_update)
-                        """,
-                        (batch_size, offset),
+            # Second check: Find cases where the references don't match the normalization
+            reference_query = f"""
+                SELECT
+                    l.id,
+                    l.{COL_NE_TXT},
+                    l.{COL_NE_TXT_NORM},
+                    a.{COL_NE_TXT_NORM} as agg_txt_norm,
+                    l.{COL_NE_CLASS_ID},
+                    a.{COL_NE_CLASS_ID} as agg_class_id,
+                    l.{COL_NE_DOC_ID}
+                FROM {TABLE_NE_LOOKUP} l
+                LEFT JOIN {TABLE_NE_AGGR} a ON
+                    l.{COL_NE_NORM_ID} = a.{COL_NE_NORM_ID}
+                WHERE
+                    l.{COL_NE_NORM_ID} IS NOT NULL
+                    AND (
+                        l.{COL_NE_TXT_NORM} != a.{COL_NE_TXT_NORM}
+                        OR l.{COL_NE_CLASS_ID} != a.{COL_NE_CLASS_ID}
                     )
+                LIMIT 100
+            """
 
-                    updated_count = self.cursor.rowcount
-                    if updated_count == 0:
-                        break
+            self.cursor.execute(reference_query)
+            reference_mismatches = self.cursor.fetchall()
 
-                    self.conn.commit()
-                    offset += batch_size
-                    pbar.update(updated_count)
+            if reference_mismatches:
+                self.logger.error(f"\nFound {len(reference_mismatches)} reference mismatches:")
+                for row in reference_mismatches:
+                    self.logger.error(
+                        f"ID: {row[0]}, Text: {row[1]}, "
+                        f"Lookup(norm={row[2]}, class={row[4]}), "
+                        f"Aggr(norm={row[3]}, class={row[5]}), "
+                        f"Doc: {row[6]}"
+                    )
+                return False
 
-            self.logger.info("Summary ID update complete")
+            self.logger.info("All backreferences are consistent")
+            return True
 
-        except KeyboardInterrupt:
-            self.conn.rollback()
-            self.logger.error("KeyboardInterrupt detected. Operations rolled back.")
-            raise
-        except Exception as e:
-            self.conn.rollback()
-            self.logger.error(f"Error updating summary_id references: {e}")
-            raise
-
+        except sqlite3.Error as e:
+            self.logger.error(f"Error validating backreferences: {e}")
+            return False
 
 class EntityCooccurence:
     def __init__(self, conn, cursor, logger):
