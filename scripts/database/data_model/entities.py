@@ -304,7 +304,7 @@ class EntityOccurrence:
                 SELECT id
                 FROM {target_table}
             """
-        
+
         self.log_query_plan(reader_query_fn)
 
         def validate_process_function(batch):
@@ -334,7 +334,7 @@ class EntityOccurrence:
             reader_query=reader_query_fn,
             process_function=validate_process_function,
             write_function=validate_write_function,
-            
+
         )
 
         reader_writer.run()
@@ -354,7 +354,7 @@ class EntityOccurrence:
                 """
             )
             return self.cursor.fetchone()[0] == 1
-        
+
         if not validate_table_column(table_name, column_name):
             self.logger.error(f"Column {column_name} does not exist in table {table_name}")
             return
@@ -703,7 +703,7 @@ class EntityOccurrence:
         except sqlite3.Error as e:
             self.logger.error(f"Error creating reader query: {e}")
             raise
-    # filepath: /home/carloa/Desktop/EasyNer/scripts/database/data_model/entities.py
+
     def create_view_entity_occurrences(self):
         """
         Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data.
