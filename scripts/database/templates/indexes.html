@@ -4,7 +4,7 @@
 
 {% block content %}
     <h1>Database Indexes</h1>
-    
+
     {% if indexes %}
         {% for table_name, index_list in indexes.items() %}
             <h2>{{ table_name }}</h2>

@@ -53,15 +53,15 @@
     <script>
         $(document).ready(function() {
             let currentPage = 1;
-            
+
             function loadTable(page) {
                 $.get('/raw-cooccurrences/table', { page: page }).done(function(data) {
                     const tbody = $('.cooccurrences-table tbody');
-                    
+
                     if (page === 1) {
                         tbody.empty();
                     }
-                    
+
                     data.cooccurrences.forEach(cooc => {
                         tbody.append(
                             $('<tr>').append(
@@ -85,7 +85,7 @@
                             )
                         );
                     });
-                    
+
                     $('.load-more-button').remove();
                     if (data.has_more) {
                         $('#table-view').append(

@@ -55,27 +55,31 @@ def cleanup(e=None):
 def compile_scss():
     """Compile SCSS files to CSS with support for partials and watching changes"""
     try:
-        scss_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/styles.scss')
-        css_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/styles.css')
-        static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
-        partials_dir = os.path.join(static_dir, 'partials')
+        scss_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "static/styles.scss"
+        )
+        css_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "static/styles.css"
+        )
+        static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+        partials_dir = os.path.join(static_dir, "partials")
 
         # Ensure the partials directory exists
         os.makedirs(partials_dir, exist_ok=True)
 
         # Read and compile the main SCSS file
-        with open(scss_file, 'r') as f:
+        with open(scss_file, "r") as f:
             scss_content = f.read()
 
         # Compile SCSS with include paths for partials
         css_content = sass.compile(
             string=scss_content,
             include_paths=[static_dir],
-            output_style='compressed' if not app.debug else 'nested'
+            output_style="compressed" if not app.debug else "nested",
         )
 
         # Write the compiled CSS
-        with open(css_file, 'w') as f:
+        with open(css_file, "w") as f:
             f.write(css_content)
 
         app.logger.info("SCSS compilation successful")
@@ -83,7 +87,9 @@ def compile_scss():
         app.logger.error(f"Error compiling SCSS: {e}")
         raise
 
+
 compile_scss()
+
 
 # Serve static CSS file
 @app.route("/static/styles.css")
@@ -117,12 +123,16 @@ def align_with_schema():
     db.logger.info("Flask application initialized")
     return db
 
+
 def get_available_entities(db):
     try:
-        return db.execute("SELECT id, named_entity FROM named_entities ORDER BY named_entity")
+        return db.execute(
+            "SELECT id, named_entity FROM named_entities ORDER BY named_entity"
+        )
     except Exception as e:
         db.logger.error(f"Error fetching entities: {e}")
         return []
+
 
 @app.route("/")
 def home():
@@ -136,30 +146,35 @@ def home():
             columns = db.execute(f"PRAGMA table_info({table})")
             tables_info[table] = {
                 "row_count": count,
-                "columns": [col[1] for col in columns]
+                "columns": [col[1] for col in columns],
             }
 
         # Get database statistics
         stats = {
-            'db_size': _format_size(db.statistics.size),
-            'source_size': _format_size(db.statistics.total_source_size),
-            'compression_ratio': f"{db.statistics.compression_ratio:.2f}",
-            'document_count': db.statistics.document_count,
-            'sentence_count': db.statistics.sentence_count,
-            'named_entity_count': db.statistics.named_entity_count
+            "db_size": _format_size(db.statistics.size),
+            "source_size": _format_size(db.statistics.total_source_size),
+            "compression_ratio": f"{db.statistics.compression_ratio:.2f}",
+            "document_count": db.statistics.document_count,
+            "sentence_count": db.statistics.sentence_count,
+            "named_entity_count": db.statistics.named_entity_count,
         }
 
-        return render_template('home.html', tables=tables_info, stats=stats)
+        return render_template("home.html", tables=tables_info, stats=stats)
     except Exception as e:
         db.logger.error(f"Error loading home page: {e}")
-        return render_template('error.html', message="Error loading database information"), 500
+        return (
+            render_template("error.html", message="Error loading database information"),
+            500,
+        )
+
 
 def _format_size(size_bytes):
     """Convert size in bytes to human readable format."""
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-        if size_bytes < 1024 or unit == 'TB':
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size_bytes < 1024 or unit == "TB":
             return f"{size_bytes:.2f} {unit}"
         size_bytes /= 1024
+
 
 @app.route("/health")
 def health_check():
@@ -173,31 +188,31 @@ def health_check():
             columns = db.execute(f"PRAGMA table_info({table})")
             tables_info[table] = {
                 "row_count": count,
-                "columns": [col[1] for col in columns]
+                "columns": [col[1] for col in columns],
             }
 
-        return jsonify({
-            "status": "healthy",
-            "database": {
-                "connected": True,
-                "tables": tables_info
-            },
-            "server_status": "running",
-            "endpoints": {
-                "/": "Health check and basic info",
-                "/tables": "Detailed table information",
-                "/document/<id>": "Get document by ID"
-            }
-        }), 200
+        return (
+            jsonify(
+                {
+                    "status": "healthy",
+                    "database": {"connected": True, "tables": tables_info},
+                    "server_status": "running",
+                    "endpoints": {
+                        "/": "Health check and basic info",
+                        "/tables": "Detailed table information",
+                        "/document/<id>": "Get document by ID",
+                    },
+                }
+            ),
+            200,
+        )
     except Exception as e:
         db.logger.error(f"Health check failed: {e}")
-        return jsonify({
-            "status": "unhealthy",
-            "error": str(e)
-        }), 500
+        return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
-@app.route("/tables")
-def get_tables():
+
+@app.route("/tables-json")
+def get_tables_json():
     try:
         db = get_db()
         tables_info = {}
@@ -205,43 +220,106 @@ def get_tables():
         for table in db.tables["tables"]:
             # Get column information
             columns = db.execute(f"PRAGMA table_info({table})")
-            columns_info = [{
-                "name": col[1],
-                "type": col[2],
-                "nullable": not col[3],
-                "primary_key": bool(col[5])
-            } for col in columns]
+            columns_info = [
+                {
+                    "name": col[1],
+                    "type": col[2],
+                    "nullable": not col[3],
+                    "primary_key": bool(col[5]),
+                }
+                for col in columns
+            ]
 
             # Get foreign keys
             foreign_keys = db.execute(f"PRAGMA foreign_key_list({table})")
-            fk_info = [{
-                "from": fk[3],
-                "to_table": fk[2],
-                "to_column": fk[4]
-            } for fk in foreign_keys]
+            fk_info = [
+                {"from": fk[3], "to_table": fk[2], "to_column": fk[4]}
+                for fk in foreign_keys
+            ]
 
-            # Get row count
-            count = db.execute(f"SELECT COUNT(*) FROM {table}")[0][0]
-
-            tables_info[table] = {
-                "columns": columns_info,
-                "foreign_keys": fk_info,
-                "row_count": count
-            }
+            tables_info[table] = {"columns": columns_info, "foreign_keys": fk_info}
 
         return jsonify(tables_info), 200
     except Exception as e:
         db.logger.error(f"Error getting table information: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/tables")
+def show_tables():
+    try:
+        db = get_db()
+        tables_info = {}
+
+        # Get list of tables
+        tables = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )
+
+        for table in tables:
+            table_name = table[0]
+
+            # Get table structure
+            schema_sql = f"PRAGMA table_info({table_name})"
+            schema = db.execute(schema_sql)
+
+            # Get foreign key info
+            foreign_keys_sql = f"PRAGMA foreign_key_list({table_name})"
+            foreign_keys = db.execute(foreign_keys_sql)
+
+            tables_info[table_name] = {
+                "name": table_name,
+                "schema": [
+                    dict(
+                        zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col)
+                    )
+                    for col in schema
+                ],
+                "foreign_keys": [
+                    dict(
+                        zip(
+                            [
+                                "id",
+                                "seq",
+                                "table",
+                                "from",
+                                "to",
+                                "on_update",
+                                "on_delete",
+                                "match",
+                            ],
+                            fk,
+                        )
+                    )
+                    for fk in foreign_keys
+                ],
+            }
+
+        return render_template("tables.html", tables=tables_info)
+    except Exception as e:
+        db.logger.error(f"Error loading tables: {e}")
+        return render_template("error.html", message="Error loading tables"), 500
+
+
+@app.route("/table/<table_name>/rowcount")
+def get_table_rowcount(table_name):
+    try:
+        db = get_db()
+        count = db.execute(f"SELECT COUNT(*) FROM {table_name}")[0][0]
+        return jsonify({"row_count": count})
+    except Exception as e:
+        db.logger.error(f"Error getting row count for {table_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/documents")
 def list_documents():
     try:
         db = get_db()
-        page = int(request.args.get('page', 1))
-        query = request.args.get('query', '')
-        doc_id = request.args.get('doc_id', '')
-        selected_entities = request.args.getlist('entities')
+        page = int(request.args.get("page", 1))
+        query = request.args.get("query", "")
+        doc_id = request.args.get("doc_id", "")
+        selected_entities = request.args.getlist("entities")
         per_page = 30
         offset = (page - 1) * per_page
 
@@ -250,7 +328,7 @@ def list_documents():
 
         if query:
             conditions.append("d.title LIKE ?")
-            params.append(f'%{query}%')
+            params.append(f"%{query}%")
 
         if doc_id:
             conditions.append("d.id = ?")
@@ -287,46 +365,61 @@ def list_documents():
         # Get available entities for the filter
         entities = get_available_entities(db)
 
-        return render_template('documents.html',
-                             documents=[dict(zip(['id', 'title', 'word_count'], doc)) for doc in documents],
-                             page=page,
-                             query=query,
-                             doc_id=doc_id,
-                             has_more=has_more,
-                             entities=entities,
-                             selected_entities=selected_entities)
+        return render_template(
+            "documents.html",
+            documents=[
+                dict(zip(["id", "title", "word_count"], doc)) for doc in documents
+            ],
+            page=page,
+            query=query,
+            doc_id=doc_id,
+            has_more=has_more,
+            entities=entities,
+            selected_entities=selected_entities,
+        )
     except Exception as e:
         db.logger.error(f"Error loading documents page: {e}")
-        return render_template('error.html', message="Error loading documents"), 500
+        return render_template("error.html", message="Error loading documents"), 500
+
 
 @app.route("/named-entities")
 def list_named_entities():
-    result = display_table('named_entities')
-    if 'error' in result:
-        return render_template('error.html', message=result['error']), 500
-    return render_template('named_entities.html', **result)
+    result = display_table("named_entities")
+    if "error" in result:
+        return render_template("error.html", message=result["error"]), 500
+    return render_template("named_entities.html", **result)
 
-@app.route('/named-entities/types')
+
+@app.route("/named-entities/types")
 def get_named_entity_types():
     try:
         db = get_db()
         sql = "SELECT id, named_entity FROM named_entities ORDER BY named_entity"
         types = db.execute(sql)
-        return jsonify({
-            'types': [dict(zip(['id', 'named_entity'], type_row)) for type_row in types]
-        })
+        return jsonify(
+            {
+                "types": [
+                    dict(zip(["id", "named_entity"], type_row)) for type_row in types
+                ]
+            }
+        )
     except Exception as e:
         db.logger.error(f"Error fetching named entity types: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/entity-occurrences")
 def list_entity_occurrences():
-    result = display_table('view_entity_occurrences ')
-    if 'error' in result:
-        return render_template('error.html', message=result['error']), 500
-    return render_template('table_view.html', table_name='view_entity_occurrences ', **result)
+    result = display_table("view_ne_raw")
+    if "error" in result:
+        return render_template("error.html", message=result["error"]), 500
+    return render_template(
+        "table_view.html", table_name="view_entity_occurrences ", **result
+    )
 
-@app.route('/document/<int:doc_id>')
+@app.route("/entity-occurrences")
+
+@app.route("/document/<int:doc_id>")
 def show_document(doc_id):
     db = get_db()
 
@@ -334,22 +427,27 @@ def show_document(doc_id):
     if not document:
         return "Document not found", 404
 
-    return render_template('document.html', document=document, content=document.to_html())
+    return render_template(
+        "document.html", document=document, content=document.to_html()
+    )
 
-@app.route('/entity-cooccurrences/')
+
+@app.route("/entity-cooccurrences/")
 def entity_cooccurrences():
-    return render_template('entity_cooccurrences.html')
+    return render_template("entity_cooccurrences.html")
 
-@app.route('/entity-cooccurrences/summary')
+
+@app.route("/entity-cooccurrences/summary")
 def entity_cooccurrences_summary():
-    return render_template('entity_cooccurrences_summary.html')
+    return render_template("entity_cooccurrences_summary.html")
 
-@app.route('/entity-cooccurrences/table')
+
+@app.route("/entity-cooccurrences/table")
 def entity_cooccurrences_table():
     try:
         db = get_db()
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 30))
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 30))
         offset = (page - 1) * per_page
 
         query = """
@@ -374,30 +472,46 @@ def entity_cooccurrences_table():
         has_more = len(cooccurrences) > per_page
         cooccurrences = cooccurrences[:per_page]
 
-        return jsonify({
-            'cooccurrences': [dict(zip([
-                'id', 'e1_id', 'e2_id', 'entity1_text', 'entity2_text',
-                'sentence_distance', 'document_id', 'sentence_index'
-            ], row)) for row in cooccurrences],
-            'has_more': has_more
-        })
+        return jsonify(
+            {
+                "cooccurrences": [
+                    dict(
+                        zip(
+                            [
+                                "id",
+                                "e1_id",
+                                "e2_id",
+                                "entity1_text",
+                                "entity2_text",
+                                "sentence_distance",
+                                "document_id",
+                                "sentence_index",
+                            ],
+                            row,
+                        )
+                    )
+                    for row in cooccurrences
+                ],
+                "has_more": has_more,
+            }
+        )
     except Exception as e:
         db.logger.error(f"Error loading entity co-occurrences table: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/entity-cooccurrences/summary/table')
+@app.route("/entity-cooccurrences/summary/table")
 def entity_cooccurrences_summary_table():
     try:
         db = get_db()
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 30))
-        include_self = request.args.get('include_self', 'false').lower() == 'true'
-        entity1_type = request.args.get('entity1_type')
-        entity2_type = request.args.get('entity2_type')
-        sort = request.args.get('sort', 'fq_document_level')
-        order = request.args.get('order', 'desc')
-        entity1_search = request.args.get('entity1_search')
-        entity2_search = request.args.get('entity2_search')
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 30))
+        include_self = request.args.get("include_self", "false").lower() == "true"
+        entity1_type = request.args.get("entity1_type")
+        entity2_type = request.args.get("entity2_type")
+        sort = request.args.get("sort", "fq_document_level")
+        order = request.args.get("order", "desc")
+        entity1_search = request.args.get("entity1_search")
+        entity2_search = request.args.get("entity2_search")
 
         result = db.data_exchanger.get_cooccurrences_summary(
             page=page,
@@ -408,32 +522,37 @@ def entity_cooccurrences_summary_table():
             sort=sort,
             order=order,
             entity1_search=entity1_search,
-            entity2_search=entity2_search
+            entity2_search=entity2_search,
         )
 
-        return jsonify({
-            'summaries': result['summaries'],
-            'has_more': result['has_more'],
-            'total': result['total']
-        })
+        return jsonify(
+            {
+                "summaries": result["summaries"],
+                "has_more": result["has_more"],
+                "total": result["total"],
+            }
+        )
     except Exception as e:
         db.logger.error(f"Error loading entity co-occurrences summary table: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/raw-cooccurrences')
+
+@app.route("/raw-cooccurrences")
 def raw_cooccurrences():
-    return render_template('raw_cooccurrences.html')
+    return render_template("raw_cooccurrences.html")
 
-@app.route('/summary-cooccurrences')
+
+@app.route("/summary-cooccurrences")
 def summary_cooccurrences():
-    return render_template('summary_cooccurrences.html')
+    return render_template("summary_cooccurrences.html")
 
-@app.route('/raw-cooccurrences/table')
+
+@app.route("/raw-cooccurrences/table")
 def raw_cooccurrences_table():
     try:
         db = get_db()
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 30))
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 30))
         offset = (page - 1) * per_page
 
         query = """
@@ -458,30 +577,47 @@ def raw_cooccurrences_table():
         has_more = len(cooccurrences) > per_page
         cooccurrences = cooccurrences[:per_page]
 
-        return jsonify({
-            'cooccurrences': [dict(zip([
-                'id', 'e1_id', 'e2_id', 'entity1_text', 'entity2_text',
-                'sentence_distance', 'document_id', 'sentence_index'
-            ], row)) for row in cooccurrences],
-            'has_more': has_more
-        })
+        return jsonify(
+            {
+                "cooccurrences": [
+                    dict(
+                        zip(
+                            [
+                                "id",
+                                "e1_id",
+                                "e2_id",
+                                "entity1_text",
+                                "entity2_text",
+                                "sentence_distance",
+                                "document_id",
+                                "sentence_index",
+                            ],
+                            row,
+                        )
+                    )
+                    for row in cooccurrences
+                ],
+                "has_more": has_more,
+            }
+        )
     except Exception as e:
         db.logger.error(f"Error loading entity co-occurrences table: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/summary-cooccurrences/table')
+
+@app.route("/summary-cooccurrences/table")
 def summary_cooccurrences_table():
     try:
         db = get_db()
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 30))
-        include_self = request.args.get('include_self', 'false').lower() == 'true'
-        entity1_type = request.args.get('entity1_type')
-        entity2_type = request.args.get('entity2_type')
-        sort = request.args.get('sort', 'fq_document_level')
-        order = request.args.get('order', 'desc')
-        entity1_search = request.args.get('entity1_search')
-        entity2_search = request.args.get('entity2_search')
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 30))
+        include_self = request.args.get("include_self", "false").lower() == "true"
+        entity1_type = request.args.get("entity1_type")
+        entity2_type = request.args.get("entity2_type")
+        sort = request.args.get("sort", "fq_document_level")
+        order = request.args.get("order", "desc")
+        entity1_search = request.args.get("entity1_search")
+        entity2_search = request.args.get("entity2_search")
 
         result = db.data_exchanger.get_cooccurrences_summary(
             page=page,
@@ -492,25 +628,28 @@ def summary_cooccurrences_table():
             sort=sort,
             order=order,
             entity1_search=entity1_search,
-            entity2_search=entity2_search
+            entity2_search=entity2_search,
         )
 
-        return jsonify({
-            'summaries': result['summaries'],
-            'has_more': result['has_more'],
-            'total': result['total']
-        })
+        return jsonify(
+            {
+                "summaries": result["summaries"],
+                "has_more": result["has_more"],
+                "total": result["total"],
+            }
+        )
     except Exception as e:
         db.logger.error(f"Error loading entity co-occurrences summary table: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/entity-cooccurrences/plot-data')
+
+@app.route("/entity-cooccurrences/plot-data")
 def entity_cooccurrences_plot_data():
     try:
         db = get_db()
-        freq_column = request.args.get('freq_column', 'fq_document_level')
-        min_freq = int(request.args.get('min_freq', 0))
-        max_freq = int(request.args.get('max_freq', 100))
+        freq_column = request.args.get("freq_column", "fq_document_level")
+        min_freq = int(request.args.get("min_freq", 0))
+        max_freq = int(request.args.get("max_freq", 100))
 
         sql = f"""
             SELECT {freq_column}, COUNT(*) as count
@@ -523,20 +662,26 @@ def entity_cooccurrences_plot_data():
 
         plot_data = db.execute(sql, params)
 
-        return jsonify({
-            'plot_data': [dict(zip([col[0] for col in db.cursor.description], row)) for row in plot_data]
-        })
+        return jsonify(
+            {
+                "plot_data": [
+                    dict(zip([col[0] for col in db.cursor.description], row))
+                    for row in plot_data
+                ]
+            }
+        )
     except Exception as e:
         db.logger.error(f"Error loading entity co-occurrences plot data: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/entity-cooccurrences/summary/plot-data')
+
+@app.route("/entity-cooccurrences/summary/plot-data")
 def entity_cooccurrences_summary_plot_data():
     try:
         db = get_db()
-        freq_column = request.args.get('freq_column', 'fq_document_level')
-        min_freq = int(request.args.get('min_freq', 0))
-        max_freq = int(request.args.get('max_freq', 100))
+        freq_column = request.args.get("freq_column", "fq_document_level")
+        min_freq = int(request.args.get("min_freq", 0))
+        max_freq = int(request.args.get("max_freq", 100))
 
         sql = f"""
             SELECT {freq_column}, COUNT(*) as count
@@ -549,14 +694,20 @@ def entity_cooccurrences_summary_plot_data():
 
         plot_data = db.execute(sql, params)
 
-        return jsonify({
-            'plot_data': [dict(zip([col[0] for col in db.cursor.description], row)) for row in plot_data]
-        })
+        return jsonify(
+            {
+                "plot_data": [
+                    dict(zip([col[0] for col in db.cursor.description], row))
+                    for row in plot_data
+                ]
+            }
+        )
     except Exception as e:
         db.logger.error(f"Error loading entity co-occurrences summary plot data: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/summary-cooccurrences/plot-data')
+
+@app.route("/summary-cooccurrences/plot-data")
 def summary_cooccurrences_plot_data():
     try:
         db = get_db()
@@ -564,31 +715,35 @@ def summary_cooccurrences_plot_data():
 
         # Log request parameters
         params = {
-            'freq_column': request.args.get('freq_column', 'fq_document_level'),
-            'bucket_size': request.args.get('bucket_size', 20),
-            'include_self': request.args.get('include_self', 'false').lower() == 'true',
-            'entity1_type': request.args.get('entity1_type'),
-            'entity2_type': request.args.get('entity2_type'),
-            'entity1_search': request.args.get('entity1_search'),
-            'entity2_search': request.args.get('entity2_search')
+            "freq_column": request.args.get("freq_column", "fq_document_level"),
+            "bucket_size": request.args.get("bucket_size", 20),
+            "include_self": request.args.get("include_self", "false").lower() == "true",
+            "entity1_type": request.args.get("entity1_type"),
+            "entity2_type": request.args.get("entity2_type"),
+            "entity1_search": request.args.get("entity1_search"),
+            "entity2_search": request.args.get("entity2_search"),
         }
         app.logger.debug(f"Plot parameters: {params}")
 
         # Validate frequency column to prevent SQL injection
-        allowed_freq_columns = ['fq_document_level', 'fq_document_level_normalized',
-                              'fq_sentence_level', 'fq_sentence_level_normalized']
-        if params['freq_column'] not in allowed_freq_columns:
+        allowed_freq_columns = [
+            "fq_document_level",
+            "fq_document_level_normalized",
+            "fq_sentence_level",
+            "fq_sentence_level_normalized",
+        ]
+        if params["freq_column"] not in allowed_freq_columns:
             app.logger.error(f"Invalid frequency column: {params['freq_column']}")
-            return jsonify({'error': 'Invalid frequency column'}), 400
+            return jsonify({"error": "Invalid frequency column"}), 400
 
         try:
-            bucket_size = int(params['bucket_size'])
+            bucket_size = int(params["bucket_size"])
             if not (5 <= bucket_size <= 100):
                 app.logger.error(f"Invalid bucket size: {bucket_size}")
-                return jsonify({'error': 'Bucket size must be between 5 and 100'}), 400
+                return jsonify({"error": "Bucket size must be between 5 and 100"}), 400
         except ValueError:
             app.logger.error(f"Invalid bucket size parameter: {params['bucket_size']}")
-            return jsonify({'error': 'Invalid bucket size'}), 400
+            return jsonify({"error": "Invalid bucket size"}), 400
 
         # Build WHERE clause
         where_clauses = []
@@ -596,20 +751,20 @@ def summary_cooccurrences_plot_data():
 
         where_clauses.append(f"{params['freq_column']} IS NOT NULL")
 
-        if not params['include_self']:
+        if not params["include_self"]:
             where_clauses.append("ecs.e1_id_normalized != ecs.e2_id_normalized")
 
-        if params['entity1_type']:
+        if params["entity1_type"]:
             where_clauses.append("e1.entity_id = ?")
-            query_params.append(params['entity1_type'])
-        if params['entity2_type']:
+            query_params.append(params["entity1_type"])
+        if params["entity2_type"]:
             where_clauses.append("e2.entity_id = ?")
-            query_params.append(params['entity2_type'])
+            query_params.append(params["entity2_type"])
 
-        if params['entity1_search']:
+        if params["entity1_search"]:
             where_clauses.append("e1.entity_text LIKE ?")
             query_params.append(f"%{params['entity1_search']}%")
-        if params['entity2_search']:
+        if params["entity2_search"]:
             where_clauses.append("e2.entity_text LIKE ?")
             query_params.append(f"%{params['entity2_search']}%")
 
@@ -634,15 +789,19 @@ def summary_cooccurrences_plot_data():
         result = db.execute(min_max_sql, query_params)
         min_freq, max_freq, total_count = result[0]
 
-        app.logger.debug(f"Min freq: {min_freq}, Max freq: {max_freq}, Total count: {total_count}")
+        app.logger.debug(
+            f"Min freq: {min_freq}, Max freq: {max_freq}, Total count: {total_count}"
+        )
 
         if min_freq is None or max_freq is None or total_count == 0:
             app.logger.info("No data found matching the criteria")
-            return jsonify({
-                'pairs': [],
-                'total': 0,
-                'message': 'No data found matching the criteria'
-            })
+            return jsonify(
+                {
+                    "pairs": [],
+                    "total": 0,
+                    "message": "No data found matching the criteria",
+                }
+            )
 
         # Get top pairs for the plot
         pairs_sql = f"""
@@ -664,27 +823,22 @@ def summary_cooccurrences_plot_data():
         pairs = []
         for row in pairs_result:
             pair = {
-                'entity1_text': row[0],
-                'entity2_text': row[1],
-                params['freq_column']: row[2]
+                "entity1_text": row[0],
+                "entity2_text": row[1],
+                params["freq_column"]: row[2],
             }
             pairs.append(pair)
 
         app.logger.debug(f"Found {len(pairs)} pairs for plotting")
 
-        return jsonify({
-            'pairs': pairs,
-            'total': total_count
-        })
+        return jsonify({"pairs": pairs, "total": total_count})
 
     except Exception as e:
         app.logger.error(f"Error generating plot data: {str(e)}", exc_info=True)
-        return jsonify({
-            'error': 'Internal server error',
-            'message': str(e)
-        }), 500
+        return jsonify({"error": "Internal server error", "message": str(e)}), 500
 
-@app.route('/debug/entity-cooccurrences-summary')
+
+@app.route("/debug/entity-cooccurrences-summary")
 def debug_entity_cooccurrences_summary():
     try:
         db = get_db()
@@ -710,21 +864,32 @@ def debug_entity_cooccurrences_summary():
         schema_sql = "PRAGMA table_info(entity_cooccurrences_summary)"
         schema = db.execute(schema_sql)
 
-        return jsonify({
-            'total_records': count,
-            'schema': [dict(zip(['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'], col)) for col in schema],
-            'sample_row': [dict(zip([col[0] for col in db.cursor.description], row)) for row in sample]
-        })
+        return jsonify(
+            {
+                "total_records": count,
+                "schema": [
+                    dict(
+                        zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col)
+                    )
+                    for col in schema
+                ],
+                "sample_row": [
+                    dict(zip([col[0] for col in db.cursor.description], row))
+                    for row in sample
+                ],
+            }
+        )
     except Exception as e:
         db.logger.error(f"Debug endpoint error: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
-# Enhanced table views
-@app.route('/tables/<table_name>')
+
+# Enhanced table views # Doesn't work
+@app.route("/tables/<table_name>")
 def view_table(table_name):
     try:
         db = get_db()
-        page = int(request.args.get('page', 1))
+        page = int(request.args.get("page", 1))
         per_page = 30
         offset = (page - 1) * per_page
 
@@ -743,35 +908,45 @@ def view_table(table_name):
         has_more = len(rows) > per_page
         rows = rows[:per_page]
 
-        return render_template('table_view.html',
-                               table_name=table_name,
-                               columns=columns,
-                               rows=rows,
-                               page=page,
-                               has_more=has_more)
+        return render_template(
+            "table_view.html",
+            table_name=table_name,
+            columns=columns,
+            rows=rows,
+            page=page,
+            has_more=has_more,
+        )
     except Exception as e:
         db.logger.error(f"Error loading table {table_name}: {e}")
-        return render_template('error.html', message=f"Error loading table {table_name}"), 500
+        return (
+            render_template("error.html", message=f"Error loading table {table_name}"),
+            500,
+        )
+
 
 def display_table(table_name):
     try:
         db = get_db()
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 30))
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 30))
         offset = (page - 1) * per_page
-        sort_by = request.args.get('sort_by', 'id')
-        sort_order = request.args.get('sort_order', 'asc')
-        search_query = request.args.get('search_query', '')
+        sort_by = request.args.get("sort_by", "id")
+        sort_order = request.args.get("sort_order", "asc")
+        search_query = request.args.get("search_query", "")
 
         # Get column information dynamically
         db.cursor.execute(f"PRAGMA table_info({table_name})")
         columns_info = db.cursor.fetchall()
         columns = [col[1] for col in columns_info]
-        column_types = {col[1]: col[2].upper() for col in columns_info}  # Store column types
-        text_columns = [col[1] for col in columns_info if col[2].upper() == 'TEXT']
+        column_types = {
+            col[1]: col[2].upper() for col in columns_info
+        }  # Store column types
+        text_columns = [col[1] for col in columns_info if col[2].upper() == "TEXT"]
 
         # Extract search queries for each column
-        column_search_queries = {col: request.args.get(f'{col}_search', '') for col in text_columns}
+        column_search_queries = {
+            col: request.args.get(f"{col}_search", "") for col in text_columns
+        }
 
         # Build the base SQL query
         sql = f"SELECT * FROM {table_name}"
@@ -782,7 +957,7 @@ def display_table(table_name):
         for col, query in column_search_queries.items():
             if query:
                 search_conditions.append(f"{col} LIKE ?")
-                params.append(f'%{query}%')
+                params.append(f"%{query}%")
 
         if search_conditions:
             sql += " WHERE " + " AND ".join(search_conditions)
@@ -813,28 +988,29 @@ def display_table(table_name):
         rows = rows[:per_page]
 
         return {
-            'columns': columns,
-            'rows': rows,
-            'page': page,
-            'has_more': has_more,
-            'sort_by': sort_by,
-            'sort_order': sort_order,
-            'column_types': column_types,  # Pass column types to the template
-            'column_search_queries': column_search_queries, # Pass search queries to the template
-            'generated_sql': generated_sql  # Pass the generated SQL query
+            "columns": columns,
+            "rows": rows,
+            "page": page,
+            "has_more": has_more,
+            "sort_by": sort_by,
+            "sort_order": sort_order,
+            "column_types": column_types,  # Pass column types to the template
+            "column_search_queries": column_search_queries,  # Pass search queries to the template
         }
     except Exception as e:
         db.logger.error(f"Error displaying table {table_name}: {e}")
-        return {'error': str(e)}
+        return {"error": str(e)}
 
-@app.route('/table/<table_name>')
+
+@app.route("/table/<table_name>")
 def table_view(table_name):
     result = display_table(table_name)
-    if 'error' in result:
-        return render_template('error.html', message=result['error']), 500
-    return render_template('table_view.html', table_name=table_name, **result)
+    if "error" in result:
+        return render_template("error.html", message=result["error"]), 500
+    return render_template("table_view.html", table_name=table_name, **result)
 
-@app.route('/disease-phenomena-sankey')
+
+@app.route("/disease-phenomena-sankey")
 def disease_phenomena_sankey():
     try:
         db = get_db()
@@ -868,18 +1044,25 @@ def disease_phenomena_sankey():
 
         # Generate mellow color scheme
         import numpy as np
+
         def generate_mellow_hsl(hue_range, count, saturation=30, lightness=70):
-            return [f"hsl({hue}, {saturation}%, {lightness}%)"
-                    for hue in np.linspace(hue_range[0], hue_range[1], count, dtype=int)]
+            return [
+                f"hsl({hue}, {saturation}%, {lightness}%)"
+                for hue in np.linspace(hue_range[0], hue_range[1], count, dtype=int)
+            ]
 
         num_diseases = len(diseases)
         num_phenomena = len(phenomena)
 
         # Disease colors (blue-green tones)
-        disease_colors = generate_mellow_hsl([210, 120], num_diseases) if num_diseases > 0 else []
+        disease_colors = (
+            generate_mellow_hsl([210, 120], num_diseases) if num_diseases > 0 else []
+        )
 
         # Phenomenon colors (warm orange/pink tones)
-        phenomenon_colors = generate_mellow_hsl([30, 60], num_phenomena) if num_phenomena > 0 else []
+        phenomenon_colors = (
+            generate_mellow_hsl([30, 60], num_phenomena) if num_phenomena > 0 else []
+        )
 
         node_colors = disease_colors + phenomenon_colors
 
@@ -923,14 +1106,16 @@ def disease_phenomena_sankey():
             "source": source,
             "target": target,
             "value": value,
-            "color": [f"rgba(50,50,50,{opacity})" for opacity in link_opacities]  # Grey links with varying opacity
+            "color": [
+                f"rgba(50,50,50,{opacity})" for opacity in link_opacities
+            ],  # Grey links with varying opacity
         }
         node = {
             "pad": 10,
             "thickness": 30,
             "line": {"color": "black", "width": 0.5},
             "label": label,
-            "color": node_colors
+            "color": node_colors,
         }
         layout = dict(
             title="Disease-Phenomena Sankey Diagram",
@@ -942,55 +1127,60 @@ def disease_phenomena_sankey():
         fig = go.Figure(sankey, layout=layout)
         graph_html = fig.to_html(full_html=False)
 
-        return render_template('disease_phenomena_sankey.html', graph_html=graph_html)
+        return render_template("disease_phenomena_sankey.html", graph_html=graph_html)
 
     except Exception as e:
         db.logger.error(f"Error generating Sankey diagram: {e}")
-        return render_template('error.html', message="Error generating Sankey diagram"), 500
+        return (
+            render_template("error.html", message="Error generating Sankey diagram"),
+            500,
+        )
 
-@app.route('/indexes')
+
+@app.route("/indexes")
 def show_indexes():
     try:
         db = get_db()
         indexes_info = {}
-        table_schemas = {}  # Store table schemas
-        indexed_columns_by_table = {}  # Store indexed columns for each table
+        indexed_columns_by_table = {}
+        table_schemas = {}
 
         # Get list of tables
         tables = db.execute("SELECT name FROM sqlite_master WHERE type='table'")
 
         for table in tables:
             table_name = table[0]
-
-            # Get table schema
-            schema_sql = f"PRAGMA table_info({table_name})"
-            schema = db.execute(schema_sql)
-            table_schemas[table_name] = [dict(zip(['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'], col)) for col in schema]
-
-            # Get indexes for each table
-            indexes = db.execute(f"SELECT * FROM sqlite_master WHERE type='index' AND tbl_name=?",
-                               [table_name])
-
             indexed_columns = set()
+            # Get indexes for each table
+            indexes = db.execute(
+                f"SELECT * FROM sqlite_master WHERE type='index' AND tbl_name=?",
+                [table_name],
+            )
+
             indexes_info[table_name] = []
             for idx in indexes:
                 index_info = {
-                    'name': idx[1],
-                    'sql': idx[4],
-                    'columns': _parse_index_columns(idx[4])
+                    "name": idx[1],
+                    "sql": idx[4],
+                    "columns": _parse_index_columns(idx[4]),
                 }
                 indexes_info[table_name].append(index_info)
-                indexed_columns.update(index_info['columns'])  # Collect indexed columns
+                indexed_columns.update(index_info["columns"])  # Collect indexed columns
 
-            indexed_columns_by_table[table_name] = indexed_columns  # Store indexed columns
+            indexed_columns_by_table[table_name] = (
+                indexed_columns  # Store indexed columns
+            )
 
-        return render_template('indexes.html',
-                             indexes=indexes_info,
-                             table_schemas=table_schemas,
-                             indexed_columns_by_table=indexed_columns_by_table)  # Pass indexed columns to the template
+        return render_template(
+            "indexes.html",
+            indexes=indexes_info,
+            table_schemas=table_schemas,
+            indexed_columns_by_table=indexed_columns_by_table,
+        )  # Pass indexed columns to the template
     except Exception as e:
         db.logger.error(f"Error loading indexes: {e}")
-        return render_template('error.html', message="Error loading indexes"), 500
+        return render_template("error.html", message="Error loading indexes"), 500
+
 
 def _parse_index_columns(create_sql):
     """Extract column names from CREATE INDEX statement"""
@@ -999,47 +1189,62 @@ def _parse_index_columns(create_sql):
     try:
         # Find text between parentheses
         import re
-        match = re.search(r'\((.*?)\)', create_sql)
+
+        match = re.search(r"\((.*?)\)", create_sql)
         if match:
             # Split columns and clean up
-            return [col.strip() for col in match.group(1).split(',')]
+            return [col.strip() for col in match.group(1).split(",")]
     except Exception:
         pass
     return []
 
+
 @app.route("/aggregated-entity-occurrences")
 def list_aggregated_entity_occurrences():
-    result = display_table('view_entity_occurrences_summary')
-    if 'error' in result:
-        return render_template('error.html', message=result['error']), 500
-    return render_template('table_view.html', table_name='view_entity_occurrences_summary', **result)
+    result = display_table("view_entity_occurrences_summary")
+    if "error" in result:
+        return render_template("error.html", message=result["error"]), 500
+    return render_template(
+        "table_view.html", table_name="view_entity_occurrences_summary", **result
+    )
+
 
 import re
 
+
 @app.route("/explain-query")
 def explain_query():
-    query = request.args.get('query')
+    query = request.args.get("query", "").strip()
+    if not query:
+        return jsonify({"error": "No query provided"}), 400
+
+    # Basic validation and extraction of query
+    query_lower = query.lower()
+    if query_lower.startswith('create view'):
+        try:
+            # Extract the query part after "AS"
+            match = re.search(r'create\s+view\s+.*?\s+as\s+(.*)', query_lower, re.IGNORECASE)
+            if not match:
+                return jsonify({"error": "Invalid CREATE VIEW syntax. Could not find query after AS."}), 400
+            query = match.group(1)
+        except Exception as e:
+            return jsonify({"error": f"Error parsing CREATE VIEW statement: {str(e)}"}), 400
+    elif not query_lower.startswith('select'):
+        return jsonify({"error": "Invalid query. Only CREATE VIEW and SELECT statements are allowed."}), 400
+
     try:
         db = get_db()
-
-        # Extract parameters from the request
-        params = []
-
-        # Parse the SQL query to identify the parameters used
-        used_params = set(re.findall(r'LIKE \?', query))
-
-        # Extract only the used parameters from the request
-        extracted_params = []
-        for key, value in request.args.items():
-            if key != 'query' and any(key in s for s in used_params):
-                extracted_params.append(value)
-
-        # Parameters for LIMIT and OFFSET
-        extracted_params.append(31)
-        extracted_params.append(0)
-
-        db.cursor.execute(f"EXPLAIN QUERY PLAN {query}", extracted_params)
-        rows = db.cursor.fetchall()
+        try:
+            db.cursor.execute(f"EXPLAIN QUERY PLAN {query}")
+            rows = db.cursor.fetchall()
+        except Exception as e:
+            # Handle SQLite-specific errors more gracefully
+            error_msg = str(e)
+            if "syntax error" in error_msg.lower():
+                return jsonify({"error": "Invalid SQL syntax in the query"}), 400
+            if "no such table" in error_msg.lower():
+                return jsonify({"error": "The query references tables that don't exist"}), 400
+            raise  # Re-raise other exceptions
 
         # Format the results as a list of dictionaries
         column_names = [col[0] for col in db.cursor.description]
@@ -1048,7 +1253,76 @@ def explain_query():
         return jsonify(result)
     except Exception as e:
         db.logger.error(f"Error explaining query: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": "An error occurred while analyzing the query"}), 500
+
+
+@app.route("/views")
+def show_views():
+    try:
+        db = get_db()
+        views_info = {}
+
+        # Get list of views
+        views = db.execute("SELECT name, sql FROM sqlite_master WHERE type='view'")
+
+        for view in views:
+            view_name = view[0]
+            create_sql = view[1]
+
+            # Get view structure
+            schema_sql = f"PRAGMA table_info({view_name})"
+            schema = db.execute(schema_sql)
+
+            # Get a sample row to help understand the view's output
+            sample_sql = f"SELECT * FROM {view_name} LIMIT 1"
+            try:
+                sample = db.execute(sample_sql)
+                has_sample = True
+            except:
+                sample = None
+                has_sample = False
+
+            views_info[view_name] = {
+                "schema": [
+                    dict(
+                        zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col)
+                    )
+                    for col in schema
+                ],
+                "definition": create_sql,
+                "sample": (
+                    [
+                        dict(zip([col[0] for col in db.cursor.description], row))
+                        for row in sample
+                    ]
+                    if has_sample
+                    else None
+                ),
+            }
+
+        return render_template("views.html", views=views_info)
+    except Exception as e:
+        db.logger.error(f"Error loading views: {e}")
+        return render_template("error.html", message="Error loading views"), 500
+
+
+@app.route("/view/<view_name>/delete", methods=["POST"])
+def delete_view(view_name):
+    try:
+        db = get_db()
+        # Check if it's actually a view first
+        view_check = db.execute(
+            "SELECT type FROM sqlite_master WHERE type='view' AND name=?", [view_name]
+        )
+        if not view_check:
+            return jsonify({"error": "View not found"}), 404
+
+        db.execute(f"DROP VIEW IF EXISTS {view_name}")
+        return jsonify({"message": "View deleted successfully"}), 200
+    except Exception as e:
+        db.logger.error(f"Error deleting view {view_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     with app.app_context():
