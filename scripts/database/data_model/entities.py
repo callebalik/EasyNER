@@ -599,6 +599,106 @@ class EntityOccurrence:
         )
         rw_pair_norm_agg.run()
         self.logger.info(f"--- Finished Aggregation: {TABLE_NE_AGGR} table ---")
+    def backreference_norm_id(
+        self,
+        overwrite: bool = False,
+    ):
+        """
+        Backreferences norm_id from eo_normalized into eo_lookup based on txt_norm and entity_class_id.
+
+        Args:
+            overwrite (bool): If True, will update all records. If False, only updates NULL norm_id records.
+        """
+
+        # Create column norm_id in eo_lookup table if it doesn't exist
+        self.cursor.execute(
+            f"""--sql
+            PRAGMA table_info({TABLE_NE_LOOKUP})
+            """
+        )
+        columns = self.cursor.fetchall()
+        norm_id_exists = any(column[1] == f"{COL_NE_NORM_ID}" for column in columns)
+        if not norm_id_exists:
+            self.cursor.execute(
+                f"""--sql
+                ALTER TABLE {TABLE_NE_LOOKUP}
+                ADD COLUMN {COL_NE_NORM_ID} INTEGER;
+                """
+            )
+
+        self.logger.info(
+            f"--- Starting Backreference: {TABLE_NE_LOOKUP} table ---"
+        )
+        try:
+            # Define Reader query for eo_lookup backreference with both txt_norm and entity_class_id matching
+            reader_query_eo_lookup_backref = f"""--sql
+                SELECT
+                    eoa.{COL_NE_NORM_ID},
+                    eol.id
+                FROM
+                    {TABLE_NE_LOOKUP} AS eol
+                JOIN
+                    {TABLE_NE_AGGR} AS eoa
+                ON
+                    eol.{COL_NE_TXT_NORM} = eoa.{COL_NE_TXT_NORM}
+                    AND eol.{COL_NE_CLASS_ID} = eoa.{COL_NE_CLASS_ID}
+                WHERE
+                    {"eol." + COL_NE_NORM_ID + " IS NULL AND" if not overwrite else ""}
+                    eol.{COL_NE_TXT_NORM} IS NOT NULL
+                ORDER BY
+                    eol.id
+            """
+
+            self.log_query_plan(reader_query_eo_lookup_backref)
+
+            total_records = self.cursor.execute(
+                f"""--sql
+                SELECT COUNT(*)
+                FROM {TABLE_NE_LOOKUP} eol
+                JOIN {TABLE_NE_AGGR} eoa ON
+                    eol.{COL_NE_TXT_NORM} = eoa.{COL_NE_TXT_NORM}
+                    AND eol.{COL_NE_CLASS_ID} = eoa.{COL_NE_CLASS_ID}
+                WHERE
+                    eol.{COL_NE_TXT_NORM} IS NOT NULL
+                    {"AND eol." + COL_NE_NORM_ID + " IS NULL" if not overwrite else ""}
+                """
+            ).fetchone()[0]
+
+            self.logger.info(f"Updating {COL_NE_NORM_ID} references for {total_records} records in {TABLE_NE_LOOKUP}")
+
+            # Process function to get the entity ID pairs
+            def process_function_eo_lookup_backref(batch, conn_params):
+                return [(row[0], row[1]) for row in batch]
+
+            # Write function to update norm_id in eo_lookup
+            def write_function_eo_lookup_backref(batch, cursor, conn):
+                update_sql = f"""
+                    UPDATE {TABLE_NE_LOOKUP}
+                    SET {COL_NE_NORM_ID} = ?
+                    WHERE id = ?
+                """
+                cursor.executemany(update_sql, batch)
+
+            # Run ReaderWriterPair for backreference
+            rw_pair_eo_lookup_backref = ReaderWriterPair(
+                conn_params=self.conn_params_dict,
+                reader_query=reader_query_eo_lookup_backref,
+                batch_size=200000,
+                num_reader_threads=10,
+                process_function=process_function_eo_lookup_backref,
+                write_function=write_function_eo_lookup_backref,
+                logger=self.logger,
+                process_title="eo_lookup_backreference",
+                profiling_reader_enabled=False,
+                profiling_writer_enabled=False,
+                total_count=total_records,
+            )
+            rw_pair_eo_lookup_backref.run()
+            self.logger.info("--- Finished Backreference: eo_lookup table ---")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating reader query: {e}")
+            raise
         """
         Idempotent method to create aggregated entities from temp_normalized_linked_entities.
         """
