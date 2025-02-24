@@ -132,6 +132,24 @@ class EntityOccurrence:
                     FOREIGN KEY ({COL_NE_NORM_ID}) REFERENCES {TABLE_NE_AGGR} ({COL_NE_NORM_ID})
                     )"""
 
+    def create_entity_occurrences_table(self):
+        """
+        Create the entity_occurrences table.
+        """
+        self.cursor.execute(self.stmt_table_ne)
+
+
+    def migrate_old_entity_occurences_table(self):
+        """
+        Migrate old entity_occurrences table to new table structure.
+        """
+        self.cursor.execute(
+            f"""--sql
+            INSERT INTO {TABLE_NE}
+            SELECT *
+            FROM eo_old
+            """
+        )
     def identify_overlap(self, overwrite: bool = False) -> None:
         """
         Find entities in the same sentence where span_start and span_end overlap between the two entities.
