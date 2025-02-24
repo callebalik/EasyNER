@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, g, render_template, request
-from db_main import EasyNerDBHandler
+from .db_main import EasyNerDBHandler
 import os
 import sass
 import plotly.graph_objects as go
@@ -7,6 +7,49 @@ import plotly.graph_objects as go
 # Set template directory to current directory/templates
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 app = Flask(__name__, template_folder=template_dir)
+
+# Initialize single database connection
+db_instance = None
+
+
+def init_db():
+    """Initialize the database connection"""
+    global db_instance
+    if db_instance is None:
+        try:
+            db_instance = EasyNerDBHandler()
+            db_instance.logger.info("Database connection initialized")
+        except Exception as e:
+            app.logger.error(f"Database initialization error: {e}")
+            raise
+    return db_instance
+
+
+# Initialize database on startup
+with app.app_context():
+    init_db()
+
+
+def get_db():
+    """Get the database connection"""
+    global db_instance
+    if db_instance is None:
+        db_instance = init_db()
+    return db_instance
+
+
+@app.teardown_appcontext
+def cleanup(e=None):
+    """Only close the database connection when the app is shutting down"""
+    global db_instance
+    if db_instance is not None:
+        try:
+            db_instance.close()
+            db_instance.logger.info("Database connection closed on shutdown")
+            db_instance = None
+        except Exception as e:
+            app.logger.error(f"Error closing database connection: {e}")
+
 
 # Compile SCSS to CSS on server load
 def compile_scss():
@@ -43,55 +86,37 @@ def compile_scss():
 compile_scss()
 
 # Serve static CSS file
-@app.route('/static/styles.css')
+@app.route("/static/styles.css")
 def styles():
-    return app.send_static_file('styles.css')
-
-def get_db():
-    if 'db' not in g:
-        try:
-            g.db = EasyNerDBHandler()
-            g.db.logger.info("New database connection created")
-        except Exception as e:
-            g.db.logger.error(f"Database connection error: {e}")
-            raise
-    return g.db
-
-@app.teardown_appcontext
-def close_db(e=None):
-    db = g.pop('db', None)
-    if db is not None:
-        try:
-            db.close()
-            db.logger.info("Database connection closed")
-        except Exception as e:
-            db.logger.error(f"Error closing database: {e}")
+    return app.send_static_file("styles.css")
 
 
 def align_with_schema():
     try:
-            # Use existing schema alignment method
-            schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
-            db.align_with_schema(schema_path)
+        # Use existing schema alignment method
+        schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
+        db.align_with_schema(schema_path)
 
-            # Apply indexes (they are idempotent with IF NOT EXISTS)
-            with open(os.path.join(os.path.dirname(__file__), 'indexes.sql'), 'r') as f:
-                indexes_sql = f.read()
-                for statement in indexes_sql.split(';'):
-                    if statement.strip():
-                        try:
-                            db.execute(statement)
-                        except Exception as e:
-                            db.logger.warning(f"Error applying index: {e}")
-                            continue
-            db.logger.info("Database indexes applied successfully")
+        # Apply indexes (they are idempotent with IF NOT EXISTS)
+        with open(os.path.join(os.path.dirname(__file__), "indexes.sql"), "r") as f:
+            indexes_sql = f.read()
+            for statement in indexes_sql.split(";"):
+                if statement.strip():
+                    try:
+                        db.execute(statement)
+                    except Exception as e:
+                        db.logger.warning(f"Error applying index: {e}")
+                        continue
+        db.logger.info("Database indexes applied successfully")
 
     except Exception as e:
         db.logger.error(f"Error initializing database: {e}")
         raise
 
+
     db.logger.info("Flask application initialized")
     return db
+
 def get_available_entities(db):
     try:
         return db.execute("SELECT id, named_entity FROM named_entities ORDER BY named_entity")
@@ -1032,12 +1057,14 @@ if __name__ == "__main__":
             db = get_db()
             db.logger.info("Starting Flask server...")
 
-            app.run(host="127.0.0.1",
-                    port=5001,
-                    debug=True,
-                    use_reloader=True,
-                    threaded=True)
+            app.run(
+                host="127.0.0.1",
+                port=5001,
+                debug=True,
+                use_reloader=True,
+                threaded=True,
+            )
         except Exception as e:
-            if 'db' in locals():
+            if "db" in locals():
                 db.logger.error(f"Server error: {e}")
             raise
