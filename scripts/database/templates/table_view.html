@@ -27,7 +27,7 @@
                             {{ column }}
                         </a>
                         {% if column_types[column] == 'TEXT' %}
-                        <input type="text" 
+                        <input type="text"
                                name="{{ column }}_search"
                                placeholder="Search {{ column }}..."
                                value="{{ column_search_queries[column] }}">
@@ -87,14 +87,14 @@
                 if (event.key === 'Enter') {
                     // Prevent the default action to stop form from submitting
                     event.preventDefault();
-                    
+
                     // Construct the URL with the search parameters
                     let url = new URL(window.location.href);
-                    
+
                     // Add or update the search parameter for the current input
                     const paramName = this.name;
                     url.searchParams.set(paramName, this.value);
-                    
+
                     // Redirect to the new URL
                     window.location.href = url.href;
                 }

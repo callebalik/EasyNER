@@ -2,7 +2,7 @@
 
 .cooccurrences-container {
     @extend %section-card;
-    
+
     h2 {
         @extend %section-header;
     }
@@ -25,7 +25,7 @@
             gap: 0.5rem;
             cursor: pointer;
             color: $secondary-color;
-            
+
             input[type="checkbox"],
             input[type="radio"] {
                 cursor: pointer;
@@ -59,7 +59,7 @@
             border: 1px solid $border-color;
             border-radius: 4px;
             background: white;
-            
+
             &:focus {
                 border-color: $primary-color;
                 outline: none;
@@ -157,7 +157,7 @@
     td span {
         cursor: help;
         border-bottom: 1px dotted $secondary-color;
-        
+
         &:hover {
             color: $primary-color;
             border-bottom-style: solid;
@@ -167,7 +167,7 @@
     a {
         color: $primary-color;
         text-decoration: none;
-        
+
         &:hover {
             text-decoration: underline;
         }
@@ -176,7 +176,7 @@
 
 .view-selector {
     margin-bottom: 2rem;
-    
+
     button {
         background: none;
         border: none;

@@ -265,21 +265,21 @@
             // Load entity types for filters
             $.get('/named-entities/types').done(function(data) {
                 const types = data.types;
-                const typeOptions = types.map(type => 
+                const typeOptions = types.map(type =>
                     `<option value="${type.id}">${type.named_entity}</option>`
                 ).join('');
-                
+
                 $('#entity1-type').append(typeOptions);
                 $('#entity2-type').append(typeOptions);
             });
-            
+
             function updateSortIcons() {
                 $('.sortable').removeClass('sort-asc sort-desc');
                 $(`.sortable[data-sort="${currentSort}"]`).addClass(
                     currentOrder === 'asc' ? 'sort-asc' : 'sort-desc'
                 );
             }
-            
+
             function loadTable(page, newSort = null) {
                 const tableView = $('#table-view');
                 showLoading(tableView);
@@ -296,9 +296,9 @@
                     }
                     page = 1; // Reset to first page on sort change
                 }
-                
+
                 updateSortIcons();
-                
+
                 const params = {
                     page: page,
                     per_page: 30,
@@ -314,12 +314,12 @@
                 $.get('/summary-cooccurrences/table', params)
                     .done(function(data) {
                         $('#total-count').text(`Total co-occurrences: ${data.total}`);
-                        
+
                         const tbody = $('.data-table tbody');
                         if (page === 1) {
                             tbody.empty();
                         }
-                        
+
                         data.summaries.forEach(summary => {
                             const maxValue = Math.max(
                                 summary.fq_document_level,
@@ -327,7 +327,7 @@
                                 summary.fq_sentence_level,
                                 summary.fq_sentence_level_normalized
                             );
-                            
+
                             const formatValue = (value) => {
                                 if (maxValue > 5) {
                                     return Math.round(value);
@@ -346,10 +346,10 @@
                                 </tr>
                             `);
                         });
-                        
+
                         // Remove existing load more button
                         $('.load-more-button').remove();
-                        
+
                         // Add new load more button if there are more results
                         if (data.has_more) {
                             $('#table-view').append(
@@ -469,7 +469,7 @@
                         }
                     }
                 });
-                
+
                 // Add error display plugin
                 Chart.register({
                     id: 'chartError',
@@ -479,9 +479,9 @@
                             const ctx = chart.ctx;
                             const width = chart.width;
                             const height = chart.height;
-                            
+
                             chart.clear();
-                            
+
                             ctx.save();
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
@@ -508,7 +508,7 @@
                     entity1_search: entity1Search,
                     entity2_search: entity2Search
                 };
-                
+
                 console.log('Plot params:', params);
 
                 $.get('/summary-cooccurrences/plot-data', params)
@@ -529,13 +529,13 @@
                                     return `${entity1}\n―\n${entity2}`;
                                 });
                                 const frequencies = data.pairs.map(p => p[params.freq_column]);
-                                
+
                                 console.log('Plot labels:', labels);
                                 console.log('Plot frequencies:', frequencies);
-                                
+
                                 freqPlot.data.labels = labels;
                                 freqPlot.data.datasets[0].data = frequencies;
-                                freqPlot.options.plugins.title.text = 
+                                freqPlot.options.plugins.title.text =
                                     `Entity Pair Co-occurrences (${$('#freq-column option:selected').text()})`;
                             }
                             freqPlot.update();

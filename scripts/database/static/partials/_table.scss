@@ -18,7 +18,7 @@
 
 .table-section {
     @extend %section-card;
-    
+
     h2 {
         @extend %section-header;
     }
@@ -49,7 +49,7 @@
             margin: 10px 0;
             padding-left: 20px;
             color: $secondary-color;
-            
+
             li {
                 padding: 2px 0;
                 font-family: monospace;
