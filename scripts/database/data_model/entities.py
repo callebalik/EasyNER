@@ -508,9 +508,97 @@ class EntityOccurrence:
         Contains methods for updating aggregated_entities table.
         """
 
-    def generate_aggregated_table(
-        self, batch_size=5000, target_table=eo_aggregated_table_name
+    def aggregate_normalized_text__CORRECT(
+        self,
+        overwrite: bool = False,
+        eo_aggregated_table_name=TABLE_NE_AGGR,
     ):
+        """
+        Aggregates distinct txt_norm values from eo_lookup into a new table eo_normalized.
+
+        Args:
+            conn_params (dict): Database connection parameters.
+            eo_aggregated_table_name (str): Name of the table to store aggregated normalized texts.
+            eo_lookup_table_name (str): Name of the eo_lookup table.
+            logger (logging.Logger): Logger instance.
+        """
+
+        self.logger.info(f"--- Starting Aggregation to {eo_aggregated_table_name} ---")
+
+        # 1: Create eo_normalized table (moved inside function)
+        self.cursor.execute(self.stmt_table_ne_aggregated)
+
+        # Define Reader query to get distinct normalized texts (moved inside function)
+        reader_query_norm_txt = f"""--sql
+            SELECT {COL_NE_TXT_NORM}, {COL_NE_CLASS_ID}
+            FROM (SELECT DISTINCT {COL_NE_TXT_NORM}, {COL_NE_CLASS_ID} FROM {TABLE_NE_LOOKUP}
+                {"WHERE " + COL_NE_NORM_ID + " IS NULL" if not overwrite else ""})
+            ORDER BY {COL_NE_TXT_NORM}
+        """
+
+        # total_count = self.cursor.execute(
+        #     f"""
+        #     SELECT COUNT(DISTINCT {COL_NE_TXT_NORM})
+        #     FROM {TABLE_NE_LOOKUP}
+        #     {"WHERE " + COL_NE_NORM_ID + " IS NULL;" if not overwrite else ""}
+        #     """
+        # ).fetchone()[0]
+
+        # self.logger.info(f"Aggregating {total_count:,} distinct normalized texts")
+        self.logger.info(f"Aggregating distinct normalized texts")
+
+        # self.log_query_plan(reader_query_norm_txt)
+
+        # create index for faster processing of entity_occurrences
+        index = f"idx_{TABLE_NE}_text_entity_id"
+        # Check if index with the same name exists on the table
+        self.cursor.execute(
+            "SELECT COUNT(*) FROM pragma_index_list(?) WHERE name = ?",
+            (TABLE_NE_LOOKUP, index),
+        )
+        index_exists = self.cursor.fetchone()[0] > 0
+        if not index_exists:
+            self.logger.info(f"Creating index {index} on {TABLE_NE_LOOKUP}")
+            self.cursor.execute(
+                f"""
+                CREATE INDEX IF NOT EXISTS {index} ON {TABLE_NE_LOOKUP} ({COL_NE_TXT_NORM}, {COL_NE_CLASS_ID})"""
+            )
+            self.logger.info(
+                f"Index {index} created on {TABLE_NE_LOOKUP}, running ANALYZE"
+            )
+            self.cursor.execute(f"ANALYZE {TABLE_NE_LOOKUP}")
+            self.log_query_plan(reader_query_norm_txt)
+
+        def process_function_norm_txt(batch, conn_params):
+            """Process batch function for normalized texts (no processing needed)."""
+            return [
+                (row[0], row[1]) for row in batch if row[0] is not None
+            ]  # Ensure None values are skipped
+
+        def write_function_norm_txt(batch, cursor, conn):
+            """Write function to insert normalized texts into eo_normalized table."""
+            insert_sql = f"""
+                INSERT OR IGNORE INTO {eo_aggregated_table_name} ({COL_NE_TXT_NORM}, {COL_NE_CLASS_ID}) VALUES (?, ?)
+            """
+            cursor.executemany(insert_sql, batch)
+
+        # --- Run ReaderWriterPair for aggregation (moved inside function) ---
+        rw_pair_norm_agg = ReaderWriterPair(
+            conn_params=self.conn_params_dict,
+            reader_query=reader_query_norm_txt,
+            batch_size=1000000,
+            num_reader_threads=6,
+            max_queue_size=10,
+            process_function=process_function_norm_txt,
+            write_function=write_function_norm_txt,
+            logger=self.logger,
+            process_title="eo_normalized_aggregation",
+            profiling_reader_enabled=False,
+            profiling_writer_enabled=False,
+            # total_count=total_count,
+        )
+        rw_pair_norm_agg.run()
+        self.logger.info(f"--- Finished Aggregation: {TABLE_NE_AGGR} table ---")
         """
         Idempotent method to create aggregated entities from temp_normalized_linked_entities.
         """
