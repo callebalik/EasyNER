@@ -699,6 +699,115 @@ class EntityOccurrence:
         except sqlite3.Error as e:
             self.logger.error(f"Error creating reader query: {e}")
             raise
+    # filepath: /home/carloa/Desktop/EasyNer/scripts/database/data_model/entities.py
+    def create_view_entity_occurrences(self):
+        """
+        Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data.
+        """
+        try:
+            self.logger.info(f"Creating {VIEW_NE} view...")
+
+            # Delete the view if it already exists
+            self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_NE}")
+
+            view_sql = f"""--sql
+                CREATE VIEW IF NOT EXISTS {VIEW_NE} AS
+                SELECT
+                    eo.id,
+                    eo.{COL_NE_TXT},
+                    nea.{COL_NE_TXT_NORM},
+                    error_code.{COL_NE_ERROR_ID},
+                    doc.title as document_title,
+                    eo.{COL_NE_DOC_ID},
+                    nea.uniq_documents
+                FROM
+                    {TABLE_NE} eo
+                JOIN named_entities ne ON eo.{COL_NE_CLASS_ID} = ne.id
+                JOIN documents doc ON eo.{COL_NE_DOC_ID} = doc.id
+                LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.id
+                LEFT JOIN {TABLE_ERROR} error_code ON eo.{COL_NE_ERROR_ID} = {TABLE_ERROR}.error_id;
+            """
+
+            self.cursor.execute(view_sql)
+            self.conn.commit()
+            self.logger.info(f"{VIEW_NE} view created successfully.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating view_entity_occurrences view: {e}")
+            raise
+
+    def create_view__comp__txt(self):
+        """
+        Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data.
+        """
+        try:
+            self.logger.info(f"Creating {VIEW_NE} view...")
+
+            # Delete the view if it already exists
+            self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_NE}_comp_txt")
+
+            view_sql = f"""--sql
+                CREATE VIEW IF NOT EXISTS {VIEW_NE}_comp_txt AS
+                SELECT
+                    eo.id as NE_ID,
+                    eo.{COL_NE_TXT} as NE_TEXT,
+                    eol.id as LOOKUP_ID,
+                    eol.{COL_NE_TXT_NORM} as LOOKUP_TEXT,
+                    eol.{COL_NE_NORM_ID} as NORM_ID,
+                    nea.{COL_NE_NORM_ID} as AGGR_ID,
+                    nea.{COL_NE_TXT_NORM} as AGGR_TEXT,
+                    doc.title as DOC_TITLE,
+                    eo.{COL_NE_DOC_ID} as DOC_ID
+                FROM
+                    {TABLE_NE} eo
+                JOIN {TABLE_NE_CLASS} ne ON eo.{COL_NE_CLASS_ID} = ne.id
+                JOIN {TABLE_DOCS} doc ON eo.{COL_NE_DOC_ID} = doc.id
+                LEFT JOIN {TABLE_NE_LOOKUP} eol ON eo.id = eol.id
+                LEFT JOIN {TABLE_NE_AGGR} nea ON eol.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+            """
+
+            self.cursor.execute(view_sql)
+            self.conn.commit()
+            self.logger.info(f"{VIEW_NE} view created successfully.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating view_entity_occurrences view: {e}")
+            raise
+
+    def create_view_raw_entity_occurrences(self):
+        """
+        Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data.
+        """
+        try:
+            self.logger.info(f"Creating {VIEW_NE_RAW} view...")
+
+            # Delete the view if it already exists
+            self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_NE_RAW}")
+
+            view_sql = f"""--sql
+                CREATE VIEW IF NOT EXISTS {VIEW_NE_RAW} AS
+                SELECT
+                    eo.id,
+                    eo.{COL_NE_TXT},
+                    nea.{COL_NE_TXT_NORM},
+                    doc.title as document_title,
+                    eo.{COL_NE_DOC_ID}
+                FROM
+                    {TABLE_NE} eo
+                JOIN named_entities ne ON eo.{COL_NE_CLASS_ID} = ne.id
+                JOIN documents doc ON eo.{COL_NE_DOC_ID} = doc.id
+                LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+            """
+
+            print(view_sql)
+
+            self.cursor.execute(view_sql)
+            self.conn.commit()
+            self.logger.info(f"{VIEW_NE_RAW} view created successfully.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating view_entity_occurrences view: {e}")
+            raise
         """
         Idempotent method to create aggregated entities from temp_normalized_linked_entities.
         """
