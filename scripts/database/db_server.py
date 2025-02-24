@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, g, render_template, request
-from db_main import EasyNerDBHandler
+from .db_main import EasyNerDBHandler
 import os
 from data_model import Document, Sentence, NamedEntity
 import sass
@@ -25,18 +25,18 @@ def compile_scss():
         # Read and compile the main SCSS file
         with open(scss_file, 'r') as f:
             scss_content = f.read()
-            
+
         # Compile SCSS with include paths for partials
         css_content = sass.compile(
             string=scss_content,
             include_paths=[static_dir],
             output_style='compressed' if not app.debug else 'nested'
         )
-        
+
         # Write the compiled CSS
         with open(css_file, 'w') as f:
             f.write(css_content)
-            
+
         app.logger.info("SCSS compilation successful")
     except Exception as e:
         app.logger.error(f"Error compiling SCSS: {e}")
@@ -75,7 +75,7 @@ def align_with_schema():
             # Use existing schema alignment method
             schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
             db.align_with_schema(schema_path)
-            
+
             # Apply indexes (they are idempotent with IF NOT EXISTS)
             with open(os.path.join(os.path.dirname(__file__), 'indexes.sql'), 'r') as f:
                 indexes_sql = f.read()
@@ -87,11 +87,11 @@ def align_with_schema():
                             db.logger.warning(f"Error applying index: {e}")
                             continue
             db.logger.info("Database indexes applied successfully")
-            
+
     except Exception as e:
         db.logger.error(f"Error initializing database: {e}")
         raise
-        
+
     db.logger.info("Flask application initialized")
     return db
 def get_available_entities(db):
@@ -106,7 +106,7 @@ def home():
     try:
         db = get_db()
         tables_info = {}
-        
+
         # Get counts for each table
         for table in db.tables["tables"]:
             count = db.execute(f"SELECT COUNT(*) FROM {table}")[0][0]
@@ -115,7 +115,7 @@ def home():
                 "row_count": count,
                 "columns": [col[1] for col in columns]
             }
-        
+
         # Get database statistics
         stats = {
             'db_size': _format_size(db.statistics.size),
@@ -125,7 +125,7 @@ def home():
             'sentence_count': db.statistics.sentence_count,
             'named_entity_count': db.statistics.named_entity_count
         }
-        
+
         return render_template('home.html', tables=tables_info, stats=stats)
     except Exception as e:
         db.logger.error(f"Error loading home page: {e}")
@@ -143,7 +143,7 @@ def health_check():
     try:
         db = get_db()
         tables_info = {}
-        
+
         # Get counts for each table
         for table in db.tables["tables"]:
             count = db.execute(f"SELECT COUNT(*) FROM {table}")[0][0]
@@ -152,7 +152,7 @@ def health_check():
                 "row_count": count,
                 "columns": [col[1] for col in columns]
             }
-        
+
         return jsonify({
             "status": "healthy",
             "database": {
@@ -178,7 +178,7 @@ def get_tables():
     try:
         db = get_db()
         tables_info = {}
-        
+
         for table in db.tables["tables"]:
             # Get column information
             columns = db.execute(f"PRAGMA table_info({table})")
@@ -188,7 +188,7 @@ def get_tables():
                 "nullable": not col[3],
                 "primary_key": bool(col[5])
             } for col in columns]
-            
+
             # Get foreign keys
             foreign_keys = db.execute(f"PRAGMA foreign_key_list({table})")
             fk_info = [{
@@ -196,16 +196,16 @@ def get_tables():
                 "to_table": fk[2],
                 "to_column": fk[4]
             } for fk in foreign_keys]
-            
+
             # Get row count
             count = db.execute(f"SELECT COUNT(*) FROM {table}")[0][0]
-            
+
             tables_info[table] = {
                 "columns": columns_info,
                 "foreign_keys": fk_info,
                 "row_count": count
             }
-        
+
         return jsonify(tables_info), 200
     except Exception as e:
         db.logger.error(f"Error getting table information: {e}")
@@ -228,14 +228,14 @@ def list_documents():
         if query:
             conditions.append("d.title LIKE ?")
             params.append(f'%{query}%')
-        
+
         if doc_id:
             conditions.append("d.id = ?")
             params.append(doc_id)
 
         # Base query
         sql = """
-            SELECT DISTINCT d.id, d.title, d.word_count 
+            SELECT DISTINCT d.id, d.title, d.word_count
             FROM documents d
         """
 
@@ -244,7 +244,7 @@ def list_documents():
             for entity_id in selected_entities:
                 sql_condition = f"""
                 EXISTS (
-                    SELECT 1 FROM entity_occurrences eo{entity_id} 
+                    SELECT 1 FROM entity_occurrences eo{entity_id}
                     JOIN named_entities ne{entity_id} ON eo{entity_id}.entity_id = ne{entity_id}.id
                     WHERE eo{entity_id}.document_id = d.id AND ne{entity_id}.id = ?
                 )"""
@@ -282,7 +282,7 @@ def list_named_entities():
     if 'error' in result:
         return render_template('error.html', message=result['error']), 500
     return render_template('named_entities.html', **result)
-    
+
 @app.route('/named-entities/types')
 def get_named_entity_types():
     try:
@@ -306,7 +306,7 @@ def list_entity_occurrences():
 @app.route('/document/<int:doc_id>')
 def show_document(doc_id):
     db = get_db()
-    
+
     document = db.data_exchanger.get_document(doc_id)
     if not document:
         return "Document not found", 404
@@ -330,7 +330,7 @@ def entity_cooccurrences_table():
         offset = (page - 1) * per_page
 
         query = """
-            SELECT 
+            SELECT
                 ec.id,
                 ec.e1_id,
                 ec.e2_id,
@@ -346,11 +346,11 @@ def entity_cooccurrences_table():
             LIMIT ? OFFSET ?
         """
         params = [per_page + 1, offset]
-        
+
         cooccurrences = db.execute(query, params)
         has_more = len(cooccurrences) > per_page
         cooccurrences = cooccurrences[:per_page]
-        
+
         return jsonify({
             'cooccurrences': [dict(zip([
                 'id', 'e1_id', 'e2_id', 'entity1_text', 'entity2_text',
@@ -387,7 +387,7 @@ def entity_cooccurrences_summary_table():
             entity1_search=entity1_search,
             entity2_search=entity2_search
         )
-        
+
         return jsonify({
             'summaries': result['summaries'],
             'has_more': result['has_more'],
@@ -414,7 +414,7 @@ def raw_cooccurrences_table():
         offset = (page - 1) * per_page
 
         query = """
-            SELECT 
+            SELECT
                 ec.id,
                 ec.e1_id,
                 ec.e2_id,
@@ -430,11 +430,11 @@ def raw_cooccurrences_table():
             LIMIT ? OFFSET ?
         """
         params = [per_page + 1, offset]
-        
+
         cooccurrences = db.execute(query, params)
         has_more = len(cooccurrences) > per_page
         cooccurrences = cooccurrences[:per_page]
-        
+
         return jsonify({
             'cooccurrences': [dict(zip([
                 'id', 'e1_id', 'e2_id', 'entity1_text', 'entity2_text',
@@ -471,7 +471,7 @@ def summary_cooccurrences_table():
             entity1_search=entity1_search,
             entity2_search=entity2_search
         )
-        
+
         return jsonify({
             'summaries': result['summaries'],
             'has_more': result['has_more'],
@@ -538,7 +538,7 @@ def summary_cooccurrences_plot_data():
     try:
         db = get_db()
         app.logger.debug("Starting plot data generation")
-        
+
         # Log request parameters
         params = {
             'freq_column': request.args.get('freq_column', 'fq_document_level'),
@@ -552,7 +552,7 @@ def summary_cooccurrences_plot_data():
         app.logger.debug(f"Plot parameters: {params}")
 
         # Validate frequency column to prevent SQL injection
-        allowed_freq_columns = ['fq_document_level', 'fq_document_level_normalized', 
+        allowed_freq_columns = ['fq_document_level', 'fq_document_level_normalized',
                               'fq_sentence_level', 'fq_sentence_level_normalized']
         if params['freq_column'] not in allowed_freq_columns:
             app.logger.error(f"Invalid frequency column: {params['freq_column']}")
@@ -570,9 +570,9 @@ def summary_cooccurrences_plot_data():
         # Build WHERE clause
         where_clauses = []
         query_params = []
-        
+
         where_clauses.append(f"{params['freq_column']} IS NOT NULL")
-        
+
         if not params['include_self']:
             where_clauses.append("ecs.e1_id_normalized != ecs.e2_id_normalized")
 
@@ -582,7 +582,7 @@ def summary_cooccurrences_plot_data():
         if params['entity2_type']:
             where_clauses.append("e2.entity_id = ?")
             query_params.append(params['entity2_type'])
-            
+
         if params['entity1_search']:
             where_clauses.append("e1.entity_text LIKE ?")
             query_params.append(f"%{params['entity1_search']}%")
@@ -595,7 +595,7 @@ def summary_cooccurrences_plot_data():
 
         # Get min/max values with error handling
         min_max_sql = f"""
-            SELECT 
+            SELECT
                 MIN({params['freq_column']}) as min_freq,
                 MAX({params['freq_column']}) as max_freq,
                 COUNT(*) as total_count
@@ -604,15 +604,15 @@ def summary_cooccurrences_plot_data():
             JOIN entity_occurrences e2 ON ecs.e2_id_normalized = e2.id
             WHERE {' AND '.join(where_clauses)}
         """
-        
+
         app.logger.debug(f"Executing min/max query: {min_max_sql}")
         app.logger.debug(f"With parameters: {query_params}")
-        
+
         result = db.execute(min_max_sql, query_params)
         min_freq, max_freq, total_count = result[0]
-        
+
         app.logger.debug(f"Min freq: {min_freq}, Max freq: {max_freq}, Total count: {total_count}")
-        
+
         if min_freq is None or max_freq is None or total_count == 0:
             app.logger.info("No data found matching the criteria")
             return jsonify({
@@ -623,7 +623,7 @@ def summary_cooccurrences_plot_data():
 
         # Get top pairs for the plot
         pairs_sql = f"""
-            SELECT 
+            SELECT
                 e1.entity_text as entity1_text,
                 e2.entity_text as entity2_text,
                 ecs.{params['freq_column']} as frequency
@@ -634,10 +634,10 @@ def summary_cooccurrences_plot_data():
             ORDER BY ecs.{params['freq_column']} DESC
             LIMIT 20
         """
-        
+
         app.logger.debug(f"Executing pairs query: {pairs_sql}")
         pairs_result = db.execute(pairs_sql, query_params)
-        
+
         pairs = []
         for row in pairs_result:
             pair = {
@@ -646,14 +646,14 @@ def summary_cooccurrences_plot_data():
                 params['freq_column']: row[2]
             }
             pairs.append(pair)
-        
+
         app.logger.debug(f"Found {len(pairs)} pairs for plotting")
-        
+
         return jsonify({
             'pairs': pairs,
             'total': total_count
         })
-        
+
     except Exception as e:
         app.logger.error(f"Error generating plot data: {str(e)}", exc_info=True)
         return jsonify({
@@ -665,14 +665,14 @@ def summary_cooccurrences_plot_data():
 def debug_entity_cooccurrences_summary():
     try:
         db = get_db()
-        
+
         # Check total count
         count_sql = "SELECT COUNT(*) FROM entity_cooccurrences_summary"
         count = db.execute(count_sql)[0][0]
-        
+
         # Get a sample row with entity texts
         sample_sql = """
-            SELECT 
+            SELECT
                 ecs.*,
                 eo1.entity_text as entity1_text,
                 eo2.entity_text as entity2_text
@@ -682,11 +682,11 @@ def debug_entity_cooccurrences_summary():
             LIMIT 1
         """
         sample = db.execute(sample_sql)
-        
+
         # Get the actual table schema
         schema_sql = "PRAGMA table_info(entity_cooccurrences_summary)"
         schema = db.execute(schema_sql)
-        
+
         return jsonify({
             'total_records': count,
             'schema': [dict(zip(['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'], col)) for col in schema],
@@ -825,7 +825,7 @@ def disease_phenomena_sankey():
             ORDER BY pmi DESC, fq_document_level DESC
         """
         data = db.execute(query)
-        
+
         # Prepare data for Sankey diagram
         label = []
         source = []
@@ -945,7 +945,7 @@ def show_indexes():
             table_schemas[table_name] = [dict(zip(['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'], col)) for col in schema]
 
             # Get indexes for each table
-            indexes = db.execute(f"SELECT * FROM sqlite_master WHERE type='index' AND tbl_name=?", 
+            indexes = db.execute(f"SELECT * FROM sqlite_master WHERE type='index' AND tbl_name=?",
                                [table_name])
 
             indexed_columns = set()
@@ -961,7 +961,7 @@ def show_indexes():
 
             indexed_columns_by_table[table_name] = indexed_columns  # Store indexed columns
 
-        return render_template('indexes.html', 
+        return render_template('indexes.html',
                              indexes=indexes_info,
                              table_schemas=table_schemas,
                              indexed_columns_by_table=indexed_columns_by_table)  # Pass indexed columns to the template
@@ -998,30 +998,30 @@ def explain_query():
     query = request.args.get('query')
     try:
         db = get_db()
-        
+
         # Extract parameters from the request
         params = []
-        
+
         # Parse the SQL query to identify the parameters used
         used_params = set(re.findall(r'LIKE \?', query))
-        
+
         # Extract only the used parameters from the request
         extracted_params = []
         for key, value in request.args.items():
             if key != 'query' and any(key in s for s in used_params):
                 extracted_params.append(value)
-        
+
         # Parameters for LIMIT and OFFSET
         extracted_params.append(31)
         extracted_params.append(0)
-        
+
         db.cursor.execute(f"EXPLAIN QUERY PLAN {query}", extracted_params)
         rows = db.cursor.fetchall()
-        
+
         # Format the results as a list of dictionaries
         column_names = [col[0] for col in db.cursor.description]
         result = [dict(zip(column_names, row)) for row in rows]
-        
+
         return jsonify(result)
     except Exception as e:
         db.logger.error(f"Error explaining query: {e}")
@@ -1033,9 +1033,9 @@ if __name__ == "__main__":
             # Initialize database before running the server
             db = get_db()
             db.logger.info("Starting Flask server...")
-            
-            app.run(host="127.0.0.1", 
-                    port=5001, 
+
+            app.run(host="127.0.0.1",
+                    port=5001,
                     debug=True,
                     use_reloader=True,
                     threaded=True)
