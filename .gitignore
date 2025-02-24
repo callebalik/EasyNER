@@ -6,6 +6,9 @@ dev_easyner_env/**
 .vscode/**
 tests/test_find_entity_cooccurrences.json
 **.db
+tests/data/**
+**/logs/**
+.env
 tests/generated_output.json
 tests/test_export_cooccurences.json
 tests/test_export_cooccurrences.csv
