@@ -242,83 +242,44 @@ class EntityOccurrence:
     Basically rudimentary linking of entities to their normalized forms.
     """
 
-    def generate_lookup_table_for_normalized_entities(
-        self, target_table=eo_lookup_table_name
-    ):
+    def generate_lookup_table_for_normalized_entities(self, target_table=None):
         """
         Create a temporary table with normalized entity text and entity_id.
         """
+
         try:
-            self.logger.info("Creating temporary normalized entities table...")
+            self.logger.info(
+                f"Generating {TABLE_NE} --> lookup table: {TABLE_NE_LOOKUP} for normalized entity texts"
+            )
 
-            # Drop temporary table if it exists
-            # self.cursor.execute("DROP TABLE IF EXISTS temp_normalized_linked_entities")
+            self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_NE_LOOKUP}")
 
+            # Create the aggregated entities table if it doesn't exist
+            self.cursor.execute(self.stmt_table_ne_aggregated)
             # Entity Linking Lookup Table
-            create_table = f"""
-                CREATE TABLE {target_table} (
-                    id INTEGER,
-                    entity_id INTEGER,
-                    normalized_entity_text TEXT,
-                    FOREIGN KEY (id) REFERENCES entity_occurrences(id)
-                    )"""
-            self.cursor.execute(create_table)
+            self.cursor.execute(self.stmt_table_ne_lookup)
 
-            self.logger.info("Temporary normalized entities table created.")
+            self.logger.info(f"Created {TABLE_NE_LOOKUP} table")
 
-            query_string = f"""
-                INSERT INTO {eo_lookup_table_name} (id, entity_id, normalized_entity_text)    
+            stmt_populate_lookup_table = f"""--sql
+                INSERT INTO {TABLE_NE_LOOKUP} (id, {COL_NE_CLASS_ID}, {COL_NE_TXT_NORM})
                 SELECT 
                     id,
-                    entity_id,
-                    LOWER(entity_text) as normalized_entity_text
-                FROM entity_occurrences
-                WHERE entity_text IS NOT NULL
-                AND overlap = FALSE
-                AND error_id IS NULL
+                    {COL_NE_CLASS_ID},
+                    LOWER({COL_NE_TXT}) as {COL_NE_TXT_NORM}
+                FROM {TABLE_NE}
+                WHERE {COL_NE_ERROR_ID} IS NULL
+                AND {COL_NE_OVERLAP} IS FALSE
+                AND {COL_NE_TXT} IS NOT NULL
+                ORDER BY id
                 """
 
-            explain_query = f"EXPLAIN QUERY PLAN {query_string}"
-            self.cursor.execute(explain_query)
-            self.logger.debug(
-                f"Query plan for entity normalization: {str(self.cursor.fetchall())}"
-            )
+            self.log_query_plan(stmt_populate_lookup_table)
 
             # Create temporary table with normalized entities
-            self.cursor.execute(query_string)
-
-            # Check validity of normalized entities, by getting count of entities with error codes via JOIN
-            self.cursor.execute(
-                """
-                SELECT COUNT(*)
-                FROM temp_normalized_linked_entities ne
-                JOIN entity_occurrences eo ON eo.id = ne.id
-                WHERE eo.error_id IS NOT NULL
-                """
-            )
-            error_count = self.cursor.fetchone()[0]
-
-            self.cursor.execute(
-                """
-                SELECT COUNT(*)
-                FROM temp_normalized_linked_entities ne
-                JOIN entity_occurrences eo ON eo.id = ne.id
-                WHERE overlap IS TRUE
-                """
-            )
-            overlap_count = self.cursor.fetchone()[0]
-
-            if error_count | overlap_count > 0:
-                self.logger.warning(
-                    f"Found {error_count} entities with error codes in temp_normalized_linked_entities \n Found {overlap_count} entities with overlap flag set"
-                )
-
-            self.logger.info(
-                f"Normalized entity texts prepared, {error_count} error counts, {overlap_count} overlap counts"
-            )
-
+            self.cursor.execute(stmt_populate_lookup_table)
             self.conn.commit()
-            self.logger.info("Temporary normalized entities table created.")
+
         except sqlite3.Error as e:
             self.logger.error(
                 f"Error creating temporary normalized entities table: {e}"
