@@ -1,12 +1,41 @@
-eo_table_name = "entity_occurrences"
-eo_aggregated_table_name = "eo_aggregated"
-eo_lookup_table_name = "eo_lookup"
+TABLE_NE = "eo"
+TABLE_NE_CLASS = "named_entities"
+TABLE_NE_LOOKUP = TABLE_NE + "_lookup"
+TABLE_NE_AGGR = TABLE_NE + "_" + "aggr"
+DIS_stem = "DIS"
+PNM_stem = "PNM"
+TABLE_NE_DIS = TABLE_NE + "_" + DIS_stem
+TABLE_NE_PNM = TABLE_NE + "_" + PNM_stem
+
+TABLE_DOCS = "documents"
+TABLE_SENTENCES = "sentences"
+TABLE_ERROR = "eo_error_codes"
+
+COL_NE_CLASS_ID = "entity_id"  # Named entity text column name
+COL_NE_CLASS_NAME = "named_entity"  # Named entity text column name
+COL_NE_TXT = "entity_text"  # Named entity text column name
+COL_NE_TXT_NORM = "txt_norm"  # Normalized named entity text column name
+COL_NE_DOC_ID = "document_id"  # Document ID column name
+COL_NE_SENT_IDX = "sentence_index"  # Sentence index column name
+COL_NE_SPAN_START = "span_start"  # Span start column name
+COL_NE_SPAN_END = "span_end"  # Span end column name
+COL_NE_ERROR_ID = "error_id"  # Error ID column name
+COL_NE_OVERLAP = "overlap"  # Overlap column name
+COL_NE_NORM_ID = "norm_id"  # Normalized ID column name
+COL_NE_AGGREGATED_ID = "norm_id"  # Aggregated ID column name
+COL_NE_FQ = "fq"  # Frequency column name
+COL_NE_DOC_COUNT = "doc_count"  # Document count column name
+
+VIEW_NE = "view_ne"
+VIEW_NE_RAW = "view_ne_raw"
 
 import math
 import sqlite3
 
 import numpy as np
 from tqdm import tqdm
+
+from scripts.database.db_main import EasyNerDBHandler
 
 from ..core.db_engine import ReaderWriterPair
 import pandas as pd
@@ -64,6 +93,25 @@ class EntityOccurrence:
         self.log_query_plan = log_query_plan
         self.conn_params_dict = conn_params_dict
 
+        self.stmt_table_ne = f"""--sql
+                CREATE TABLE IF NOT EXISTS {TABLE_NE} (
+                    id INTEGER PRIMARY KEY,
+                    {COL_NE_TXT} TEXT,
+                    {COL_NE_ERROR_ID} VARCHAR(20),
+                    {COL_NE_CLASS_ID} INTEGER,
+                    {COL_NE_DOC_ID} INTEGER,
+                    {COL_NE_SENT_IDX} INTEGER,
+                    {COL_NE_AGGREGATED_ID} INTEGER,
+                    {COL_NE_OVERLAP} BOOLEAN,
+                    {COL_NE_SPAN_START} INTEGER,
+                    {COL_NE_SPAN_END} INTEGER,
+                    FOREIGN KEY ({COL_NE_DOC_ID}) REFERENCES {TABLE_DOCS} (id),
+                    FOREIGN KEY ({COL_NE_DOC_ID},{COL_NE_SENT_IDX}) REFERENCES {TABLE_SENTENCES} ({COL_NE_DOC_ID},{COL_NE_SENT_IDX}),
+                    FOREIGN KEY ({COL_NE_CLASS_ID}) REFERENCES {TABLE_NE_CLASS} (id),
+                    FOREIGN KEY ({COL_NE_AGGREGATED_ID}) REFERENCES {TABLE_NE_AGGR} ({COL_NE_AGGREGATED_ID}),
+                    FOREIGN KEY ({COL_NE_ERROR_ID}) REFERENCES {TABLE_ERROR} ({COL_NE_ERROR_ID})
+                );
+                """
     def identify_overlap(self, overwrite: bool = False) -> None:
         """
         Find entities in the same sentence where span_start and span_end overlap between the two entities.
