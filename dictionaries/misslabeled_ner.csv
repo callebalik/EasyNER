@@ -1,22 +1,22 @@
 entity_type,entity_text,error_id
-DIS,fires,MISSL
-DIS,fire,MISSL
-DIS,forrest fire,MISSL
-DIS,forrest fires,MISSL
-DIS,earthquake,MISSL
-DIS,earthquakes,MISSL
-DIS,drought,MISSL
-DIS,droughts,MISSL
-DIS,flood,MISSL
-DIS,floods,MISSL
-DIS,tsunami,MISSL
-DIS,tsunamis,MISSL
-DIS,eutrophication,MISSL
-DIS,water eutrophication,MISSL
-DIS,landslide,MISSL
-DIS,soil erosion,MISSL
-DIS,air pollution,MISSL
-DIS,hurricane,MISSL
+DIS,fires,MISLAB
+DIS,fire,MISLAB
+DIS,forrest fire,MISLAB
+DIS,forrest fires,MISLAB
+DIS,earthquake,MISLAB
+DIS,earthquakes,MISLAB
+DIS,drought,MISLAB
+DIS,droughts,MISLAB
+DIS,flood,MISLAB
+DIS,floods,MISLAB
+DIS,tsunami,MISLAB
+DIS,tsunamis,MISLAB
+DIS,eutrophication,MISLAB
+DIS,water eutrophication,MISLAB
+DIS,landslide,MISLAB
+DIS,soil erosion,MISLAB
+DIS,air pollution,MISLAB
+DIS,hurricane,MISLAB
 PNM,current,AMBIG
 PNM,currents,AMBIG
 PNM,haziness,AMBIG
@@ -26,3 +26,5 @@ PNM,precipitation,AMBIG
 PNM,precipitations,AMBIG
 PNM,stream,AMBIG
 PNM,streams,AMBIG
+DIS,%,MISLAB
+DIS,&,MISLAB
