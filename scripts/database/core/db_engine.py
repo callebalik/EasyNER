@@ -30,8 +30,8 @@ def run_with_profiling(func, prof_filename):
     profiler.disable()
     profiler.dump_stats(prof_filename)
     # Optional: Print top stats to console for quick overview
-    # stats = pstats.Stats(prof_filename)
-    # stats.sort_stats('cumulative').print_stats(10) # Print top 10 functions by cumulative time
+    stats = pstats.Stats(prof_filename)
+    stats.sort_stats('cumulative').print_stats(10) # Print top 10 functions by cumulative time
     return result
 
 
@@ -47,14 +47,14 @@ class Reader:
         batch_size: int,
         process_function,
         data_queue,
+        lock: Lock,  # Added lock
+        shared_processed_count,  # Added shared_processed_count
+        stop_event: threading.Event = None,  # Added stop_event
         logger=None,
         queue_size_backpressure_threshold=50,
         progress_queue=None,  # Added progress_queue
         profiling_filename: str = None,
         total_count=None,  # Added total_count
-        shared_processed_count=None,  # Added shared_processed_count
-        lock: Lock = None,  # Added lock
-        stop_event: threading.Event = None,  # Added stop_event 
     ):
         """
         Initializes the Reader.
@@ -70,7 +70,9 @@ class Reader:
             progress_queue (queue.Queue, optional): Queue to send progress updates.
             profiling_enabled (bool, optional): Enable profiling for Reader's run method. Defaults to False.
         """
-        self.stop_event = stop_event  # Store stop_event 
+        self.lock = lock
+        self.stop_event = stop_event  # Store stop_event
+        self.shared_processed_count = shared_processed_count  # Initialize shared processed count
         self.conn_params = conn_params
         self.query = query
         self.batch_size = batch_size
@@ -79,10 +81,6 @@ class Reader:
         self.logger = logger
         self.qsize_backbpressure_threshold = queue_size_backpressure_threshold
         self.progress_queue = progress_queue  # Store progress_queue
-        self.shared_processed_count: (
-            shared_processed_count  # Initialize shared processed count
-        )
-        self.lock = lock
         self.total_count = total_count  # Store total_count
         self.profiling_file: str = None
 
@@ -96,7 +94,7 @@ class Reader:
             cursor.execute(self.query)
             total_processed = 0
             log_queue_size_interval = (
-                10  # Log queue size every N batches (adjust as needed)
+                2  # Log queue size every N batches (adjust as needed)
             )
             batch_counter = 0
             queue_check_interval = 30  # Check queue size every X seconds when queue is full (adjust as needed)
@@ -105,6 +103,16 @@ class Reader:
                 if self.stop_event and self.stop_event.is_set():
                     self.logger.info("Reader thread: Stop event set. Exiting read loop.")
                     break
+
+                # Check if total_count has been reached BEFORE fetching.
+                if self.total_count is not None and self.shared_processed_count is not None and self.lock is not None:
+                    with self.lock:
+                        if self.shared_processed_count.value >= self.total_count:
+                            self.logger.info(
+                                f"Reader thread: total processed ({self.shared_processed_count.value}) >= total_count ({self.total_count}). Exiting read loop."
+                            )
+                            break
+
                 batch = cursor.fetchmany(self.batch_size)
                 if not batch:
                     self.logger.debug("Reader thread: no more data from cursor")
@@ -140,16 +148,8 @@ class Reader:
                 if batch_counter % log_queue_size_interval == 0:
                     queue_size = self.data_queue.qsize()
                     self.logger.debug(
-                        f"Reader thread processed batch - Queue size: {queue_size} (total processed in thread: {total_processed})"
+                        f"READ PROCESSED BATCH (lenght {len(processed_batch)}) - Queue size: {queue_size} (total processed in thread: {total_processed})"
                     )
-                else:
-                    self.logger.debug(
-                        f"Reader thread processed batch of {len(processed_batch)} items (total: {total_processed})"
-                    )
-
-                self.logger.debug(
-                    f"Reader thread processed a batch of {len(processed_batch)} items (total processed so far in thread: {total_processed})"
-                )
 
                 if (
                     self.total_count is not None
@@ -290,7 +290,7 @@ class Writer:
         )
         self.num_reader_threads = num_reader_threads  # Store number of reader threads
 
-    
+
 
     def writer_process(self):
         """... (Writer class writer_process method) ..."""
@@ -315,7 +315,7 @@ class Writer:
                 if batch is None:  # Sentinel value received
                     self.data_queue.task_done()  # Signal task completion for sentinel
                     sentinel_count += 1
-                    
+
                     if sentinel_count == num_readers:  # All readers have finished
                         self.logger.debug(
                             f"Writer thread received all {num_readers} sentinels. Exiting writer process."
@@ -339,6 +339,7 @@ class Writer:
                 try:
                     self.write_function(batch, cursor, conn)  # Call the write function
                     self.written_count += len(batch)
+                    conn.commit()  # Commit transaction after each successful write
                     self.logger.debug(
                         f"Writer thread wrote a batch of {len(batch)} items (total written so far: {self.written_count})"
                     )
@@ -348,10 +349,9 @@ class Writer:
                         f"Error in write_function: {write_e}. Transaction rolled back for current batch."
                     )
                     # Consider more sophisticated error handling here - e.g., retry mechanism, error queue
+                finally:
+                    self.data_queue.task_done()  # Signal task completion for the batch
 
-                self.data_queue.task_done()  # Signal task completion for the batch
-
-            conn.commit()  # Final commit after all batches are written
             self.logger.info(
                 f"Writer thread finished processing and wrote a total of {self.written_count} items."
             )
@@ -412,7 +412,7 @@ class ReaderWriterPair:
         batch_size: int = 1000,
         num_reader_threads : int =4,
         max_queue_size: int =50,
-        writer_batch_chunking: int =2,  
+        writer_batch_chunking: int =2,
         process_title: str = None,
         total_count: int = None,
         profiling_reader_enabled=False,  # Added profiling_enabled
@@ -434,8 +434,14 @@ class ReaderWriterPair:
             profiling_reader_enabled (bool, optional): Enable profiling for Reader. Defaults to False.
             profiling_writer_enabled (bool, optional): Enable profiling for Writer. Defaults to False.
         """
-        self.conn_params = conn_params
         self.reader_query = reader_query
+        # Check for ORDER BY clause
+        if "ORDER BY" not in reader_query.upper():
+            raise ValueError(
+                "Reader query must include an ORDER BY clause to ensure consistent row processing."
+            )
+
+        self.conn_params = conn_params
         self.batch_size = batch_size
         self.process_function = process_function
         self.write_function = write_function
@@ -454,13 +460,8 @@ class ReaderWriterPair:
         self.stop_event = threading.Event()  # Add a general stop event
 
         self.total_count = total_count  # Store total_count
-        if total_count is not None:
-            self.total_processed = multiprocessing.Value("i", 0)
-            self.total_processed_lock = multiprocessing.Lock()  # Create the lock
-        else:
-            self.total_processed = None
-            self.total_processed_lock = None
-
+        self.total_processed = multiprocessing.Value("i", 0)
+        self.total_processed_lock = multiprocessing.Lock()  # Create the lock
         self.process_title = process_title  # Store process title if provided
 
         self.pbar_aggregated = tqdm(
@@ -473,17 +474,17 @@ class ReaderWriterPair:
         self.profiling_reader_fileanme = None
         if self.profiling_reader_enabled:
             self.profiling_reader_fileanme = f"reader_threaded_{self.process_title if self.process_title else ''}.{time.strftime('%Y%m%d_%H%M%S')}.prof"
-        
+
 
         self.profiling_writer_enabled = os.getenv(
             "PROFILING_WRITER_ENABLED", profiling_writer_enabled
         )  # Added profiling_writer_enabled
-        
+
         self.profiling_writer_filename = None
-        
+
         if self.profiling_writer_enabled:
             self.profiling_writer_filename = f"writer_threaded_{self.process_title if self.process_title else ''}.{time.strftime('%Y%m%d_%H%M%S')}.prof"
-        
+
         self.writer_batch_chunking = (
             writer_batch_chunking  # Added writer_batch_chunking
         )
@@ -500,6 +501,11 @@ class ReaderWriterPair:
             progress_queue=self.progress_queue,  # Pass progress_queue to Reader
             profiling_filename=self.profiling_reader_fileanme,
             stop_event=self.stop_event,  # Add a general stop event
+            lock=self.total_processed_lock,  # Pass lock to Reader
+            shared_processed_count=self.total_processed,  # Pass shared_processed_count to Reader
+            total_count=self.total_count,  # Pass total_count
+
+
         )
         self.writer = Writer(
             conn_params,
@@ -511,7 +517,7 @@ class ReaderWriterPair:
             batch_chunking=self.writer_batch_chunking,
             stop_event=self.stop_event,  # Add a general stop event
         )
-    
+
 
 
     def _progress_aggregation_process(self):  # Aggregation thread function
@@ -524,7 +530,7 @@ class ReaderWriterPair:
         while not self.aggregation_thread_stop_event.is_set():
             try:
                 progress_increment = self.progress_queue.get(
-                    timeout=1
+                    timeout=10
                 )  # Get read batch size
                 read_total += progress_increment  # Aggregate read progress
                 queue_size = self.data_queue.qsize()
@@ -640,13 +646,13 @@ class ReaderWriterPair:
             )
             self.aggregation_thread_stop_event.set()  # Signal aggregation thread to stop
             aggregation_thread.join(
-                timeout=2
+                timeout=10
             )  # Wait for aggregation thread to finish, with a timeout
 
             self.logger.info("ReaderWriterPair process completed.")
         except KeyboardInterrupt:
 
-            timeout: float = 5  # Define timeout at the start for clarity
+            timeout: float = 2  # Define timeout at the start for clarity
 
             try:
                 self.stop_event.set()
@@ -666,3 +672,7 @@ class ReaderWriterPair:
                     aggregation_thread.join(timeout)
                 except Exception as e_join_threads: # More descriptive variable name
                     self.logger.error(f"Error joining threads during keyboard interrupt: {e_join_threads}")
+                finally:
+                    self.logger.warning(
+                        "ReaderWriterPair: Keyboard interrupt cleanup complete."
+                    )
