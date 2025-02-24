@@ -32,7 +32,7 @@ VIEW_NE = "view_ne"
 VIEW_NE_RAW = "view_ne_raw"
 
 VIEW_NE_COMP = VIEW_PREFIX + TABLE_NE + "_compiled"
-
+VIEW_NE_STATS = VIEW_PREFIX + TABLE_NE + "_stats"
 import math
 import sqlite3
 
@@ -851,7 +851,37 @@ class EntityOccurrence:
             self.logger.error(f"Error creating view_entity_occurrences view: {e}")
             raise
 
+    def create_view_ne_stats(self):
+        """
+        Create view with compiled entity information for easy access and computations
+        """
+        try:
+            self.logger.info("Creating view_ne_compiled view...")
+            self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_NE_STATS}")
 
+
+            view_sql = f"""--sql
+                    CREATE VIEW IF NOT EXISTS {VIEW_NE_STATS}  AS
+                    SELECT
+                        eo.id as NE_ID,
+                        eo.{COL_NE_CLASS_ID} as CLASS_ID,
+                        nea.{COL_NE_NORM_ID} as AGGR_ID,
+                        eo.{COL_NE_DOC_ID} as DOC_ID,
+                        eo.{COL_NE_SENT_IDX} as SENT_IDX
+                    FROM
+                        {TABLE_NE} eo
+                    LEFT JOIN {TABLE_NE_LOOKUP} eol ON eo.id = eol.id
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eol.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                """
+
+            self.log_query_plan(view_sql)
+            self.cursor.execute(view_sql)
+            self.conn.commit()
+            self.logger.info(f"{VIEW_NE} view created successfully.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating view_entity_occurrences view: {e}")
+            raise
 
     def calc_intra_doc_fq(self) -> None:
         """
