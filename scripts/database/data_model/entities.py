@@ -831,7 +831,7 @@ class EntityOccurrence:
                         nea.{COL_NE_NORM_ID} as AGGR_ID,
                         nea.{COL_NE_TXT_NORM} as TXT_NORM,
                         doc.title as DOC_TITLE,
-                        doc.id as DOC_ID,
+                        eo.{COL_NE_DOC_ID} as DOC_ID,
                         eo.{COL_NE_SENT_IDX} as SENT_IDX,
                         eo.{COL_NE_SPAN_START} as SPAN_START,
                         eo.{COL_NE_SPAN_END} as SPAN_END
