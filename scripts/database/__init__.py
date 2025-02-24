@@ -1,4 +1,4 @@
-import logging 
+import logging
 
 """
 Database module initialization

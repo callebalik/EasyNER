@@ -49,8 +49,8 @@ class DBDataCleaner:
 
         # Find affected entries
         query = f"""
-        SELECT id, entity_text, span_start, span_end 
-        FROM entity_occurrences 
+        SELECT id, entity_text, span_start, span_end
+        FROM entity_occurrences
         WHERE {' OR '.join(like_conditions)}
         """
 
@@ -75,7 +75,7 @@ class DBDataCleaner:
             if not dry_run and affected_rows:
                 # Update the database
                 update_query = """
-                UPDATE entity_occurrences 
+                UPDATE entity_occurrences
                 SET entity_text = ?,
                     span_start = ?
                 WHERE id = ?
@@ -113,21 +113,21 @@ class DBDataCleaner:
 
         if entity_type is None:
             raise ValueError("entity_type must be specified")
-        else: 
+        else:
             entity_id = self.data_exchanger.get_named_entity_id(entity_type)
         try:
-            
+
 
             # Get all spans for entities of the specified type
             query = """
-            SELECT 
+            SELECT
                 eos.id,
                 eos.span_end
             FROM entity_occurrence_spans eos
             JOIN entity_occurrences eo ON eos.id = eo.id
             WHERE eo.entity_id = ?
             """
-            self.cursor.execute(query, (entity_id,)) 
+            self.cursor.execute(query, (entity_id,))
             entities = self.cursor.fetchall()
 
 
@@ -213,7 +213,7 @@ class DBDataCleaner:
                 else:
                     self.logger.info("Column error_id already exists in entity_occurrences, clearing")
                     self.cursor.execute("UPDATE entity_occurrences SET error_id = NULL")
-                    self.conn.commit()  
+                    self.conn.commit()
 
             # 3. Bulk insert error codes
             error_code_data = [(label, desc) for label, desc in error_codes.items()]
@@ -241,11 +241,11 @@ class DBDataCleaner:
                     if not isinstance(entity_text, str):
                         self.logger.warning(f"Invalid entity_text type: {type(entity_text)}. Skipping.")
                         continue
-                        
+
                     if not isinstance(entity_type, str) or len(entity_type) > 20:
                         self.logger.warning(f"Invalid entity_type: {entity_type}. Must be string <= 20 chars. Skipping.")
                         continue
-                        
+
                     if not isinstance(error_id, str) or len(error_id) > 10:
                         self.logger.warning(f"Invalid error_id: {error_id}. Must be string <= 10 chars. Skipping.")
                         continue
@@ -270,7 +270,7 @@ class DBDataCleaner:
 
                     # Create index for lower(entity_text) and entity_id for faster updates
                     self.cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_entity_occurrences_entity_id_text_error 
+                    CREATE INDEX IF NOT EXISTS idx_entity_occurrences_entity_id_text_error
                     ON entity_occurrences (entity_id, LOWER(entity_text), error_id)
                     """)
                     self.logger.info("Ensured index idx_entity_occurrences_entity_id_text_error exists")
@@ -278,7 +278,7 @@ class DBDataCleaner:
                     update_query = """
                     UPDATE entity_occurrences
                     SET error_id = ?
-                    WHERE LOWER(entity_text) = LOWER(?) 
+                    WHERE LOWER(entity_text) = LOWER(?)
                     AND entity_id = ?
                     AND (error_id IS NULL OR error_id != ?)
                     """
@@ -307,7 +307,7 @@ class DBDataCleaner:
                     self.logger.warning("User interrupted. Rolling back changes.")
                     self.conn.rollback()
                     return
-                    
+
         except FileNotFoundError as e:
             self.logger.error(f"Error: File not found: {e.filename}")
             raise

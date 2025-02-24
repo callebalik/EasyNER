@@ -39,7 +39,7 @@ class EasyNerDBHandler:
         # Resolve sql schema, defaulting to schema path if user doesn't provide one after prompt
         if not os.path.exists(self.db_path):
             print(f"Database {self.db_path} does not exist. Creating database...")
-            
+
             if os.getenv("DB_RUN", False) == True or not sys.stdin.isatty(): # Check if running in a non-interactive environment
                 print("Running in non-interactive environment, using default schema path defined in config")
                 self.schema_path = self.config.get("schema_path")
@@ -126,7 +126,7 @@ class EasyNerDBHandler:
             raise ValueError(f"Error loading configuration file: {e}")
 
         return config
-    
+
     def _setup_logging(self):
         """Configure logging to save to db.log in the database directory."""
 
@@ -151,7 +151,7 @@ class EasyNerDBHandler:
                 "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             file_handler.setFormatter(file_formatter)
-            
+
             # Create console handler for logging
             console_handler = logging.StreamHandler()
             console_handler.setLevel(logging.INFO)
@@ -206,9 +206,9 @@ class EasyNerDBHandler:
     def _backup_database_(self, backup_path: str = None):
         """
         Backup the database to a specified path.
-        
+
         Args:
-            backup_path (str, optional): Path where to save the backup. 
+            backup_path (str, optional): Path where to save the backup.
                                     If None, appends '.backup' to current db path.
         """
         if backup_path is None:
@@ -218,23 +218,23 @@ class EasyNerDBHandler:
                 backup_path = os.path.join(
                     os.path.dirname(os.path.abspath(__file__)), backup_path
                 )
-                
+
         self.logger.info(f"Backing up database to {backup_path}")
-        
+
         try:
             # Open the backup destination
             with sqlite3.connect(backup_path) as dest_conn:
                 # Perform the backup
                 self.conn.backup(dest_conn)
-                
+
             self.logger.info(f"Database backed up successfully to {backup_path}")
         except sqlite3.Error as e:
             self.logger.error(f"Backup failed: {str(e)}")
             raise
-        
+
     def _log_query_plan(self, sql, params=None):
-        """ 
-        Executes a query, logs its query plan, and returns the results. 
+        """
+        Executes a query, logs its query plan, and returns the results.
         """
         try:
             if params:
@@ -280,7 +280,7 @@ class EasyNerDBHandler:
                 f"Error executing query: {query} with args: {args}. Exception: {e}"
             )
             raise
-    
+
     def execute_with_log(self, query, args=None):
         """
         Execute a SQL query and log the query plan.
@@ -295,7 +295,7 @@ class EasyNerDBHandler:
             self.cursor.execute(query)
         else:
             self.cursor.execute(query, args)
-            
+
     def commit(self):
         """
         Commit the current transaction.

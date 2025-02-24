@@ -156,7 +156,7 @@ class DBStatistics:
         self.logger.info("Counting named entity error frequencies...")
         self.cursor.execute(
             """
-            SELECT 
+            SELECT
                 ne.named_entity,
                 ec.error_id,
                 COUNT(*) as error_count
@@ -318,7 +318,7 @@ class DBStatistics:
         plt.savefig(plot_file)
         plt.close()
         self.logger.info(f"Document sentence count distribution plot saved to {plot_file}")
-        
+
     def plot_document_word_count_distribution(self):
         """
         Plot the distribution of abstract word counts using seaborn.
@@ -330,7 +330,7 @@ class DBStatistics:
         plt.ylabel("Frequency")
         plt.title("Distribution of Abstract Word Counts")
         plt.tight_layout()
-        
+
         # Save plot
         plot_file = os.path.join(self._results_dir, "document_word_count_distribution.png")
         plt.savefig(plot_file)
@@ -348,12 +348,12 @@ class DBStatistics:
         # Plot sentence count distribution
         all_counts = []
         for chunk in pd.read_sql_query(
-            "SELECT document_id, COUNT(*) AS sentence_count FROM sentences GROUP BY document_id", 
-            self.conn, 
+            "SELECT document_id, COUNT(*) AS sentence_count FROM sentences GROUP BY document_id",
+            self.conn,
             chunksize=100000
         ):
             all_counts.extend(chunk['sentence_count'].tolist())
-        
+
         sns.histplot(all_counts, bins=20, kde=True, ax=ax1)
         ax1.set_xlabel("Sentences per Document")
         ax1.set_ylabel("Frequency")
@@ -406,9 +406,9 @@ class DBStatistics:
                 {"COALESCE(AVG(sentence_distance), 0) as avg_distance " if level == "sentence" else ""}
             FROM entity_cooccurrences
             """
-        
+
         self.cursor.execute(query)
-        
+
         total_stats = self.cursor.fetchone()
         self.logger.info(
             f"\nCo-occurrence identification complete:"
