@@ -290,7 +290,7 @@ class EntityOccurrence:
             )
 
     def validate_normalized_entities(
-        self, eo_table=eo_table_name, target_table=eo_lookup_table_name
+        self, eo_table=TABLE_NE, target_table=TABLE_NE_LOOKUP
     ):
         # Use reader writer pair to validate normalized entities, i.e. all entity_ids in entiry_occurrences, filtered for error_id, and overlap, should be present in the lookup table
         self.logger.info(f"Validating normalized entities in {eo_table} against {target_table}")
