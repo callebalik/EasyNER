@@ -820,7 +820,7 @@ class EntityOccurrence:
             self.cursor.execute(
                 """
                 WITH doc_entity_counts AS (
-                    SELECT 
+                    SELECT
                         document_id,
                         summary_id,
                         COUNT(*) as freq
@@ -842,7 +842,7 @@ class EntityOccurrence:
             # Get statistics about the update
             self.cursor.execute(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as total_entities,
                     COUNT(DISTINCT document_id) as unique_documents,
                     COUNT(DISTINCT summary_id) as unique_entities,
@@ -1013,11 +1013,11 @@ class EntityCooccurence:
                     e2.id,
                     {"ABS(e1.sentence_index - e2.sentence_index)" if level == "sentence" else "NULL"}
                 FROM entity_occurrences e1
-                JOIN entity_occurrences e2 ON 
+                JOIN entity_occurrences e2 ON
                     e1.document_id = e2.document_id AND
                     e1.id <= e2.id
                 WHERE NOT EXISTS (
-                    SELECT 1 
+                    SELECT 1
                     FROM entity_cooccurrences ec
                     WHERE ec.e1_id = e1.id AND ec.e2_id = e2.id
                 )
@@ -1042,7 +1042,7 @@ class EntityCooccurence:
                         INSERT INTO entity_cooccurrences (
                             e1_id, e2_id, overlap, sentence_distance
                         )
-                        SELECT 
+                        SELECT
                             e1_id,
                             e2_id,
                             FALSE as overlap,
@@ -1061,7 +1061,7 @@ class EntityCooccurence:
             self.cursor.execute(
                 """
                     WITH new_pairs AS (
-                        SELECT 
+                        SELECT
                             ne1.named_entity as type1,
                             ne2.named_entity as type2,
                             COUNT(*) as pair_count
@@ -1086,12 +1086,12 @@ class EntityCooccurence:
         # Get total statistics with proper NULL handling
         self.cursor.execute(
             """
-                SELECT 
+                SELECT
                     COUNT(*) as total_pairs,
-                    (SELECT COUNT(DISTINCT entity_id) 
-                        FROM entity_occurrences 
-                        WHERE id IN (SELECT e1_id FROM entity_cooccurrences 
-                                    UNION 
+                    (SELECT COUNT(DISTINCT entity_id)
+                        FROM entity_occurrences
+                        WHERE id IN (SELECT e1_id FROM entity_cooccurrences
+                                    UNION
                                     SELECT e2_id FROM entity_cooccurrences)) as total_entities,
                     COALESCE(AVG(sentence_distance), 0) as avg_distance
                 FROM entity_cooccurrences
@@ -1209,19 +1209,19 @@ class EntityCooccurence:
         query = f"""
             CREATE TEMPORARY TABLE tmp_cooccurrences AS
             WITH normalized_pairs AS (
-                SELECT 
-                    CASE WHEN eo1.summary_id <= eo2.summary_id 
-                         THEN eo1.summary_id 
-                         ELSE eo2.summary_id END AS e1_id_normalized,
-                    CASE WHEN eo1.summary_id <= eo2.summary_id 
-                         THEN eo2.summary_id 
-                         ELSE eo1.summary_id END AS e2_id_normalized,
+                SELECT
+                    CASE WHEN eo1.summary_id <= eo2.summary_id
+                        THEN eo1.summary_id
+                        ELSE eo2.summary_id END AS e1_id_normalized,
+                    CASE WHEN eo1.summary_id <= eo2.summary_id
+                        THEN eo2.summary_id
+                        ELSE eo1.summary_id END AS e2_id_normalized,
                     eo1.document_id,
                     CASE WHEN eo1.sentence_index = eo2.sentence_index THEN 1 ELSE 0 END as same_sentence
                 FROM entity_cooccurrences ec
                 JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
                 JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
-                WHERE eo1.summary_id IS NOT NULL 
+                WHERE eo1.summary_id IS NOT NULL
                 AND eo2.summary_id IS NOT NULL
                 AND eo1.document_id = eo2.document_id  -- Ensure same document
                 {"AND eo1.error_id IS NULL" if ignore_entities_with_error_codes else ""}
@@ -1244,8 +1244,8 @@ class EntityCooccurence:
         # Insert or replace final results using SQLite syntax
         self.cursor.execute(
             """
-            INSERT OR REPLACE INTO entity_cooccurrences_summary 
-                (e1_id_normalized, e2_id_normalized, fq_document_level, 
+            INSERT OR REPLACE INTO entity_cooccurrences_summary
+                (e1_id_normalized, e2_id_normalized, fq_document_level,
                 fq_sentence_level, uniq_documents)
             SELECT * FROM tmp_cooccurrences
         """
@@ -1377,7 +1377,7 @@ class EntityCooccurence:
 
             # --- Reader Query and Process Function ---
             reader_query = f"""
-                SELECT 
+                SELECT
                     ecs.e1_id_normalized,
                     ecs.e2_id_normalized,
                     ecs.fq_document_level,
@@ -1505,7 +1505,7 @@ class EntityCooccurence:
             # Step 3: Batch update summary_id using covering index
             self.cursor.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_cooc_pair 
+                CREATE INDEX IF NOT EXISTS idx_cooc_pair
                 ON entity_cooccurrences(e1_id, e2_id)
             """
             )
@@ -1516,8 +1516,8 @@ class EntityCooccurence:
                     f"""
                     UPDATE entity_cooccurrences
                     SET summary_id = (
-                        SELECT id 
-                        FROM entity_cooccurrences_summary 
+                        SELECT id
+                        FROM entity_cooccurrences_summary
                         WHERE e1_id_normalized = MIN(eo1.summary_id, eo2.summary_id)
                         AND e2_id_normalized = MAX(eo1.summary_id, eo2.summary_id)
                     )
