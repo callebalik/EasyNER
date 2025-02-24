@@ -150,6 +150,194 @@ class EntityOccurrence:
             FROM eo_old
             """
         )
+
+
+    def vertical_partitioning(self, table_name):
+        def vertical_partitioning_spans(table_name):
+            """
+            Create a new table with entity occurrence spans.
+            """
+            self.cursor.execute(
+                f"""--sql
+                CREATE TABLE {table_name}_spans AS
+                SELECT
+                    id,
+                    span_start,
+                    span_end
+                FROM {table_name}
+                FOREIGN KEY (id) REFERENCES {table_name}(id)
+                """
+            )
+
+    def horizontal_partitioning_named_entity_class(self, ne_class: str):
+        """
+        Create a new table with entity occurrences that have named entity classes.
+        """
+
+        # Get the named entity class ID
+        self.cursor.execute(
+            f"""--sql
+            SELECT id
+            FROM {TABLE_NE_CLASS}
+            WHERE named_entity = '{ne_class}'
+            """
+        )
+        ne_class_id = self.cursor.fetchone()[0]
+
+        partition_table = f"{TABLE_NE}_{ne_class}"
+        partition_table_aggregated = f"{partition_table}_aggregated"
+
+        self.cursor.execute(self.stmt_table_ne_aggregated)
+
+        create_table_stmt = f"""--sql
+            CREATE TABLE IF NOT EXISTS {partition_table} (
+            id INTEGER PRIMARY KEY NOT NULL,
+            {COL_NE_TXT} TEXT,
+            {COL_NE_ERROR_ID} VARCHAR(20) DEFAULT NULL,
+            {COL_NE_CLASS_ID} INTEGER NOT NULL,
+            {COL_NE_DOC_ID} INTEGER NOT NULL,
+            {COL_NE_SENT_IDX} INTEGER NOT NULL,
+            {COL_NE_AGGREGATED_ID} INTEGER,
+            {COL_NE_OVERLAP} BOOLEAN DEFAULT FALSE,
+            {COL_NE_SPAN_START} INTEGER,
+            {COL_NE_SPAN_END} INTEGER,
+            FOREIGN KEY ({COL_NE_DOC_ID}) REFERENCES {TABLE_DOCS} (id),
+            FOREIGN KEY ({COL_NE_SENT_IDX}) REFERENCES {TABLE_SENTENCES} (id),
+            FOREIGN KEY ({COL_NE_CLASS_ID}) REFERENCES {TABLE_NE_CLASS} (id),
+            FOREIGN KEY ({COL_NE_ERROR_ID}) REFERENCES {TABLE_ERROR} (error_id),
+            FOREIGN KEY ({COL_NE_DOC_ID}, {COL_NE_SENT_IDX}) REFERENCES {TABLE_SENTENCES} ({COL_NE_DOC_ID}, {COL_NE_SENT_IDX}),
+            FOREIGN KEY ({COL_NE_AGGREGATED_ID}) REFERENCES {partition_table_aggregated} (id)
+            );
+        """
+
+        self.cursor.execute(create_table_stmt)
+
+        insert_stmt = f"""--sql
+            INSERT INTO {partition_table}
+            SELECT *
+            FROM {TABLE_NE}
+            WHERE {COL_NE_CLASS_ID} IS '{ne_class_id}';
+        """
+
+        self.cursor.execute(insert_stmt)
+
+    def horizontal_partitioning_error(table_name):
+        """
+        Create a new table with entity occurrences that have error codes.
+
+        """
+        self.cursor.execute(
+            f"""--sql
+            CREATE TABLE {table_name}_errors AS
+            SELECT *
+            FROM {table_name}
+            WHERE error_id IS NOT NULL
+            """
+        )
+
+    def horizontal_partitioning_overlap(table_name):
+        """
+        Create a new table with entity occurrences that have overlap flags.
+        """
+        self.cursor.execute(
+            f"""--sql
+            CREATE TABLE {table_name}_overlaps AS
+            SELECT *
+            FROM {table_name}
+            WHERE overlap IS TRUE
+            """
+        )
+
+    def index_named_entities(self, table_name: str):
+
+        def create_index_named_entity_table(table_name):
+            """
+            Create an indexes needed for fast operations on the named entity tables
+            """
+
+            # Partial indexes for entity text to reduce index size and improve performance
+
+            self.cursor.execute(
+                f"""--sql
+                CREATE INDEX IF NOT EXISTS idx_{table_name}_{COL_NE_TXT}_{COL_NE_ERROR_ID}_NULL
+                ON {table_name} ({COL_NE_TXT}) WHERE {COL_NE_ERROR_ID} IS NULL
+                """
+            )
+
+            self.cursor.execute(
+                f"""--sql
+                CREATE INDEX IF NOT EXISTS idx_{table_name}_{COL_NE_TXT}_{COL_NE_ERROR_ID}_NOT_NULL
+                ON {table_name} ({COL_NE_TXT}) WHERE {COL_NE_ERROR_ID} IS NOT NULL
+                """
+            )
+
+            # Index for document ID to speed up document-level operations
+            self.cursor.execute(
+                f"""--sql
+                CREATE INDEX IF NOT EXISTS idx_{table_name}_{COL_NE_DOC_ID}
+                ON {table_name} ({COL_NE_DOC_ID})
+                """
+            )
+
+            # Important for UNION ALL between named entity tables, so that we can quickly identify named entities present in the same document, sentence combinations without having to scan the entire table. NOTE the order!
+            # WHERE clause is used to filter out entities with errors, which are not relevant for analysis of co-occurrence as they are excluded
+
+            self.cursor.execute(
+                f"""--sql
+                CREATE INDEX IF NOT EXISTS idx_{table_name}_{COL_NE_DOC_ID}_{COL_NE_SENT_IDX}
+                ON {table_name} ({COL_NE_DOC_ID}, {COL_NE_SENT_IDX}) WHERE {COL_NE_ERROR_ID} IS NULL
+                """
+            )
+
+            # Overlap isn't as relevant for named entities with errors, thus we use the WHERE clause to filter out NULL values and decrease the index size for efficiency
+
+            self.cursor.execute(
+                f"""--sql
+                CREATE INDEX IF NOT EXISTS idx_{table_name}_{COL_NE_ERROR_ID}_NULL_{COL_NE_OVERLAP}
+                ON {table_name} ({COL_NE_ERROR_ID}, {COL_NE_OVERLAP}) WHERE {COL_NE_ERROR_ID} IS NULL
+                """
+            )
+
+            self.cursor.execute(
+                f"""--sql
+                CREATE INDEX IF NOT EXISTS idx_{table_name}_{COL_NE_ERROR_ID}_NULL_{COL_NE_OVERLAP}_NULL
+                ON {table_name} ({COL_NE_ERROR_ID}, {COL_NE_OVERLAP}) WHERE {COL_NE_ERROR_ID} IS NULL AND {COL_NE_OVERLAP} IS FALSE
+                """
+            )
+
+            # Index by summary ID for faster aggregation
+            self.cursor.execute(
+                f"""--sql
+                CREATE INDEX IF NOT EXISTS idx_{table_name}_{COL_NE_AGGREGATED_ID}
+                ON {table_name} ({COL_NE_AGGREGATED_ID})
+                WHERE {COL_NE_ERROR_ID} IS NULL
+                AND {COL_NE_OVERLAP} IS FALSE
+                AND {COL_NE_AGGREGATED_ID} IS NOT NULL
+                """
+            )
+
+        def analyze_named_entity_table(table_name):
+            """
+            Analyze the named entity table to update the query planner statistics.
+            """
+            self.cursor.execute(f"ANALYZE {table_name}")
+
+        def test_query_plans(table_name):
+            """
+            Test the query plans for the named entity table indexes.
+            """
+            self.log_query_plan(f"SELECT * FROM {table_name} WHERE {COL_NE_DOC_ID} = 1")
+            self.log_query_plan(
+                f"SELECT * FROM {table_name} WHERE {COL_NE_DOC_ID} = 1 AND {COL_NE_SENT_IDX} = 1"
+            )
+
+            self.log_query_plan(
+                f"SELECT * FROM {table_name} WHERE {COL_NE_ERROR_ID} IS NULL AND {COL_NE_OVERLAP} IS FALSE"
+            )
+
+        create_index_named_entity_table(table_name)
+        analyze_named_entity_table(table_name)
+        test_query_plans(table_name)
     def identify_overlap(self, overwrite: bool = False) -> None:
         """
         Find entities in the same sentence where span_start and span_end overlap between the two entities.
