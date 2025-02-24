@@ -9,9 +9,13 @@ PNM_stem = "PNM"
 TABLE_NE_DIS = TABLE_NE + "_" + DIS_stem
 TABLE_NE_PNM = TABLE_NE + "_" + PNM_stem
 
+TABLE_COOCCURRENCES = "co"
+
 TABLE_DOCS = "documents"
 TABLE_SENTENCES = "sentences"
 TABLE_ERROR = "eo_error_codes"
+TABLE_CO_AGGR = "co_aggregated"
+
 
 COL_NE_CLASS_ID = "entity_id"  # Named entity text column name
 COL_NE_CLASS_NAME = "named_entity"  # Named entity text column name
@@ -27,7 +31,8 @@ COL_NE_NORM_ID = "norm_id"  # Normalized ID column name
 COL_NE_AGGREGATED_ID = "norm_id"  # Aggregated ID column name
 COL_NE_FQ = "fq"  # Frequency column name
 COL_NE_DOC_COUNT = "doc_count"  # Document count column name
-
+COL_CO_SENT_DIST = "sent_distance"  # Sentence distance column name
+COL_CO_AGGR_ID = "aggr_id"  # Aggregated ID column name
 VIEW_NE = "view_ne"
 VIEW_NE_RAW = "view_ne_raw"
 
@@ -1107,10 +1112,48 @@ class EntityOccurrence:
             return False
 
 class EntityCooccurence:
-    def __init__(self, conn, cursor, logger):
+    def __init__(self, conn, cursor, logger, log_query_plan, conn_params_dict):
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
+        self.log_query_plan = log_query_plan
+        self.conn_params_dict = conn_params_dict
+        self.stmt_table_entity_cooccurrences = f"""--sql
+            CREATE TABLE IF NOT EXISTS {TABLE_COOCCURRENCES} (
+                e1_id INTEGER NOT NULL,
+                e2_id INTEGER NOT NULL,
+                {COL_CO_SENT_DIST} INTEGER,
+                {COL_CO_AGGR_ID} INTEGER,
+                PRIMARY KEY (e1_id, e2_id)
+                FOREIGN KEY (e1_id) REFERENCES {TABLE_NE}(id),
+                FOREIGN KEY (e2_id) REFERENCES {TABLE_NE}(id),
+                FOREIGN KEY ({COL_CO_AGGR_ID}) REFERENCES {TABLE_CO_AGGR}(id)
+            )
+        """
+        self.stmt_table_entity_cooccurrences_aggregated = f"""--sql
+            CREATE TABLE IF NOT EXISTS {TABLE_CO_AGGR} (
+                e1_id INTEGER NOT NULL,
+                e2_id INTEGER NOT NULL,
+                fq INTEGER NOT NULL,
+                pmi REAL NOT NULL,
+                PRIMARY KEY (e1_id, e2_id),
+                FOREIGN KEY (e1_id) REFERENCES {TABLE_NE_AGGR}(id),
+                FOREIGN KEY (e2_id) REFERENCES {TABLE_NE_AGGR}(id)
+            )
+        """
+
+    def setup_tables(self):
+        """
+        Create tables for entity co-occurrence if they do not
+        already exist.
+        """
+        self.logger.info("Setting up tables for entity co-occurrence analysis...")
+
+        self.cursor.execute(self.stmt_table_entity_cooccurrences)
+        self.cursor.execute(self.stmt_table_entity_cooccurrences_aggregated)
+        self.conn.commit()
+
+        self.logger.info("Tables created successfully.")
 
     def generate_cooccurrence_matrix(
         self, target_table="entity_occurrences_summary", batch_size=10000
@@ -1265,18 +1308,18 @@ class EntityCooccurence:
             raise ValueError("Level must be either 'document' or 'sentence'")
 
         def reader_query_fn(level):  # Define reader_query as a function
-            return f"""
+            return f"""--sql
                     SELECT DISTINCT
                         e1.id,
                         e2.id,
                         {"ABS(e1.sentence_index - e2.sentence_index)" if level == "sentence" else "NULL"}
-                    FROM entity_occurrences e1
-                    JOIN entity_occurrences e2 ON
+                    FROM {TABLE_NE} e1
+                    JOIN {TABLE_NE} e2 ON
                         e1.document_id = e2.document_id AND
                         e1.id <= e2.id
                     WHERE NOT EXISTS (
                         SELECT 1
-                        FROM entity_cooccurrences ec
+                        FROM {TABLE_COOCCURRENCES} ec
                         WHERE ec.e1_id = e1.id AND ec.e2_id = e2.id
                     )
                     AND (e1.overlap = FALSE)
@@ -1292,8 +1335,8 @@ class EntityCooccurence:
 
         def cooccurrence_write_function(batch, cursor, conn):
             """Writes a batch of entity co-occurrences to the database using executemany."""
-            sql = f"""
-                    INSERT INTO entity_cooccurrences (e1_id, e2_id {", sentence_distance" if level == "sentence" else ""})
+            sql = f"""--sql
+                    INSERT INTO {TABLE_COOCCURRENCES} (e1_id, e2_id {", sentence_distance" if level == "sentence" else ""})
                     VALUES (?, ? {", ?" if level == "sentence" else ""})
                 """
             try:

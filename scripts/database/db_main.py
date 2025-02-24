@@ -69,7 +69,8 @@ class EasyNerDBHandler:
         from .db_data_cleaner import DBDataCleaner
         from .analysis.db_analysis import DBAnalysis
         from .db_statistics import DBStatistics
-        from .data_model.entities import EntityOccurrence
+        from .data_model.entities import EntityOccurrence, EntityCooccurence
+
 
         self.data_exchanger = DBDataExchanger(self.conn, self.cursor, self.logger)
         self.data_cleaner = DBDataCleaner(
@@ -79,6 +80,7 @@ class EasyNerDBHandler:
         self.statistics = DBStatistics(self.conn, self.cursor, self.logger, self.data_exchanger)
 
         self.eo = EntityOccurrence(self.conn, self.cursor, self.logger, log_query_plan=self._log_query_plan, conn_params_dict=self.conn_params_dict)
+        self.co = EntityCooccurence(self.conn, self.cursor, self.logger, log_query_plan=self._log_query_plan, conn_params_dict=self.conn_params_dict)
 
     @property
     def conn_params_dict(self):

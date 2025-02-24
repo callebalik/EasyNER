@@ -2,7 +2,7 @@ import logging
 import os
 from datetime import datetime
 import sqlite3
-from scripts.database.db_statistics import DBStatistics 
+from scripts.database.db_statistics import DBStatistics
 from ..db_data_exchanger import DBDataExchanger
 import math
 from tqdm import tqdm
@@ -39,7 +39,7 @@ class DBAnalysis:
         self.named_entity = NamedEntity(self.conn, self.cursor, self.logger)
         self.entity_occurrence = EntityOccurrence(self.conn, self.cursor, self.logger, log_query_plan=self.log_query_plan, conn_params_dict=self.conn_params_dict)
 
-        self.entity_cooccurence = EntityCooccurence(self.conn, self.cursor, self.logger)
+        self.entity_cooccurence = EntityCooccurence(self.conn, self.cursor, self.logger, log_query_plan=self.log_query_plan, conn_params_dict=self.conn_params_dict)
 
 
     def aggregate_entity_occurrences(self) -> None:
