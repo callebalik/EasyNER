@@ -883,6 +883,76 @@ class EntityOccurrence:
             self.logger.error(f"Error creating view_entity_occurrences view: {e}")
             raise
 
+    def stats_aggregated(self):
+        """
+        Calculates statistics based on the aggregated entities in the compiled view.
+        Specifically, it calculates the frequency (total count) and the document count
+        (number of unique documents) for each aggregated entity.
+        """
+        try:
+            self.logger.info("Calculating aggregated entity statistics...")
+
+            try:
+                self.logger.info("Creating indexes for optimized queries...")
+
+                # Index on eo.document_id
+                self.cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id ON {TABLE_NE}({COL_NE_DOC_ID});
+                """)
+
+                # Covering index on TABLE_NE_AGGR
+                self.cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_nea_norm_id_doc_id ON {TABLE_NE_AGGR}({COL_NE_NORM_ID});
+                """)
+
+                # Index on TABLE_NE_LOOKUP.id
+                self.cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_eol_id ON {TABLE_NE_LOOKUP}(id);
+                """)
+
+                self.conn.commit()
+                self.logger.info("Indexes created successfully.")
+
+            except sqlite3.Error as e:
+                self.logger.error(f"Error creating indexes: {e}")
+                raise
+
+            # SQL query to calculate frequency and document count per aggregated entity
+            stats_sql = f"""--sql
+                SELECT
+                    AGGR_ID,
+                    COUNT(*) AS {COL_NE_FQ},
+                    COUNT(DISTINCT DOC_ID) AS {COL_NE_DOC_COUNT}
+                FROM
+                    {VIEW_NE_COMP}
+                WHERE
+                    AGGR_ID IS NOT NULL -- This already has filtered out Errors and Overlaps for which the AGGR id is NULL
+                GROUP BY
+                    AGGR_ID
+                LIMIT 100
+            """
+
+            self.log_query_plan(stats_sql)
+
+            # Execute the query
+            self.cursor.execute(stats_sql)
+
+            # Fetch all results
+            results = self.cursor.fetchall()
+
+            # Print the results (optional - for verification)
+            for row in results:
+                aggr_id, frequency, doc_count = row
+                self.logger.info(
+                    f"AGGR_ID: {aggr_id}, Frequency: {frequency}, Document Count: {doc_count}"
+                )
+
+            self.logger.info("Aggregated entity statistics calculated and printed.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error calculating aggregated entity statistics: {e}")
+            raise
+
     def calc_intra_doc_fq(self) -> None:
         """
         For each entity, calculate the frequency of the entity within each document.
