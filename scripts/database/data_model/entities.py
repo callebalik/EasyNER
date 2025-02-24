@@ -112,6 +112,26 @@ class EntityOccurrence:
                     FOREIGN KEY ({COL_NE_ERROR_ID}) REFERENCES {TABLE_ERROR} ({COL_NE_ERROR_ID})
                 );
                 """
+
+        self.stmt_table_ne_aggregated = f"""--sql
+                CREATE TABLE IF NOT EXISTS {TABLE_NE_AGGR} (
+                    {COL_NE_NORM_ID} INTEGER PRIMARY KEY,
+                    {COL_NE_CLASS_ID} INTEGER,
+                    {COL_NE_TXT_NORM} TEXT,
+                    UNIQUE ({COL_NE_TXT_NORM}, {COL_NE_CLASS_ID}) -- Probably not needed
+                );
+                """
+
+        self.stmt_table_ne_lookup = f"""--sql
+                CREATE TABLE IF NOT EXISTS {TABLE_NE_LOOKUP} (
+                    id INTEGER PRIMARY KEY,
+                    {COL_NE_CLASS_ID} INTEGER,
+                    {COL_NE_TXT_NORM} TEXT,
+                    {COL_NE_NORM_ID} INTEGER,
+                    FOREIGN KEY (id) REFERENCES {TABLE_NE} (id),
+                    FOREIGN KEY ({COL_NE_NORM_ID}) REFERENCES {TABLE_NE_AGGR} ({COL_NE_NORM_ID})
+                    )"""
+
     def identify_overlap(self, overwrite: bool = False) -> None:
         """
         Find entities in the same sentence where span_start and span_end overlap between the two entities.
