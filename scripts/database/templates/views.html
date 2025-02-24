@@ -228,6 +228,81 @@ h3 {
 .error-message i, .info-message i {
     font-size: 1.2em;
 }
+
+.query-plan {
+    margin-top: 15px;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.query-plan table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.query-plan th {
+    background: #f8f9fa;
+    padding: 10px;
+    text-align: left;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+}
+
+.query-plan td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #dee2e6;
+    vertical-align: top;
+}
+
+.query-plan tr:hover {
+    background: #f8f9fa;
+}
+
+.query-plan td:last-child {
+    color: #666;
+    max-width: 500px;
+    word-break: break-word;
+}
+
+.loading {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-style: italic;
+}
+
+.error-message {
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    background-color: #fff3f3;
+    color: #d32f2f;
+    border: 1px solid #ffcdd2;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.info-message {
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    background-color: #e3f2fd;
+    color: #1976d2;
+    border: 1px solid #bbdefb;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.error-message i, .info-message i {
+    font-size: 1.2em;
+}
 </style>
 
 <script>
@@ -259,13 +334,21 @@ function explainView(viewName) {
         container.style.display = 'block';
         container.innerHTML = '<div class="loading">Analyzing query plan...</div>';
 
-        // Extract the actual query part after AS from the view definition
-        const viewDefinition = document.querySelector(`#view-${viewName} .sql-definition`).textContent;
-        const match = viewDefinition.match(/create\s+view\s+.*?\s+as\s+(.*)/i);
-        const queryToExplain = match ? match[1] : viewDefinition;
+        // Get and properly encode the view definition
+        const viewDefinition = document.querySelector(`#view-${viewName} .sql-definition`).textContent.trim();
 
-        fetch('/explain-query?query=' + encodeURIComponent(queryToExplain))
-            .then(response => response.json())
+        fetch('/explain-query?query=' + encodeURIComponent(viewDefinition))
+            .then(response => response.json().then(data => ({
+                ok: response.ok,
+                status: response.status,
+                body: data
+            })))
+            .then(({ ok, status, body }) => {
+                if (!ok) {
+                    throw new Error(body.error || `HTTP error! status: ${status}`);
+                }
+                return body;
+            })
             .then(data => {
                 if (data.error) {
                     container.innerHTML = `<div class="error-message">
@@ -278,13 +361,34 @@ function explainView(viewName) {
                         No query plan available for this view.
                     </div>`;
                 } else {
-                    let tableHTML = '<table>';
-                    tableHTML += '<thead><tr><th>id</th><th>parent</th><th>notused</th><th>detail</th></tr></thead>';
-                    tableHTML += '<tbody>';
+                    let tableHTML = `
+                        <div class="query-plan">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Step</th>
+                                        <th>Parent</th>
+                                        <th>Used</th>
+                                        <th>Operation Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+
                     data.forEach(row => {
-                        tableHTML += `<tr><td>${row.id}</td><td>${row.parent}</td><td>${row.notused}</td><td>${row.detail}</td></tr>`;
+                        const used = row.notused ? 'No' : 'Yes';
+                        tableHTML += `
+                            <tr>
+                                <td>${row.id}</td>
+                                <td>${row.parent}</td>
+                                <td>${used}</td>
+                                <td>${row.detail}</td>
+                            </tr>`;
                     });
-                    tableHTML += '</tbody></table>';
+
+                    tableHTML += `
+                                </tbody>
+                            </table>
+                        </div>`;
                     container.innerHTML = tableHTML;
                 }
             })
@@ -292,7 +396,7 @@ function explainView(viewName) {
                 console.error('Error:', error);
                 container.innerHTML = `<div class="error-message">
                     <i class="fas fa-exclamation-circle"></i>
-                    Error loading query plan
+                    ${error.message || 'Error loading query plan'}
                 </div>`;
             });
     } else {

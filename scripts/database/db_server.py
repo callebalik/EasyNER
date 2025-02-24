@@ -1215,46 +1215,77 @@ import re
 
 @app.route("/explain-query")
 def explain_query():
-    query = request.args.get("query", "").strip()
-    if not query:
-        return jsonify({"error": "No query provided"}), 400
-
-    # Basic validation and extraction of query
-    query_lower = query.lower()
-    if query_lower.startswith('create view'):
-        try:
-            # Extract the query part after "AS"
-            match = re.search(r'create\s+view\s+.*?\s+as\s+(.*)', query_lower, re.IGNORECASE)
-            if not match:
-                return jsonify({"error": "Invalid CREATE VIEW syntax. Could not find query after AS."}), 400
-            query = match.group(1)
-        except Exception as e:
-            return jsonify({"error": f"Error parsing CREATE VIEW statement: {str(e)}"}), 400
-    elif not query_lower.startswith('select'):
-        return jsonify({"error": "Invalid query. Only CREATE VIEW and SELECT statements are allowed."}), 400
-
     try:
+        query = request.args.get("query", "").strip()
+        app.logger.debug(f"Original query received: {query}")
+
+        if not query:
+            return jsonify({"error": "No query provided"}), 400
+
+        # Basic validation and extraction of query
+        query_lower = query.lower()
+        if query_lower.startswith('create view'):
+            try:
+                app.logger.debug("Processing CREATE VIEW statement")
+                # Extract the query part after "AS" and clean it up
+                match = re.search(r'create\s+view\s+.*?\s+as\s+(.*)', query, re.IGNORECASE | re.DOTALL)
+                if not match:
+                    app.logger.error("Could not extract query from CREATE VIEW statement")
+                    return jsonify({"error": "Invalid CREATE VIEW syntax. Could not find query after AS."}), 400
+                query = match.group(1).strip()
+                app.logger.debug(f"Extracted query from CREATE VIEW: {query}")
+
+                # Clean up the query by removing newlines and extra spaces
+                query = ' '.join(query.split())
+                app.logger.debug(f"Cleaned query: {query}")
+            except Exception as e:
+                app.logger.error(f"Error parsing CREATE VIEW statement: {e}")
+                return jsonify({"error": f"Error parsing CREATE VIEW statement: {str(e)}"}), 400
+        elif not query_lower.startswith('select'):
+            app.logger.error(f"Invalid query type: {query_lower[:20]}...")
+            return jsonify({"error": "Invalid query. Only CREATE VIEW and SELECT statements are allowed."}), 400
+
         db = get_db()
+
+        # Wrap the query in a transaction that we'll roll back
+        db.cursor.execute("BEGIN")
         try:
+            app.logger.debug("Executing EXPLAIN QUERY PLAN")
             db.cursor.execute(f"EXPLAIN QUERY PLAN {query}")
             rows = db.cursor.fetchall()
+            app.logger.debug(f"Got {len(rows)} rows from EXPLAIN QUERY PLAN")
+
+            column_names = [col[0] for col in db.cursor.description]
+            app.logger.debug(f"Column names: {column_names}")
+
+            result = [dict(zip(column_names, row)) for row in rows]
+            app.logger.debug(f"Final result: {result}")
+
+            db.cursor.execute("ROLLBACK")
+
+            if not result:
+                return jsonify([{"id": 0, "parent": 0, "notused": 0, "detail": "Simple query - no complex plan needed"}])
+
+            return jsonify(result)
+
         except Exception as e:
-            # Handle SQLite-specific errors more gracefully
+            db.cursor.execute("ROLLBACK")  # Ensure we rollback on error
             error_msg = str(e)
+            app.logger.error(f"Query execution error: {error_msg}")
+            app.logger.error(f"Failed query: {query}")
+
             if "syntax error" in error_msg.lower():
-                return jsonify({"error": "Invalid SQL syntax in the query"}), 400
-            if "no such table" in error_msg.lower():
-                return jsonify({"error": "The query references tables that don't exist"}), 400
-            raise  # Re-raise other exceptions
+                return jsonify({"error": f"Invalid SQL syntax: {error_msg}"}), 400
+            elif "no such table" in error_msg.lower():
+                return jsonify({"error": f"Table not found: {error_msg}"}), 400
+            elif "no such column" in error_msg.lower():
+                return jsonify({"error": f"Column not found: {error_msg}"}), 400
+            else:
+                return jsonify({"error": f"Error analyzing query: {error_msg}"}), 400
 
-        # Format the results as a list of dictionaries
-        column_names = [col[0] for col in db.cursor.description]
-        result = [dict(zip(column_names, row)) for row in rows]
-
-        return jsonify(result)
     except Exception as e:
-        db.logger.error(f"Error explaining query: {e}")
-        return jsonify({"error": "An error occurred while analyzing the query"}), 500
+        app.logger.error(f"Unexpected error in explain_query: {e}", exc_info=True)
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 
 @app.route("/views")
@@ -1263,42 +1294,46 @@ def show_views():
         db = get_db()
         views_info = {}
 
-        # Get list of views
-        views = db.execute("SELECT name, sql FROM sqlite_master WHERE type='view'")
+        # Get list of views with their full definitions
+        views = db.execute("""
+            SELECT name, sql
+            FROM sqlite_master
+            WHERE type='view'
+        """)
 
         for view in views:
             view_name = view[0]
             create_sql = view[1]
 
+            # Clean up the view definition by normalizing whitespace and line endings
+            if create_sql:
+                # Normalize line endings and remove extra whitespace
+                create_sql = ' '.join(line.strip() for line in create_sql.splitlines())
+                # Ensure proper spacing around keywords
+                create_sql = re.sub(r'\s+', ' ', create_sql)
+
             # Get view structure
             schema_sql = f"PRAGMA table_info({view_name})"
             schema = db.execute(schema_sql)
 
-            # Get a sample row to help understand the view's output
+            # Get a sample row
             sample_sql = f"SELECT * FROM {view_name} LIMIT 1"
             try:
                 sample = db.execute(sample_sql)
-                has_sample = True
-            except:
+                has_sample = bool(sample)
+            except Exception as e:
+                db.logger.warning(f"Could not get sample data for view {view_name}: {e}")
                 sample = None
                 has_sample = False
 
             views_info[view_name] = {
                 "schema": [
-                    dict(
-                        zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col)
-                    )
+                    dict(zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col))
                     for col in schema
                 ],
                 "definition": create_sql,
-                "sample": (
-                    [
-                        dict(zip([col[0] for col in db.cursor.description], row))
-                        for row in sample
-                    ]
-                    if has_sample
-                    else None
-                ),
+                "sample": ([dict(zip([col[0] for col in db.cursor.description], row))
+                          for row in sample] if has_sample else None)
             }
 
         return render_template("views.html", views=views_info)
