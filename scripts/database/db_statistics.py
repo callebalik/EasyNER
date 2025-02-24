@@ -128,6 +128,7 @@ class DBStatistics:
         self.cursor.execute("SELECT COUNT(*) FROM named_entities;")
         return self.cursor.fetchone()[0]
 
+    @property
     def get_entity_occurrence_count(self):
         """
         Get the total number of entity occurrences in the database.
@@ -137,6 +138,7 @@ class DBStatistics:
         self.cursor.execute("SELECT COUNT(*) FROM entity_occurrences;")
         return self.cursor.fetchone()[0]
 
+    @property
     def get_entity_cooccurrence_count(self):
         """
         Get the total number of entity cooccurrences in the database.
@@ -281,7 +283,7 @@ class DBStatistics:
         """
         self.cursor.execute(
             """
-            SELECT 
+            SELECT
                 COUNT(*) as total_pairs,
                 COUNT(CASE WHEN fq_document_level IS NOT NULL THEN 1 END) as doc_level_pairs,
                 COUNT(CASE WHEN fq_sentence_level IS NOT NULL THEN 1 END) as sent_level_pairs,
@@ -378,8 +380,8 @@ class DBStatistics:
         """
         doc_count = self.get_document_count()
         sent_count = self.get_sentence_count()
-        eo_count = self.get_entity_occurrence_count()
-        ec_count = self.get_entity_cooccurrence_count()
+        eo_count = self.get_entity_occurrence_count
+        ec_count = self.get_entity_cooccurrence_count
 
         df = pd.DataFrame(
             {
