@@ -325,7 +325,7 @@ class DBAnalysis:
         )
         return output_path
 
-    def find_overlapping_entities(self) -> None:
+    def find_overlapping_entities(self, overwrite: bool = False) -> None:
         """
         Find entities in the same sentence where span_start and span_end overlap between the two entities.
         Record into new column of TABLE entity_occurrences [overlap: boolean].
@@ -355,7 +355,7 @@ class DBAnalysis:
                     ADD COLUMN overlap BOOLEAN DEFAULT FALSE
                 """
                 )
-            else:
+            if overwrite:
                 # Reset all overlap flags to FALSE
                 self.cursor.execute(
                     """
@@ -363,6 +363,13 @@ class DBAnalysis:
                     SET overlap = FALSE
                 """
                 )
+
+            self.cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_entity_occurrences_document_id 
+                ON entity_occurrences(document_id, sentence_index, id)
+                """
+            ) # Create index for faster processing, This index will allow SQLite to directly locate the matching rows without scanning a range.
 
             self.logger.info("Finding overlapping entities...")
 
@@ -381,17 +388,22 @@ class DBAnalysis:
                     JOIN entity_occurrences e2 ON 
                         e1.document_id = e2.document_id AND
                         e1.sentence_index = e2.sentence_index AND
-                        e1.id < e2.id AND
+                        e1.id < e2.id
+                    JOIN entity_occurrence_spans s1 ON s1.id = e1.id
+                    JOIN entity_occurrence_spans s2 ON s2.id = e2.id
+                    WHERE 
+                        e1.overlap = FALSE AND
+                        e2.overlap = FALSE AND
                         NOT (
-                            e1.span_end <= e2.span_start OR
-                            e2.span_end <= e1.span_start
-                        )
+                                s1.span_end <= s2.span_start OR
+                                s2.span_end <= s1.span_start
+                            )
                 )
                 UPDATE entity_occurrences
                 SET overlap = TRUE
                 WHERE id IN (
                     SELECT id1 FROM overlapping_pairs
-                    UNION
+                    UNION ALL
                     SELECT id2 FROM overlapping_pairs
                 )
             """
@@ -575,17 +587,29 @@ class DBAnalysis:
         """
         try:
             self.logger.info("Counting named entity frequencies...")
+            # Create temporary table for entity counts
+            self.cursor.execute(
+                """
+                CREATE TEMPORARY TABLE temp_entity_counts AS
+                SELECT entity_id, COUNT(*) AS entity_count
+                FROM entity_occurrences
+                WHERE error_id IS NULL
+                GROUP BY entity_id;
+                """
+            )
+
+            # Update named_entities table with counts from temporary table
             self.cursor.execute(
                 """
                 UPDATE named_entities
-                SET fq = (
-                    SELECT COUNT(*)
-                    FROM entity_occurrences
-                    WHERE entity_occurrences.entity_id = named_entities.id
-                    AND entity_occurrences.error_id IS NULL
-                )
+                SET fq = (SELECT entity_count FROM temp_entity_counts WHERE temp_entity_counts.entity_id = named_entities.id);
                 """
             )
+
+            # Drop the temporary table
+            self.cursor.execute("DROP TABLE temp_entity_counts;")
+
+            
             self.conn.commit()
             self.logger.info(
                 "Named entity frequencies updated in named_entities table."
@@ -616,20 +640,20 @@ class DBAnalysis:
             self.logger.info("Starting entity occurrences summarization...")
 
             # Recreate entity_occurrences_summary table with entity_id
-            self.cursor.execute("DROP TABLE IF EXISTS entity_occurrences_summary")
-            self.cursor.execute(
-                """
-                CREATE TABLE entity_occurrences_summary (
-                    id INTEGER PRIMARY KEY NOT NULL,
-                    normalized_entity_text TEXT NOT NULL,
-                    entity_id INTEGER NOT NULL,
-                    uniq_documents INTEGER,
-                    fq INTEGER,
-                    UNIQUE(normalized_entity_text, entity_id),
-                    FOREIGN KEY (entity_id) REFERENCES named_entities (id)
-                )
-            """
-            )
+            # self.cursor.execute("DROP TABLE IF EXISTS entity_occurrences_summary")
+            # self.cursor.execute(
+            #     """
+            #     CREATE TABLE entity_occurrences_summary (
+            #         id INTEGER PRIMARY KEY NOT NULL,
+            #         normalized_entity_text TEXT NOT NULL,
+            #         entity_id INTEGER NOT NULL,
+            #         uniq_documents INTEGER,
+            #         fq INTEGER,
+            #         UNIQUE(normalized_entity_text, entity_id),
+            #         FOREIGN KEY (entity_id) REFERENCES named_entities (id)
+            #     )
+            # """
+            # )
 
             # Drop temporary table if it exists
             self.cursor.execute("DROP TABLE IF EXISTS temp_normalized_entities")
@@ -651,7 +675,8 @@ class DBAnalysis:
                     ) as normalized_entity_text,
                     error_id
                 FROM entity_occurrences
-                WHERE entity_text IS NOT NULL
+                WHERE entity_text IS NOT NULL 
+                AND overlap = FALSE
                 AND error_id IS NULL  -- Explicitly filter out error entities here
             """
             self.logger.debug(f"Query string for entity occurrence aggregation: {query_string}")
@@ -1173,6 +1198,16 @@ class DBAnalysis:
         - Entity co-occurrence aggregation
         - PMI calculation
         """
-        self.aggregate_entity_cooccurrences(batch_size=batch_size)
-        self.aggregate_cooccurrences(batch_size=batch_size)
-        self.calculate_pmi(batch_size=batch_size)
+
+        # Baseline analysis
+        self.count_named_entity_fq()
+
+        # Entity occurrence analysis 
+        self.find_overlapping_entities()
+        self.aggregate_entity_occurrences()
+        self.count_entity_intra_doc_fq()
+
+        # Entity co-occurrence analysis
+        self.count_entity_cooccurrences(level="document")
+        self.aggregate_cooccurrences()
+        self.calculate_pmi()

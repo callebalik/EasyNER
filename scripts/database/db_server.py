@@ -780,6 +780,9 @@ def display_table(table_name):
         sql += " LIMIT ? OFFSET ?"
         params.extend([per_page + 1, offset])
 
+        # Store the generated SQL query
+        generated_sql = sql
+
         # Execute the query
         db.cursor.execute(sql, params)
         rows = db.cursor.fetchall()
@@ -794,7 +797,8 @@ def display_table(table_name):
             'sort_by': sort_by,
             'sort_order': sort_order,
             'column_types': column_types,  # Pass column types to the template
-            'column_search_queries': column_search_queries # Pass search queries to the template
+            'column_search_queries': column_search_queries, # Pass search queries to the template
+            'generated_sql': generated_sql  # Pass the generated SQL query
         }
     except Exception as e:
         db.logger.error(f"Error displaying table {table_name}: {e}")
@@ -926,16 +930,25 @@ def show_indexes():
     try:
         db = get_db()
         indexes_info = {}
-        
+        table_schemas = {}  # Store table schemas
+        indexed_columns_by_table = {}  # Store indexed columns for each table
+
         # Get list of tables
         tables = db.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        
+
         for table in tables:
             table_name = table[0]
+
+            # Get table schema
+            schema_sql = f"PRAGMA table_info({table_name})"
+            schema = db.execute(schema_sql)
+            table_schemas[table_name] = [dict(zip(['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'], col)) for col in schema]
+
             # Get indexes for each table
             indexes = db.execute(f"SELECT * FROM sqlite_master WHERE type='index' AND tbl_name=?", 
                                [table_name])
-            
+
+            indexed_columns = set()
             indexes_info[table_name] = []
             for idx in indexes:
                 index_info = {
@@ -944,9 +957,14 @@ def show_indexes():
                     'columns': _parse_index_columns(idx[4])
                 }
                 indexes_info[table_name].append(index_info)
-        
+                indexed_columns.update(index_info['columns'])  # Collect indexed columns
+
+            indexed_columns_by_table[table_name] = indexed_columns  # Store indexed columns
+
         return render_template('indexes.html', 
-                             indexes=indexes_info)
+                             indexes=indexes_info,
+                             table_schemas=table_schemas,
+                             indexed_columns_by_table=indexed_columns_by_table)  # Pass indexed columns to the template
     except Exception as e:
         db.logger.error(f"Error loading indexes: {e}")
         return render_template('error.html', message="Error loading indexes"), 500
@@ -965,6 +983,49 @@ def _parse_index_columns(create_sql):
     except Exception:
         pass
     return []
+
+@app.route("/aggregated-entity-occurrences")
+def list_aggregated_entity_occurrences():
+    result = display_table('view_entity_occurrences_summary')
+    if 'error' in result:
+        return render_template('error.html', message=result['error']), 500
+    return render_template('table_view.html', table_name='view_entity_occurrences_summary', **result)
+
+import re
+
+@app.route("/explain-query")
+def explain_query():
+    query = request.args.get('query')
+    try:
+        db = get_db()
+        
+        # Extract parameters from the request
+        params = []
+        
+        # Parse the SQL query to identify the parameters used
+        used_params = set(re.findall(r'LIKE \?', query))
+        
+        # Extract only the used parameters from the request
+        extracted_params = []
+        for key, value in request.args.items():
+            if key != 'query' and any(key in s for s in used_params):
+                extracted_params.append(value)
+        
+        # Parameters for LIMIT and OFFSET
+        extracted_params.append(31)
+        extracted_params.append(0)
+        
+        db.cursor.execute(f"EXPLAIN QUERY PLAN {query}", extracted_params)
+        rows = db.cursor.fetchall()
+        
+        # Format the results as a list of dictionaries
+        column_names = [col[0] for col in db.cursor.description]
+        result = [dict(zip(column_names, row)) for row in rows]
+        
+        return jsonify(result)
+    except Exception as e:
+        db.logger.error(f"Error explaining query: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
     with app.app_context():

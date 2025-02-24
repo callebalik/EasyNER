@@ -1,0 +1,7 @@
+{% endblock %} {% endif %} <p>No results found.</p> {% else %} </table>
+</tbody> {% endfor %} </tr> {% endfor %} <td>{{ item }}</td> {% for item in row %} <tr> {% for row in rows %} <tbody>
+        </thead>
+</tr> {% endfor %} <th>{{ column }}</th> {% for column in column_names %} <tr>
+    <thead>
+        <table class="data-table"> {% if rows %} <p><b>Query:</b> <code>{{ query }}</code></p>
+            <h1>Query Result</h1>{% block content %}{% block title %}Query Result{% endblock %}{% extends "base.html" %}

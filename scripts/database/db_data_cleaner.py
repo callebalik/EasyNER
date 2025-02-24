@@ -5,6 +5,7 @@ from db_data_exchanger import DBDataExchanger
 import logging
 import csv
 import json
+from tqdm import tqdm
 
 
 class DBDataCleaner:
@@ -267,7 +268,13 @@ class DBDataCleaner:
                     self.logger.info(f"processing {len(entity_updates)} entity errors code updates...")
                     self.logger.info(f"First 5 entity updates: {entity_updates[:5]}") # Print the first 5 updates
 
-                    # Bulk update entity_occurrences for not already set error_ids
+                    # Create index for lower(entity_text) and entity_id for faster updates
+                    self.cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_entity_occurrences_entity_id_text_error 
+                    ON entity_occurrences (entity_id, LOWER(entity_text), error_id)
+                    """)
+                    self.logger.info("Ensured index idx_entity_occurrences_entity_id_text_error exists")
+
                     update_query = """
                     UPDATE entity_occurrences
                     SET error_id = ?
@@ -276,7 +283,23 @@ class DBDataCleaner:
                     AND (error_id IS NULL OR error_id != ?)
                     """
 
-                    self.cursor.executemany(update_query, entity_updates)
+                    batch_size = 100000
+                    total_updates = len(entity_updates)
+                    with tqdm(total=total_updates, desc="Updating entity occurrences") as pbar:
+                        for i in range(0, total_updates, batch_size):
+                            batch = entity_updates[i:i + batch_size]
+                            self.cursor.executemany(update_query, batch)
+                            self.conn.commit()
+                            pbar.update(len(batch))
+
+                    # Create index if not exists - Provides significant speedup for error_id queries where it's used to filter out NULL values
+                    self.cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_entity_occurrences_entity_id_error_null
+                    ON entity_occurrences (entity_id)
+                    WHERE error_id IS NULL
+                    """)
+
+
                     self.conn.commit()
                     self.logger.info(f"Updated {len(entity_updates)} entity occurrences")
                 except KeyboardInterrupt:
@@ -291,4 +314,4 @@ class DBDataCleaner:
             self.logger.error(f"Error attaching error information: {e}")
             self.conn.rollback()
             raise
-        
+
