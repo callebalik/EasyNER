@@ -1,7 +1,9 @@
 from typing import List, Dict, Any
 import sqlite3
 from .data_model.data_model import Document, Sentence, NamedEntity
+from .data_model import entities
 import logging
+
 
 
 class DBDataExchanger:
@@ -12,6 +14,7 @@ class DBDataExchanger:
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
+        self.entities = entities
 
     def _safe_count(self, table_name: str) -> int:
         """Get count with zero-value protection"""
@@ -91,24 +94,25 @@ class DBDataExchanger:
     def get_entities(self, doc_id: int, sentence_index: int) -> List[NamedEntity]:
         try:
             cursor = self.conn.cursor()
-            cursor.execute(
+            stmt = f"""--sql
+            SELECT
+                NE_ID as id,
+                TXT as txt,
+                NE_CLASS as ne_class,
+                TXT_NORM as txt_norm,
+                DOC_TITLE as doc_title,
+                DOC_ID as doc_id,
+                SENT_IDX as sent_idx,
+                SPAN_START as span_start,
+                SPAN_END as span_end
+            FROM {self.entities.VIEW_NE_COMP}
+            WHERE DOC_ID = ? AND SENT_IDX = ?
             """
-            SELECT 
-                veo.id,
-                veo.entity_text,
-                veo.named_entity,
-                veo.normalized_entity_text,
-                veo.document_id,
-                eo.sentence_index,
-                eos.span_start,
-                eos.span_end
-            FROM view_entity_occurrences veo
-            JOIN entity_occurrences eo ON veo.id = eo.id
-            LEFT JOIN entity_occurrence_spans eos ON veo.id = eos.id
-            WHERE veo.document_id = ? AND eo.sentence_index = ?
-            """,
-            (doc_id, sentence_index),
-        )
+
+            cursor.execute(
+                stmt, (doc_id, sentence_index)
+            )
+
             entities = cursor.fetchall()
             return [NamedEntity(**self._row_to_dict(entity)) for entity in entities]
         except sqlite3.Error as e:
@@ -155,7 +159,7 @@ class DBDataExchanger:
             sort_order: Sort direction ('asc' or 'desc')
         """
         query = """
-            SELECT eo.*, ne.named_entity 
+            SELECT eo.*, ne.named_entity
             FROM entity_occurrences eo
             JOIN named_entities ne ON ne.id = eo.entity_id
             WHERE 1=1
@@ -273,7 +277,7 @@ class DBDataExchanger:
 
             # Get total count for pagination
             count_sql = """
-                SELECT COUNT(*) 
+                SELECT COUNT(*)
                 FROM entity_cooccurrences_summary ecs
                 JOIN entity_occurrences e1 ON ecs.e1_id_normalized = e1.id
                 JOIN entity_occurrences e2 ON ecs.e2_id_normalized = e2.id
@@ -302,7 +306,7 @@ class DBDataExchanger:
 
             # Main query with joins to get entity texts
             sql = """
-                SELECT 
+                SELECT
                     ecs.id,
                     ecs.e1_id_normalized,
                     ecs.e2_id_normalized,

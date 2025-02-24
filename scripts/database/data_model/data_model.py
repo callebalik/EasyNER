@@ -5,12 +5,14 @@ from dataclasses import dataclass
 @dataclass
 class NamedEntity:
     id: int
-    entity_text: str
-    named_entity: int
+    txt: str
+    ne_class: int
+    txt_norm: str
     span_start: int
     span_end: int
-    document_id: int
-    sentence_index: int
+    doc_id: int
+    sent_idx: int
+    doc_title: Optional[str] = None
     summary_id: Optional[int] = None
     normalized_entity_text: Optional[str] = None
     intra_doc_fq: Optional[int] = None
@@ -72,12 +74,12 @@ class Sentence:
                         }
                     )
                 elif (
-                    entity.entity_text != self.text[entity.span_start : entity.span_end]
+                    entity.txt != self.text[entity.span_start : entity.span_end]
                 ):
                     self.validation_errors.append(
                         {
                             "entity_id": entity.id,
-                            "error": f"Text mismatch: '{entity.entity_text}' vs '{self.text[entity.span_start : entity.span_end]}'",
+                            "error": f"Text mismatch: '{entity.txt}' vs '{self.text[entity.span_start : entity.span_end]}'",
                             "entity": entity,
                         }
                     )
@@ -107,7 +109,7 @@ class Document:
         for sentence in self.sentences:
             print(f"\nSentence {sentence.sentence_index}: {sentence.text}")
             for entity in sentence.entities:
-                print(f"  Entity: {entity.named_entity}")
+                print(f"  Entity: {entity.ne_class}")
 
     def to_html(self) -> str:
         has_errors = any(sentence.validation_errors for sentence in self.sentences)
@@ -192,8 +194,8 @@ class Document:
                 html += f"""
                 <tr data-entity-id='{entity.id}'{error_class}>
                     <td>{entity.id}</td>
-                    <td>{entity.entity_text}</td>
-                    <td>{entity.named_entity}</td>
+                    <td>{entity.txt}</td>
+                    <td>{entity.ne_class}</td>
                     <td>{entity.span_start}</td>
                     <td>{entity.span_end}</td>
                     <td>{status}</td>

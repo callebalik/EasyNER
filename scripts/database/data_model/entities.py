@@ -1,3 +1,5 @@
+VIEW_PREFIX = "v_"
+
 TABLE_NE = "eo"
 TABLE_NE_CLASS = "named_entities"
 TABLE_NE_LOOKUP = TABLE_NE + "_lookup"
@@ -28,6 +30,8 @@ COL_NE_DOC_COUNT = "doc_count"  # Document count column name
 
 VIEW_NE = "view_ne"
 VIEW_NE_RAW = "view_ne_raw"
+
+VIEW_NE_COMP = VIEW_PREFIX + TABLE_NE + "_compiled"
 
 import math
 import sqlite3
@@ -808,6 +812,46 @@ class EntityOccurrence:
         except sqlite3.Error as e:
             self.logger.error(f"Error creating view_entity_occurrences view: {e}")
             raise
+
+    def create_view_ne_compiled(self):
+        """
+        Create view with compiled entity information for easy access and computations
+        """
+        try:
+            self.logger.info("Creating view_ne_compiled view...")
+            self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_NE_COMP}")
+
+
+            view_sql = f"""--sql
+                    CREATE VIEW IF NOT EXISTS {VIEW_NE_COMP}  AS
+                    SELECT
+                        eo.id as NE_ID,
+                        eo.{COL_NE_TXT} as TXT,
+                        nec.{COL_NE_CLASS_NAME} as NE_CLASS,
+                        nea.{COL_NE_NORM_ID} as AGGR_ID,
+                        nea.{COL_NE_TXT_NORM} as TXT_NORM,
+                        doc.title as DOC_TITLE,
+                        doc.id as DOC_ID,
+                        eo.{COL_NE_SENT_IDX} as SENT_IDX,
+                        eo.{COL_NE_SPAN_START} as SPAN_START,
+                        eo.{COL_NE_SPAN_END} as SPAN_END
+                    FROM
+                        {TABLE_NE} eo
+                    JOIN {TABLE_NE_CLASS} nec ON eo.{COL_NE_CLASS_ID} = nec.id
+                    JOIN {TABLE_DOCS} doc ON eo.{COL_NE_DOC_ID} = doc.id
+                    LEFT JOIN {TABLE_NE_LOOKUP} eol ON eo.id = eol.id
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eol.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                """
+
+            self.cursor.execute(view_sql)
+            self.conn.commit()
+            self.logger.info(f"{VIEW_NE} view created successfully.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating view_entity_occurrences view: {e}")
+            raise
+
+
 
     def calc_intra_doc_fq(self) -> None:
         """

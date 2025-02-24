@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, g, render_template, request
 from .db_main import EasyNerDBHandler
+from .data_model import entities
 import os
 import sass
 import plotly.graph_objects as go
@@ -414,7 +415,7 @@ def list_entity_occurrences():
     if "error" in result:
         return render_template("error.html", message=result["error"]), 500
     return render_template(
-        "table_view.html", table_name="view_entity_occurrences ", **result
+        "table_view.html", table_name=f"{entities.VIEW_NE_COMP}", **result
     )
 
 @app.route("/entity-occurrences")
