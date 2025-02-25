@@ -1288,59 +1288,26 @@ def explain_query():
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 
-@app.route("/views")
-def show_views():
+@app.route("/table/<table_name>/delete", methods=["POST"])
+def delete_table(table_name):
     try:
         db = get_db()
-        views_info = {}
+        # Check if it's actually a table first
+        table_check = db.execute(
+            "SELECT type FROM sqlite_master WHERE type='table' AND name=?", [table_name]
+        )
+        if not table_check:
+            return jsonify({"error": "Table not found"}), 404
 
-        # Get list of views with their full definitions
-        views = db.execute("""
-            SELECT name, sql
-            FROM sqlite_master
-            WHERE type='view'
-        """)
+        # Additional safety check - prevent deletion of system tables
+        if table_name.startswith('sqlite_'):
+            return jsonify({"error": "Cannot delete system tables"}), 403
 
-        for view in views:
-            view_name = view[0]
-            create_sql = view[1]
-
-            # Clean up the view definition by normalizing whitespace and line endings
-            if create_sql:
-                # Normalize line endings and remove extra whitespace
-                create_sql = ' '.join(line.strip() for line in create_sql.splitlines())
-                # Ensure proper spacing around keywords
-                create_sql = re.sub(r'\s+', ' ', create_sql)
-
-            # Get view structure
-            schema_sql = f"PRAGMA table_info({view_name})"
-            schema = db.execute(schema_sql)
-
-            # Get a sample row
-            sample_sql = f"SELECT * FROM {view_name} LIMIT 1"
-            try:
-                sample = db.execute(sample_sql)
-                has_sample = bool(sample)
-            except Exception as e:
-                db.logger.warning(f"Could not get sample data for view {view_name}: {e}")
-                sample = None
-                has_sample = False
-
-            views_info[view_name] = {
-                "schema": [
-                    dict(zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col))
-                    for col in schema
-                ],
-                "definition": create_sql,
-                "sample": ([dict(zip([col[0] for col in db.cursor.description], row))
-                          for row in sample] if has_sample else None)
-            }
-
-        return render_template("views.html", views=views_info)
+        db.execute(f"DROP TABLE IF EXISTS {table_name}")
+        return jsonify({"message": "Table deleted successfully"}), 200
     except Exception as e:
-        db.logger.error(f"Error loading views: {e}")
-        return render_template("error.html", message="Error loading views"), 500
-
+        db.logger.error(f"Error deleting table {table_name}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/view/<view_name>/delete", methods=["POST"])
 def delete_view(view_name):

@@ -12,6 +12,7 @@
     <div class="table-actions">
         <button onclick="calculateRowCount('{{ table.name }}')" class="action-button">Calculate Row Count</button>
         <a href="/table/{{ table.name }}" class="action-button">View Sample Data</a>
+        <button onclick="deleteTable('{{ table.name }}')" class="action-button delete-button" style="background: #dc3545;">Delete Table</button>
         <span id="rowcount-{{ table.name }}" class="rowcount"></span>
     </div>
 
@@ -93,6 +94,10 @@
     background: #1976d2;
 }
 
+.delete-button:hover {
+    background: #c82333 !important;
+}
+
 .rowcount {
     color: #666;
     margin-left: 10px;
@@ -153,6 +158,33 @@ function calculateRowCount(tableName) {
             resultSpan.textContent = ' Error calculating row count';
         });
 }
+
+function deleteTable(tableName) {
+    if (confirm(`Are you sure you want to delete the table "${tableName}"? This action cannot be undone.`)) {
+        fetch(`/table/${tableName}/delete`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error deleting table: ' + data.error);
+            } else {
+                // Remove the table card from the page
+                const tableCard = document.querySelector(`.table-card h2:contains('${tableName}')`).closest('.table-card');
+                tableCard.remove();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting table. Please try again.');
+        });
+    }
+}
+
+// Add text content selector for jQuery-like functionality
+Element.prototype.contains = function(text) {
+    return this.textContent.includes(text);
+};
 
 // Smooth scroll to table when clicking foreign key link
 document.addEventListener('click', function(e) {
