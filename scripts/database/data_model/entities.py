@@ -1,46 +1,3 @@
-VIEW_PREFIX = "v_"
-
-TABLE_NE = "eo"
-TABLE_NE_CLASS = "named_entities"
-TABLE_NE_LOOKUP = TABLE_NE + "_lookup"
-TABLE_NE_AGGR = TABLE_NE + "_" + "aggr"
-DIS_stem = "DIS"
-PNM_stem = "PNM"
-TABLE_NE_DIS = TABLE_NE + "_" + DIS_stem
-TABLE_NE_PNM = TABLE_NE + "_" + PNM_stem
-
-TABLE_COOCCURRENCES = "cooccurrences"
-TABLE_CO_AGGR = "co" + "_aggregated"
-
-TABLE_DOCS = "documents"
-TABLE_SENTENCES = "sentences"
-TABLE_ERROR = "eo_error_codes"
-
-
-
-COL_NE_CLASS_ID = "entity_id"  # Named entity text column name
-COL_NE_CLASS_NAME = "named_entity"  # Named entity text column name
-COL_NE_TXT = "entity_text"  # Named entity text column name
-COL_NE_TXT_NORM = "txt_norm"  # Normalized named entity text column name
-COL_NE_DOC_ID = "document_id"  # Document ID column name
-COL_NE_SENT_IDX = "sentence_index"  # Sentence index column name
-COL_NE_SPAN_START = "span_start"  # Span start column name
-COL_NE_SPAN_END = "span_end"  # Span end column name
-COL_NE_ERROR_ID = "error_id"  # Error ID column name
-COL_NE_OVERLAP = "overlap"  # Overlap column name
-COL_NE_NORM_ID = "norm_id"  # Normalized ID column name
-COL_NE_AGGREGATED_ID = "norm_id"  # Aggregated ID column name
-COL_NE_FQ = "fq"  # Frequency column name
-COL_NE_DOC_COUNT = "doc_count"  # Document count column name
-COL_CO_SENT_DIST = "sent_distance"  # Sentence distance column name
-COL_CO_AGGR_ID = "aggr_id"  # Aggregated ID column name
-VIEW_NE = "view_ne"
-VIEW_NE_RAW = "view_ne_raw"
-
-VIEW_NE_COMP = VIEW_PREFIX + TABLE_NE + "_compiled"
-VIEW_NE_STATS = VIEW_PREFIX + TABLE_NE + "_stats"
-VIEW_COOCCURRENCES = VIEW_PREFIX + TABLE_COOCCURRENCES
-VIEW_COOCCURRENCES_AGGREGATED = VIEW_PREFIX + TABLE_CO_AGGR
 import math
 import sqlite3
 
@@ -51,7 +8,7 @@ from scripts.database.db_main import EasyNerDBHandler
 
 from ..core.db_engine import ReaderWriterPair
 import pandas as pd
-
+from .schema import *
 
 class NamedEntity:
     def __init__(self, conn, cursor, logger):
@@ -1303,6 +1260,7 @@ class EntityOccurrence:
         except sqlite3.Error as e:
             self.logger.error(f"Error validating backreferences: {e}")
             return False
+
 
 class EntityCooccurence:
     def __init__(self, conn, cursor, logger, log_query_plan, conn_params_dict):

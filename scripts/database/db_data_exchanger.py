@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 import sqlite3
 from .data_model.data_model import Document, Sentence, NamedEntity
-from .data_model import entities
+from .data_model.schema import *
 import logging
 
 
@@ -14,7 +14,6 @@ class DBDataExchanger:
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
-        self.entities = entities
 
     def _safe_count(self, table_name: str) -> int:
         """Get count with zero-value protection"""
@@ -105,7 +104,7 @@ class DBDataExchanger:
                 SENT_IDX as sent_idx,
                 SPAN_START as span_start,
                 SPAN_END as span_end
-            FROM {self.entities.VIEW_NE_COMP}
+            FROM {VIEW_NE_COMP}
             WHERE DOC_ID = ? AND SENT_IDX = ?
             """
 
