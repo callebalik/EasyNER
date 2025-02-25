@@ -9,20 +9,68 @@ def generate_mellow_hsl(hue_range, count, saturation=30, lightness=70):
         for hue in np.linspace(hue_range[0], hue_range[1], count, dtype=int)
     ]
 
-def create_disease_phenomena_sankey(db : EasyNerDBHandler):
-    """Create a Sankey diagram for disease-phenomena relationships with customized edge and node properties"""
+def create_disease_phenomena_sankey(db : EasyNerDBHandler, disease_search=None, phenomenon_search=None, min_pmi=None, max_pmi=None, min_fq=None, max_fq=None, limit=30):
+    """Create a Sankey diagram for disease-phenomena relationships with customized edge and node properties
+
+    Args:
+        db: Database handler
+        disease_search: Optional search term for diseases
+        phenomenon_search: Optional search term for phenomena
+        min_pmi: Minimum PMI value filter
+        max_pmi: Maximum PMI value filter
+        min_fq: Minimum document frequency filter
+        max_fq: Maximum document frequency filter
+        limit: Maximum number of relationships to show (default: 30)
+    """
     try:
-        # Query the view_disease_phenomena_summary
+        # Build WHERE clause only if filters are provided
+        where_conditions = []
+        params = []
+
+        if disease_search and disease_search.strip():
+            where_conditions.append("disease LIKE ?")
+            params.append(f"%{disease_search.strip()}%")
+
+        if phenomenon_search and phenomenon_search.strip():
+            where_conditions.append("phenomenon LIKE ?")
+            params.append(f"%{phenomenon_search.strip()}%")
+
+        if min_pmi is not None and str(min_pmi).strip():
+            where_conditions.append("pmi >= ?")
+            params.append(float(min_pmi))
+
+        if max_pmi is not None and str(max_pmi).strip():
+            where_conditions.append("pmi <= ?")
+            params.append(float(max_pmi))
+
+        if min_fq is not None and str(min_fq).strip():
+            where_conditions.append("fq_document_level >= ?")
+            params.append(float(min_fq))
+
+        if max_fq is not None and str(max_fq).strip():
+            where_conditions.append("fq_document_level <= ?")
+            params.append(float(max_fq))
+
+        # Always include a base PMI filter to ensure meaningful relationships
+        if not any(condition.startswith("pmi >=") for condition in where_conditions):
+            where_conditions.append("pmi >= ?")
+            params.append(5.0)  # Default minimum PMI threshold
+
+        # Build query with dynamic WHERE clause
         query = """--sql
             SELECT disease, phenomenon, fq_document_level, pmi,
                 fq_disease, fq_phenomenon,
                 uniq_documents_disease, uniq_documents_phenomenon
             FROM filtered_view_disease_phenomena_summary
-            ORDER BY fq_document_level DESC
-            LIMIT 50
         """
-        print("Executing query...")
-        cursor = db.cursor.execute(query)
+
+        if where_conditions:
+            query += "\nWHERE " + " AND ".join(where_conditions)
+
+        query += f"\nORDER BY fq_document_level DESC LIMIT {int(limit)}"
+
+        print("Executing query with params:", params)
+        cursor = db.cursor.execute(query, params)
         data = cursor.fetchall()
 
         # Check if data is empty

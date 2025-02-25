@@ -1088,17 +1088,111 @@ def table_view(table_name):
 def disease_phenomena_sankey():
     try:
         db = get_db()
-        # Import the module dynamically to ensure we get the latest version
-        from .statistics import sankey_diagram
-        importlib.reload(sankey_diagram)
+        # Get filter parameters from request, only pass non-empty values
+        disease_search = request.args.get('disease_search', '').strip() or None
+        phenomenon_search = request.args.get('phenomenon_search', '').strip() or None
+        min_pmi = request.args.get('min_pmi', '5.0').strip()  # Default to 5.0
+        max_pmi = request.args.get('max_pmi', '').strip()
+        min_fq = request.args.get('min_fq', '').strip()
+        max_fq = request.args.get('max_fq', '').strip()
+        limit = request.args.get('limit', '30').strip()
+
+        # Get numeric filters with validation, convert empty strings to None
+        try:
+            min_pmi = float(min_pmi) if min_pmi else 5.0  # Default to 5.0 if empty
+            max_pmi = float(max_pmi) if max_pmi else None
+            min_fq = float(min_fq) if min_fq else None
+            max_fq = float(max_fq) if max_fq else None
+            limit_val = int(limit) if limit else 30
+            # Ensure limit is between 1 and 100
+            limit_val = max(1, min(100, limit_val))
+        except ValueError as e:
+            app.logger.error(f"Invalid numeric filter value: {e}")
+            return render_template("error.html", message="Invalid numeric filter value"), 400
+
+        # Create a unique cache key based on actual filter values
+        filters = []
+        if disease_search: filters.append(f"d_{disease_search}")
+        if phenomenon_search: filters.append(f"p_{phenomenon_search}")
+        if min_pmi != 5.0: filters.append(f"minp_{min_pmi}")  # Only include if different from default
+        if max_pmi is not None: filters.append(f"maxp_{max_pmi}")
+        if min_fq is not None: filters.append(f"minf_{min_fq}")
+        if max_fq is not None: filters.append(f"maxf_{max_fq}")
+        if limit_val != 30: filters.append(f"lim_{limit_val}")  # Only include if different from default
+
+        # If no filters are applied or only default values are used, use 'base' as the cache key
+        cache_key = 'sankey_' + ('base' if not filters else '_'.join(filters))
+
         return visualization_manager.get_cached_visualization(
-            'sankey_diagram',
+            cache_key,
             db,
-            sankey_diagram.create_disease_phenomena_sankey
+            lambda db: create_disease_phenomena_sankey(
+                db,
+                disease_search=disease_search,
+                phenomenon_search=phenomenon_search,
+                min_pmi=min_pmi,
+                max_pmi=max_pmi,
+                min_fq=min_fq,
+                max_fq=max_fq,
+                limit=limit_val
+            )
         )
     except Exception as e:
         app.logger.error(f"Error in disease phenomena sankey route: {e}")
         return render_template("error.html", message="Error generating Sankey diagram"), 500
+
+
+@app.route("/disease-phenomena")
+def disease_phenomena_page():
+    try:
+        db = get_db()
+        # Get filter parameters
+        disease_search = request.args.get('disease_search', '').strip()
+        phenomenon_search = request.args.get('phenomenon_search', '').strip()
+        min_pmi = request.args.get('min_pmi', '5.0').strip()  # Default to 5.0
+        max_pmi = request.args.get('max_pmi', '').strip()
+        min_fq = request.args.get('min_fq', '').strip()
+        max_fq = request.args.get('max_fq', '').strip()
+        limit = request.args.get('limit', '30').strip()
+
+        # Get the Sankey diagram HTML
+        try:
+            limit_val = int(limit) if limit else 30
+            # Ensure limit is between 1 and 100
+            limit_val = max(1, min(100, limit_val))
+
+            sankey_html = create_disease_phenomena_sankey(
+                db,
+                disease_search=disease_search or None,
+                phenomenon_search=phenomenon_search or None,
+                min_pmi=float(min_pmi) if min_pmi else 5.0,  # Default to 5.0 if empty
+                max_pmi=float(max_pmi) if max_pmi else None,
+                min_fq=float(min_fq) if min_fq else None,
+                max_fq=float(max_fq) if max_fq else None,
+                limit=limit_val
+            )
+        except ValueError as e:
+            app.logger.error(f"Invalid numeric filter value: {e}")
+            sankey_html = "<div class='alert alert-danger'>Invalid numeric filter value</div>"
+        except Exception as e:
+            app.logger.error(f"Error generating Sankey diagram: {e}")
+            sankey_html = f"<div class='alert alert-danger'>Error generating visualization: {str(e)}</div>"
+
+        # Render template with both filters and diagram
+        return render_template(
+            "disease_phenomena.html",
+            disease_search=disease_search,
+            phenomenon_search=phenomenon_search,
+            min_pmi=min_pmi,  # Pass the original or default value
+            max_pmi=max_pmi,
+            min_fq=min_fq,
+            max_fq=max_fq,
+            limit=limit_val if 'limit_val' in locals() else 30,
+            sankey_html=sankey_html
+        )
+    except Exception as e:
+        app.logger.error(f"Error rendering disease phenomena page: {e}")
+        return render_template("error.html", message="Error loading page"), 500
 
 
 @app.route("/indexes")
