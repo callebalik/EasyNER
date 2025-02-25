@@ -1845,15 +1845,15 @@ class EntityCooccurence:
 
         self.logger.info("Cooccurrence aggregation completed")
 
-    def co_aggregate_multithreaded(
+    def populate_aggr_pairs(
         self,
-        batch_size=100000,
+        batch_size=20000,
         ignore_entities_with_error_codes: bool = True,
         num_reader_threads=16,
     ) -> None:
         """
         Aggregate entity cooccurrences based on normalized entity IDs from entity_occurrences_summary.
-        Uses existing relationships through entity_occurrences.summary_id to get normalized IDs.
+        Uses existing relationships through entity_occurrences.{COL_NE_NORM_ID} to get normalized IDs.
         Aggregate entity cooccurrences using ReaderWriterPair pattern.
         """
 
@@ -1868,34 +1868,21 @@ class EntityCooccurence:
 
         def reader_query():
             """Reader query to fetch aggregated co-occurrence data."""
-            return f"""
-                WITH normalized_pairs AS (
-                    SELECT
-                        CASE WHEN eo1.summary_id <= eo2.summary_id
-                            THEN eo1.summary_id
-                            ELSE eo2.summary_id END AS e1_id_normalized,
-                        CASE WHEN eo1.summary_id <= eo2.summary_id
-                            THEN eo2.summary_id
-                            ELSE eo1.summary_id END AS e2_id_normalized,
-                        eo1.document_id,
-                        CASE WHEN eo1.sentence_index = eo2.sentence_index THEN 1 ELSE 0 END as same_sentence
-                    FROM entity_cooccurrences ec
-                    JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
-                    JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
-                    WHERE eo1.summary_id IS NOT NULL
-                    AND eo2.summary_id IS NOT NULL
-                    AND eo1.document_id = eo2.document_id  -- Ensure same document
-                    {ignore_error_code_condition_eo1}
-                    {ignore_error_code_condition_eo2}
-                )
-                SELECT
-                    e1_id_normalized,
-                    e2_id_normalized,
-                    COUNT(*) as fq_document_level,
-                    SUM(same_sentence) as fq_sentence_level,
-                    COUNT(DISTINCT document_id) as uniq_documents
-                FROM normalized_pairs
-                GROUP BY e1_id_normalized, e2_id_normalized
+            return f"""--sql
+                SELECT DISTINCT -- Not necessary, but reduces data size passed to reader
+                        CASE WHEN eo1.{COL_NE_NORM_ID} < eo2.{COL_NE_NORM_ID}
+                            THEN eo1.{COL_NE_NORM_ID}
+                            ELSE eo2.{COL_NE_NORM_ID} END AS e1_id,
+                        CASE WHEN eo1.{COL_NE_NORM_ID} < eo2.{COL_NE_NORM_ID}
+                            THEN eo2.{COL_NE_NORM_ID}
+                            ELSE eo1.{COL_NE_NORM_ID} END AS e2_id
+                    FROM {TABLE_COOCCURRENCES} ec
+                    JOIN {TABLE_NE} eo1 ON ec.e1_id = eo1.id
+                    JOIN {TABLE_NE} eo2 ON ec.e2_id = eo2.id
+                    WHERE ec.aggr_id IS NULL
+                    ORDER BY ec.e1_id, ec.e2_id -- Apply ordering before aggregation
+                    LIMIT :limit -- Apply limit and offset for proper batch partitioning
+                    OFFSET :offset
             """
 
         self.log_query_plan(reader_query())  # Log query plan for reader query
@@ -1906,21 +1893,13 @@ class EntityCooccurence:
 
         def aggregation_write_function(batch, cursor, conn):
             """Writes aggregated co-occurrence data to entity_cooccurrences_summary."""
-            sql = """
-                INSERT OR REPLACE INTO entity_cooccurrences_summary
-                    (e1_id_normalized, e2_id_normalized, fq_document_level,
-                    fq_sentence_level, uniq_documents)
-                VALUES (?, ?, ?, ?, ?)
+            sql = f"""--sql
+                INSERT OR REPLACE INTO {TABLE_CO_AGGR} -- Use REPLACE to handle duplicates
+                    (e1_id, e2_id)
+                VALUES (?, ?)
             """
-            try:
-                cursor.executemany(sql, batch)
-            except Exception as e:
-                conn.rollback()
-                self.logger.error(
-                    f"Error in aggregation_write_function: {e}. Transaction rolled back for current batch."
-                )
-                return False
-            return True
+
+            cursor.executemany(sql, batch)
 
         reader_writer_pair = ReaderWriterPair(
             conn_params=self.conn_params_dict,
@@ -1929,11 +1908,11 @@ class EntityCooccurence:
             write_function=aggregation_write_function,
             batch_size=batch_size,
             num_reader_threads=num_reader_threads,
-            profiling_reader_enabled=True,
-            profiling_writer_enabled=True,
+            profiling_reader_enabled=False,
+            profiling_writer_enabled=False,
             writer_batch_chunking=1,
-            total_count=self.cursor.execute(
-                "SELECT COUNT(*) FROM entity_cooccurrences WHERE summary_id IS NOT NULL"
+            total_rows=self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_COOCCURRENCES} WHERE aggr_id IS NULL"
             ).fetchone()[0],
             process_title="Co-occurrence Aggregation",
             logger=self.logger,
