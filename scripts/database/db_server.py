@@ -418,7 +418,6 @@ def list_entity_occurrences():
         "table_view.html", table_name=f"{entities.VIEW_NE_COMP}", **result
     )
 
-@app.route("/entity-occurrences")
 
 @app.route("/document/<int:doc_id>")
 def show_document(doc_id):
