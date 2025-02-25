@@ -1033,6 +1033,117 @@ class EntityOccurrence:
             self.logger.error(f"Error calculating aggregated entity statistics: {e}")
             raise
 
+
+    def stats_aggregated_threaded(self):
+        """
+        Calculates statistics based on the aggregated entities in the compiled view using ReaderWriterPair.
+        """
+        try:
+                self.logger.info("Creating indexes for optimized queries...")
+
+                # Index on eo.document_id
+                self.cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id ON {TABLE_NE}({COL_NE_DOC_ID});
+                """)
+
+                # Covering index for doc_id and aggrgated_id
+                self.cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id_aggr_id ON {TABLE_NE}({COL_NE_DOC_ID}, {COL_NE_AGGREGATED_ID});
+                """)
+
+                # Covering index on TABLE_NE_AGGR
+                self.cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_nea_norm_id_doc_id ON {TABLE_NE_AGGR}({COL_NE_NORM_ID});
+                """)
+
+                # Covering index on TABLE_NE_AGGR for doc_count
+                self.cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_nea_doc_count ON {TABLE_NE_AGGR}(doc_count);
+                """)
+
+                self.cursor.execute(f"""-- Create a covering index for the most used columns
+                CREATE INDEX IF NOT EXISTS idx_eo_stats_covering ON {TABLE_NE} (
+                    norm_id,  -- For the WHERE clause and GROUP BY
+                    document_id,  -- For COUNT(DISTINCT)
+                    id  -- For ORDER BY
+                );
+                """)
+
+                self.conn.commit()
+
+                self.cursor.execute(f"""--sql ANALYZE {TABLE_NE}""")
+                self.cursor.execute(f"""--sql ANALYZE {TABLE_NE_AGGR}""")
+                self.logger.info("Indexes created successfully.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating indexes: {e}")
+            raise
+
+        total_rows = self.cursor.execute(
+            f"""--sql
+            SELECT COUNT(*)
+            FROM {TABLE_NE_AGGR}
+            WHERE DOC_COUNT IS NULL -- view joins with aggrreagated table to get doc_count
+            """
+        ).fetchone()[0]
+
+        self.logger.info(f"Calculating aggregated entity statistics for {total_rows:,} entities...")
+        self.logger.info("This may take a while.")
+
+        # Define Reader query for aggregated entity statistics
+
+        reader_query_stats = f"""
+            SELECT
+                COUNT(*) AS {COL_NE_FQ},
+                COUNT(DISTINCT DOC_ID) AS {COL_NE_DOC_COUNT},
+                AGGR_ID
+            FROM
+                {VIEW_NE_STATS}
+            WHERE
+                DOC_COUNT IS NULL
+                AND AGGR_ID IS NOT NULL
+            GROUP BY
+                AGGR_ID
+            ORDER BY
+                NE_ID
+            LIMIT :limit OFFSET :offset
+        """
+
+        self.log_query_plan(reader_query_stats, params={"limit": 100, "offset": 0})
+
+        # Process function to get the entity ID pairs
+        def process_function_stats(batch, conn_params):
+            return batch
+
+        # Write function to update norm_id in eo_lookup
+        def write_function_stats(batch, cursor, conn):
+            update_sql = f"""
+                UPDATE {TABLE_NE_AGGR}
+                SET fq = ?,
+                    doc_count = ?
+                WHERE {COL_NE_NORM_ID} = ?
+            """
+            cursor.executemany(update_sql, batch)
+
+        # Run ReaderWriterPair for aggregated entity statistics
+        rw_pair_stats = ReaderWriterPair(
+            conn_params=self.conn_params_dict,
+            reader_query=reader_query_stats,
+            batch_size=50000,
+            num_reader_threads=32,
+            max_queue_size=1000,
+            process_function=process_function_stats,
+            write_function=write_function_stats,
+            logger=self.logger,
+            process_title="aggregated_entity_statistics",
+            total_rows=total_rows,
+        )
+        rw_pair_stats.run()
+
+        self.logger.info("Aggregated entity statistics calculated and updated.")
+
+
+
     def calc_intra_doc_fq(self) -> None:
         """
         For each entity, calculate the frequency of the entity within each document.
