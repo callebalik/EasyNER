@@ -1326,6 +1326,40 @@ def delete_view(view_name):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/execute-query", methods=["POST"])
+def execute_query():
+    try:
+        db = get_db()
+        query = request.json.get("query", "").strip()
+
+        if not query:
+            return jsonify({"error": "No query provided"}), 400
+
+        # Only allow SELECT queries for safety
+        # if not query.lower().startswith('select'):
+        #     return jsonify({"error": "Only SELECT queries are allowed"}), 400
+
+        # Execute the query with a row limit for safety
+        modified_query = f"{query} LIMIT 1000"
+        results = db.execute(modified_query)
+
+        # Get column names
+        columns = [description[0] for description in db.cursor.description]
+
+        # Convert rows to list of dictionaries
+        rows = [dict(zip(columns, row)) for row in results]
+
+        return jsonify({
+            "columns": columns,
+            "rows": rows,
+            "rowCount": len(rows),
+            "truncated": len(rows) == 1000
+        })
+    except Exception as e:
+        db.logger.error(f"Query execution error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     with app.app_context():
         try:
