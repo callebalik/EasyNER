@@ -558,3 +558,33 @@ class EasyNerDBHandler:
         conn.commit()
         conn.close()
         print(f"Database created at {db_path} using schema from {schema_path}")
+
+class DBEntryPoint:
+    def __init__(self, db_path: str = None, config_path: str = "../../config.json"):
+        """Initialize database components with proper dependency injection."""
+        self.db = EasyNerDBHandler(db_path, config_path)
+
+        # Import core components
+        from .db_data_exchanger import DBDataExchanger
+        from .db_data_cleaner import DBDataCleaner
+        from .analysis.db_analysis import DBAnalysis
+        from .db_statistics import DBStatistics
+        from .data_model.entity_occurrence import EntityOccurrence
+        from .data_model.entity_cooccurrence import EntityCooccurrence
+
+        # Initialize components with db_handler dependency
+        # self.data_exchanger = DBDataExchanger(self.db)
+        # self.data_cleaner = DBDataCleaner(self.db)
+        # self.analysis = DBAnalysis(self.db)
+        # self.statistics = DBStatistics(self.db)
+
+        # Initialize entity handling components
+        # self.eo = EntityOccurrence(self.db)
+        self.co = EntityCooccurrence(self.db)
+
+    def __enter__(self):
+        return self.db
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if hasattr(self, 'db'):
+            self.db.close()
