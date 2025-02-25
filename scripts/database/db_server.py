@@ -831,7 +831,11 @@ def show_views():
             WHERE type='view'
         """)
 
+        total_views = 0
+        valid_views = 0
+
         for view in views:
+            total_views += 1
             view_name = view[0]
             create_sql = view[1]
 
@@ -839,22 +843,55 @@ def show_views():
                 create_sql = ' '.join(line.strip() for line in create_sql.splitlines())
                 create_sql = re.sub(r'\s+', ' ', create_sql)
 
-            # Get view structure
-            schema_sql = f"PRAGMA table_info({view_name})"
-            schema = db.execute(schema_sql)
+            # Validate the view and get its status
+            is_valid, validation_result = validate_view(db, view_name)
+            if is_valid:
+                valid_views += 1
+                schema_info = []
+                schema_error = None
+                try:
+                    # Only try to get schema if view is valid
+                    schema = db.execute(f"PRAGMA table_info({view_name})")
+                    schema_info = [
+                        dict(zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col))
+                        for col in schema
+                    ]
+                except Exception as schema_error:
+                    app.logger.warning(f"Error getting schema for valid view {view_name}: {schema_error}")
+            else:
+                schema_info = []
+                schema_error = validation_result.get('error')
 
             views_info[view_name] = {
-                "schema": [
-                    dict(zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col))
-                    for col in schema
-                ],
-                "definition": create_sql
+                "schema": schema_info,
+                "definition": create_sql,
+                "is_valid": is_valid,
+                "schema_error": schema_error,
+                "validation_result": validation_result
             }
 
-        return render_template("views.html", views=views_info)
+        if not views_info:
+            app.logger.info("No views found in the database")
+            return render_template(
+                "views.html",
+                views=views_info,
+                message="No views found in the database",
+                total_views=0,
+                valid_views=0
+            )
+
+        return render_template(
+            "views.html",
+            views=views_info,
+            total_views=total_views,
+            valid_views=valid_views,
+            error="Some views have errors" if valid_views < total_views else None
+        )
+
     except Exception as e:
-        db.logger.error(f"Error loading views: {e}")
-        return render_template("error.html", message="Error loading views"), 500
+        app.logger.error(f"Error loading views page: {e}")
+        return render_template("error.html", message=f"Error loading views page: {str(e)}"), 500
+
 
 @app.route("/tables-json")
 def get_tables_json():
@@ -1416,6 +1453,67 @@ def execute_query():
     except Exception as e:
         db.logger.error(f"Query execution error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+def validate_view(db, view_name):
+    """
+    Validate a view by attempting to query it and checking its structure.
+    Returns a tuple of (is_valid, error_message).
+    """
+    try:
+        # Try to get one row from the view to validate it
+        cursor = db.cursor
+        cursor.execute(f"SELECT * FROM {view_name} LIMIT 1")
+
+        # Even if no rows, getting here means view is structurally valid
+        columns = [description[0] for description in cursor.description]
+        return True, {"columns": columns}
+    except Exception as e:
+        error_msg = str(e)
+
+        # Check for specific error types
+        if "no such table" in error_msg.lower():
+            return False, {"error": "View definition references non-existent tables or views"}
+        elif "no such column" in error_msg.lower():
+            return False, {"error": "View definition references non-existent columns"}
+        else:
+            return False, {"error": f"View error: {error_msg}"}
+
+
+@app.route("/api/view/<view_name>/validate")
+def validate_view_api(view_name):
+    try:
+        db = get_db()
+
+        # First check if view exists
+        view_check = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='view' AND name=?",
+            [view_name]
+        ).fetchone()
+
+        if not view_check:
+            return jsonify({
+                "exists": False,
+                "error": "View does not exist"
+            }), 404
+
+        # Validate the view
+        is_valid, validation_result = validate_view(db, view_name)
+
+        return jsonify({
+            "exists": True,
+            "is_valid": is_valid,
+            "validation_result": validation_result,
+            "definition": view_check[0]
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error validating view {view_name}: {e}")
+        return jsonify({
+            "exists": True,
+            "is_valid": False,
+            "error": str(e)
+        }), 500
 
 
 if __name__ == "__main__":
