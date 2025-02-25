@@ -89,6 +89,15 @@ class EasyNerDBHandler:
         """
         return {"database": self.db_path} # Return connection parameters as dict
 
+    def _analyze_database(self, table_name: str = None):
+        """
+        Analyze the database to update the query planner statistics.
+        """
+        if table_name is None:
+            self.execute("ANALYZE;")
+        else:
+            self.execute(f"ANALYZE {table_name};")
+
     def _set_default_settings(self):
         """
         Set default settings for the database connection.
