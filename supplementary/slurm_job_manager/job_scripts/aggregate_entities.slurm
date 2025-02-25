@@ -1,8 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=aggregate_antities       # Job name
-#SBATCH -o %j.out
-#SBATCH -e %j.err
-#SBATCH --time=03:00:00             # Time limit hrs:min:sec
+#SBATCH -o aggregate_antities_%j.out        # Standard output file
+#SBATCH -e aggregate_antities_%j.err        # Standard error file
+#SBATCH --time=04:00:00                     # Time limit hrs:min:sec
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=32
 
 # write this script to stdout-file - useful for scripting errors
 cat $0
@@ -25,4 +27,4 @@ echo "DB_RUN is set to: $DB_RUN"
 echo "FILE_SPAN is set to: $FILE_SPAN"
 
 # Run the conversion script (all configuration is in config.json)
-python /home/carloa/Desktop/EasyNer/scripts/database/aggregate_antities.py
+python -m scripts.database.aggregate_antities
