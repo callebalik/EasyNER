@@ -234,7 +234,7 @@ class EasyNerDBHandler:
             self.logger.error(f"Backup failed: {str(e)}")
             raise
 
-    def _log_query_plan(self, sql, params=None):
+    def _log_query_plan(self, sql, params: dict = None):
         """
         Executes a query, logs its query plan, and returns the results.
         """
