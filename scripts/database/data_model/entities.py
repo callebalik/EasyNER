@@ -1773,6 +1773,18 @@ class EntityCooccurence:
             f"ReaderWriterPair process finished for {level} level co-occurrence counting."
         )
 
+    def remove_self_references(self):
+            """
+            Remove self-references from the co-occurrence table.
+            """
+            total_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_COOCCURRENCES} WHERE e1_id = e2_id").fetchone()[0]
+            self.logger.info(f"Removing {total_count} self-references from co-occurrence table...")
+            self.cursor.execute(
+                f"DELETE FROM {TABLE_COOCCURRENCES} WHERE e1_id = e2_id"
+            )
+            self.conn.commit()
+            self.logger.info("Self-references removed.")
+
     def co_aggregate_old(
         self, batch_size=50000, ignore_entities_with_error_codes: bool = True
     ) -> None:
