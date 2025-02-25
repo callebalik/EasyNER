@@ -611,6 +611,7 @@ class EntityOccurrence:
     def backreference_norm_id(
         self,
         overwrite: bool = False,
+        target_table=TABLE_NE,
     ):
         """
         Backreferences norm_id from eo_normalized into eo_lookup based on txt_norm and entity_class_id.
@@ -622,7 +623,7 @@ class EntityOccurrence:
         # Create column norm_id in eo_lookup table if it doesn't exist
         self.cursor.execute(
             f"""--sql
-            PRAGMA table_info({TABLE_NE_LOOKUP})
+            PRAGMA table_info({target_table})
             """
         )
         columns = self.cursor.fetchall()
@@ -630,50 +631,60 @@ class EntityOccurrence:
         if not norm_id_exists:
             self.cursor.execute(
                 f"""--sql
-                ALTER TABLE {TABLE_NE_LOOKUP}
+                ALTER TABLE {target_table}
                 ADD COLUMN {COL_NE_NORM_ID} INTEGER;
                 """
             )
 
+        # Create index for faster processing of entity_occurrences
+        index = f"idx_{target_table}_{COL_NE_NORM_ID}"
+        self.cursor.execute(f"""CREATE INDEX IF NOT EXISTS {index} ON {target_table} ({COL_NE_NORM_ID})""")
+        self.cursor.execute(f"ANALYZE {target_table}")
+
+        # Check if index with the same name exists on the table
         self.logger.info(
-            f"--- Starting Backreference: {TABLE_NE_LOOKUP} table ---"
+            f"--- Starting Backreference: {target_table} table ---"
         )
         try:
             # Define Reader query for eo_lookup backreference with both txt_norm and entity_class_id matching
             reader_query_eo_lookup_backref = f"""--sql
                 SELECT
                     eoa.{COL_NE_NORM_ID},
-                    eol.id
+                    e.id
                 FROM
+                    {TABLE_NE} AS e
+                JOIN
                     {TABLE_NE_LOOKUP} AS eol
+                ON
+                    e.id = eol.id
                 JOIN
                     {TABLE_NE_AGGR} AS eoa
                 ON
                     eol.{COL_NE_TXT_NORM} = eoa.{COL_NE_TXT_NORM}
                     AND eol.{COL_NE_CLASS_ID} = eoa.{COL_NE_CLASS_ID}
                 WHERE
-                    {"eol." + COL_NE_NORM_ID + " IS NULL AND" if not overwrite else ""}
-                    eol.{COL_NE_TXT_NORM} IS NOT NULL
+                    e.error_id IS NULL
+                    AND e.overlap IS FALSE
+                    {"AND e." + COL_NE_NORM_ID + " IS NULL" if not overwrite else ""}
                 ORDER BY
-                    eol.id
+                    e.id
+                LIMIT :limit OFFSET :offset;
             """
 
-            self.log_query_plan(reader_query_eo_lookup_backref)
+            self.log_query_plan(reader_query_eo_lookup_backref, params={"limit": 100, "offset": 0})
 
             total_records = self.cursor.execute(
                 f"""--sql
-                SELECT COUNT(*)
-                FROM {TABLE_NE_LOOKUP} eol
-                JOIN {TABLE_NE_AGGR} eoa ON
-                    eol.{COL_NE_TXT_NORM} = eoa.{COL_NE_TXT_NORM}
-                    AND eol.{COL_NE_CLASS_ID} = eoa.{COL_NE_CLASS_ID}
+                SELECT COUNT(*) FROM {TABLE_NE}
                 WHERE
-                    eol.{COL_NE_TXT_NORM} IS NOT NULL
-                    {"AND eol." + COL_NE_NORM_ID + " IS NULL" if not overwrite else ""}
+                    error_id IS NULL
+                    AND overlap IS FALSE
+                    {"AND " + COL_NE_NORM_ID + " IS NULL" if not overwrite else ""}
+
                 """
             ).fetchone()[0]
 
-            self.logger.info(f"Updating {COL_NE_NORM_ID} references for {total_records} records in {TABLE_NE_LOOKUP}")
+            self.logger.info(f"Updating {COL_NE_NORM_ID} references for {total_records} records in {target_table}")
 
             # Process function to get the entity ID pairs
             def process_function_eo_lookup_backref(batch, conn_params):
@@ -682,7 +693,7 @@ class EntityOccurrence:
             # Write function to update norm_id in eo_lookup
             def write_function_eo_lookup_backref(batch, cursor, conn):
                 update_sql = f"""
-                    UPDATE {TABLE_NE_LOOKUP}
+                    UPDATE {target_table}
                     SET {COL_NE_NORM_ID} = ?
                     WHERE id = ?
                 """
@@ -692,15 +703,15 @@ class EntityOccurrence:
             rw_pair_eo_lookup_backref = ReaderWriterPair(
                 conn_params=self.conn_params_dict,
                 reader_query=reader_query_eo_lookup_backref,
-                batch_size=200000,
-                num_reader_threads=10,
+                batch_size=150000,
+                num_reader_threads=32,
                 process_function=process_function_eo_lookup_backref,
                 write_function=write_function_eo_lookup_backref,
                 logger=self.logger,
                 process_title="eo_lookup_backreference",
-                profiling_reader_enabled=False,
-                profiling_writer_enabled=False,
-                total_count=total_records,
+                profiling_reader_enabled=True,
+                profiling_writer_enabled=True,
+                total_rows=total_records,
             )
             rw_pair_eo_lookup_backref.run()
             self.logger.info("--- Finished Backreference: eo_lookup table ---")
@@ -762,7 +773,7 @@ class EntityOccurrence:
                     eo.{COL_NE_TXT} as NE_TEXT,
                     eol.id as LOOKUP_ID,
                     eol.{COL_NE_TXT_NORM} as LOOKUP_TEXT,
-                    eol.{COL_NE_NORM_ID} as NORM_ID,
+                    eo.{COL_NE_NORM_ID} as NORM_ID,
                     nea.{COL_NE_NORM_ID} as AGGR_ID,
                     nea.{COL_NE_TXT_NORM} as AGGR_TEXT,
                     doc.title as DOC_TITLE,
@@ -772,7 +783,7 @@ class EntityOccurrence:
                 JOIN {TABLE_NE_CLASS} ne ON eo.{COL_NE_CLASS_ID} = ne.id
                 JOIN {TABLE_DOCS} doc ON eo.{COL_NE_DOC_ID} = doc.id
                 LEFT JOIN {TABLE_NE_LOOKUP} eol ON eo.id = eol.id
-                LEFT JOIN {TABLE_NE_AGGR} nea ON eol.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
             """
 
             self.cursor.execute(view_sql)
@@ -799,11 +810,13 @@ class EntityOccurrence:
                     eo.id,
                     eo.{COL_NE_TXT},
                     nea.{COL_NE_TXT_NORM},
+                    nec.{COL_NE_CLASS_NAME},
+                    error_code.{COL_NE_ERROR_ID},
                     doc.title as document_title,
                     eo.{COL_NE_DOC_ID}
                 FROM
                     {TABLE_NE} eo
-                JOIN named_entities ne ON eo.{COL_NE_CLASS_ID} = ne.id
+                JOIN {TABLE_NE_CLASS} nec ON eo.{COL_NE_CLASS_ID} = nec.id
                 JOIN documents doc ON eo.{COL_NE_DOC_ID} = doc.id
                 LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
             """
@@ -844,8 +857,7 @@ class EntityOccurrence:
                         {TABLE_NE} eo
                     JOIN {TABLE_NE_CLASS} nec ON eo.{COL_NE_CLASS_ID} = nec.id
                     JOIN {TABLE_DOCS} doc ON eo.{COL_NE_DOC_ID} = doc.id
-                    LEFT JOIN {TABLE_NE_LOOKUP} eol ON eo.id = eol.id
-                    LEFT JOIN {TABLE_NE_AGGR} nea ON eol.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
                 """
 
             self.cursor.execute(view_sql)
@@ -870,13 +882,11 @@ class EntityOccurrence:
                     SELECT
                         eo.id as NE_ID,
                         eo.{COL_NE_CLASS_ID} as CLASS_ID,
-                        nea.{COL_NE_NORM_ID} as AGGR_ID,
+                        eo.{COL_NE_NORM_ID} as AGGR_ID,
                         eo.{COL_NE_DOC_ID} as DOC_ID,
                         eo.{COL_NE_SENT_IDX} as SENT_IDX
                     FROM
                         {TABLE_NE} eo
-                    LEFT JOIN {TABLE_NE_LOOKUP} eol ON eo.id = eol.id
-                    LEFT JOIN {TABLE_NE_AGGR} nea ON eol.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
                 """
 
             self.log_query_plan(view_sql)
@@ -887,6 +897,71 @@ class EntityOccurrence:
         except sqlite3.Error as e:
             self.logger.error(f"Error creating view_entity_occurrences view: {e}")
             raise
+
+    def create_view_error_lookup_inspection(self):
+        """
+        Create view showing ne with error_id and or overlap and norm_id IS NOT NULL
+        This shold show no results as norm_id should be NULL for error_id OR overlap
+        """
+        try:
+            VIEW_ERROR_LOOKUP_INSPECTION = VIEW_PREFIX + "_error_lookup_inspection"
+            self.logger.info("Creating view_error_lookup_inspection view...")
+            self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_ERROR_LOOKUP_INSPECTION}")
+
+            view_sql = f"""--sql
+                    CREATE VIEW IF NOT EXISTS {VIEW_ERROR_LOOKUP_INSPECTION}  AS
+                    SELECT
+                        eo.id as NE_ID,
+                        eo.{COL_NE_TXT} as TXT,
+                        nea.{COL_NE_TXT_NORM} as TXT_NORM,
+                        eo.{COL_NE_ERROR_ID} as ERROR_ID,
+                        eo.{COL_NE_OVERLAP} as OVERLAP,
+                        eo.{COL_NE_NORM_ID} as NORM_ID
+                    FROM
+                        {TABLE_NE} eo
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                    WHERE eo.{COL_NE_NORM_ID} IS NOT NULL
+                    AND (eo.{COL_NE_ERROR_ID} IS NOT NULL OR eo.{COL_NE_OVERLAP} = TRUE)
+                """
+
+            self.cursor.execute(view_sql)
+            self.conn.commit()
+            self.logger.info(f"{VIEW_ERROR_LOOKUP_INSPECTION} view created successfully.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating view_error_lookup_inspection view: {e}")
+            raise
+
+        try:
+            VIEW_UNBACKPOPULATED = VIEW_PREFIX + "_ne_without_backpopulated"
+            self.logger.info("Creating view_error_lookup_inspection view...")
+            self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_UNBACKPOPULATED}")
+
+            view_sql = f"""--sql
+                    CREATE VIEW IF NOT EXISTS {VIEW_UNBACKPOPULATED}  AS
+                    SELECT
+                        eo.id as NE_ID,
+                        eo.{COL_NE_TXT} as TXT,
+                        eol.{COL_NE_TXT_NORM} as TXT_LOOKUP,
+                        nea.{COL_NE_TXT_NORM} as TXT_NORM,
+                        eo.{COL_NE_ERROR_ID} as ERROR_ID,
+                        eo.{COL_NE_OVERLAP} as OVERLAP,
+                        eo.{COL_NE_NORM_ID} as NORM_ID
+                    FROM
+                        {TABLE_NE} eo
+                    LEFT JOIN {TABLE_NE_LOOKUP} eol ON eo.id = eol.id
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eol.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                    WHERE eo.{COL_NE_NORM_ID} IS NULL AND (eo.{COL_NE_ERROR_ID} IS NULL AND eo.{COL_NE_OVERLAP} = FALSE)
+                """
+
+            self.cursor.execute(view_sql)
+            self.conn.commit()
+            self.logger.info(f"{VIEW_UNBACKPOPULATED} view created successfully.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating view_error_lookup_inspection view: {e}")
+            raise
+
 
     def stats_aggregated(self):
         """
