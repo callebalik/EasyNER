@@ -211,108 +211,6 @@ def health_check():
         db.logger.error(f"Health check failed: {e}")
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
-
-@app.route("/tables-json")
-def get_tables_json():
-    try:
-        db = get_db()
-        tables_info = {}
-
-        for table in db.tables["tables"]:
-            # Get column information
-            columns = db.execute(f"PRAGMA table_info({table})")
-            columns_info = [
-                {
-                    "name": col[1],
-                    "type": col[2],
-                    "nullable": not col[3],
-                    "primary_key": bool(col[5]),
-                }
-                for col in columns
-            ]
-
-            # Get foreign keys
-            foreign_keys = db.execute(f"PRAGMA foreign_key_list({table})")
-            fk_info = [
-                {"from": fk[3], "to_table": fk[2], "to_column": fk[4]}
-                for fk in foreign_keys
-            ]
-
-            tables_info[table] = {"columns": columns_info, "foreign_keys": fk_info}
-
-        return jsonify(tables_info), 200
-    except Exception as e:
-        db.logger.error(f"Error getting table information: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/tables")
-def show_tables():
-    try:
-        db = get_db()
-        tables_info = {}
-
-        # Get list of tables
-        tables = db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        )
-
-        for table in tables:
-            table_name = table[0]
-
-            # Get table structure
-            schema_sql = f"PRAGMA table_info({table_name})"
-            schema = db.execute(schema_sql)
-
-            # Get foreign key info
-            foreign_keys_sql = f"PRAGMA foreign_key_list({table_name})"
-            foreign_keys = db.execute(foreign_keys_sql)
-
-            tables_info[table_name] = {
-                "name": table_name,
-                "schema": [
-                    dict(
-                        zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col)
-                    )
-                    for col in schema
-                ],
-                "foreign_keys": [
-                    dict(
-                        zip(
-                            [
-                                "id",
-                                "seq",
-                                "table",
-                                "from",
-                                "to",
-                                "on_update",
-                                "on_delete",
-                                "match",
-                            ],
-                            fk,
-                        )
-                    )
-                    for fk in foreign_keys
-                ],
-            }
-
-        return render_template("tables.html", tables=tables_info)
-    except Exception as e:
-        db.logger.error(f"Error loading tables: {e}")
-        return render_template("error.html", message="Error loading tables"), 500
-
-
-@app.route("/table/<table_name>/rowcount")
-def get_table_rowcount(table_name):
-    try:
-        db = get_db()
-        count = db.execute(f"SELECT COUNT(*) FROM {table_name}")[0][0]
-        return jsonify({"row_count": count})
-    except Exception as e:
-        db.logger.error(f"Error getting row count for {table_name}: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
 @app.route("/documents")
 def list_documents():
     try:
@@ -954,6 +852,107 @@ def show_views():
         db.logger.error(f"Error loading views: {e}")
         return render_template("error.html", message="Error loading views"), 500
 
+@app.route("/tables-json")
+def get_tables_json():
+    try:
+        db = get_db()
+        tables_info = {}
+
+        for table in db.tables["tables"]:
+            # Get column information
+            columns = db.execute(f"PRAGMA table_info({table})")
+            columns_info = [
+                {
+                    "name": col[1],
+                    "type": col[2],
+                    "nullable": not col[3],
+                    "primary_key": bool(col[5]),
+                }
+                for col in columns
+            ]
+
+            # Get foreign keys
+            foreign_keys = db.execute(f"PRAGMA foreign_key_list({table})")
+            fk_info = [
+                {"from": fk[3], "to_table": fk[2], "to_column": fk[4]}
+                for fk in foreign_keys
+            ]
+
+            tables_info[table] = {"columns": columns_info, "foreign_keys": fk_info}
+
+        return jsonify(tables_info), 200
+    except Exception as e:
+        db.logger.error(f"Error getting table information: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/tables")
+@app.route("/tables/")
+def show_tables():
+    try:
+        db = get_db()
+        tables_info = {}
+
+        # Get list of tables
+        tables = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )
+
+        for table in tables:
+            table_name = table[0]
+
+            # Get table structure
+            schema_sql = f"PRAGMA table_info({table_name})"
+            schema = db.execute(schema_sql)
+
+            # Get foreign key info
+            foreign_keys_sql = f"PRAGMA foreign_key_list({table_name})"
+            foreign_keys = db.execute(foreign_keys_sql)
+
+            tables_info[table_name] = {
+                "name": table_name,
+                "schema": [
+                    dict(
+                        zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col)
+                    )
+                    for col in schema
+                ],
+                "foreign_keys": [
+                    dict(
+                        zip(
+                            [
+                                "id",
+                                "seq",
+                                "table",
+                                "from",
+                                "to",
+                                "on_update",
+                                "on_delete",
+                                "match",
+                            ],
+                            fk,
+                        )
+                    )
+                    for fk in foreign_keys
+                ],
+            }
+
+        return render_template("tables.html", tables=tables_info)
+    except Exception as e:
+        db.logger.error(f"Error loading tables: {e}")
+        return render_template("error.html", message="Error loading tables"), 500
+
+
+@app.route("/table/<table_name>/rowcount")
+def get_table_rowcount(table_name):
+    try:
+        db = get_db()
+        count = db.execute(f"SELECT COUNT(*) FROM {table_name}")[0][0]
+        return jsonify({"row_count": count})
+    except Exception as e:
+        db.logger.error(f"Error getting row count for {table_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/tables/<table_name>")
 def view_table(table_name):
@@ -1070,6 +1069,7 @@ def display_table(table_name):
     except Exception as e:
         db.logger.error(f"Error displaying table {table_name}: {e}")
         return {"error": str(e)}
+
 
 
 @app.route("/table/<table_name>")
