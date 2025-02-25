@@ -1790,7 +1790,7 @@ class EntityCooccurence:
     ) -> None:
         """
         Aggregate entity cooccurrences based on normalized entity IDs from entity_occurrences_summary.
-        Uses existing relationships through entity_occurrences.summary_id to get normalized IDs.
+        Uses existing relationships through entity_occurrences.{COL_NE_NORM_ID} to get normalized IDs.
         """
         self.logger.info("Starting cooccurrence aggregation...")
 
@@ -1799,19 +1799,19 @@ class EntityCooccurence:
             CREATE TEMPORARY TABLE tmp_cooccurrences AS
             WITH normalized_pairs AS (
                 SELECT
-                    CASE WHEN eo1.summary_id <= eo2.summary_id
-                        THEN eo1.summary_id
-                        ELSE eo2.summary_id END AS e1_id_normalized,
-                    CASE WHEN eo1.summary_id <= eo2.summary_id
-                        THEN eo2.summary_id
-                        ELSE eo1.summary_id END AS e2_id_normalized,
+                    CASE WHEN eo1.{COL_NE_NORM_ID} <= eo2.{COL_NE_NORM_ID}
+                        THEN eo1.{COL_NE_NORM_ID}
+                        ELSE eo2.{COL_NE_NORM_ID} END AS e1_id_normalized,
+                    CASE WHEN eo1.{COL_NE_NORM_ID} <= eo2.{COL_NE_NORM_ID}
+                        THEN eo2.{COL_NE_NORM_ID}
+                        ELSE eo1.{COL_NE_NORM_ID} END AS e2_id_normalized,
                     eo1.document_id,
                     CASE WHEN eo1.sentence_index = eo2.sentence_index THEN 1 ELSE 0 END as same_sentence
                 FROM entity_cooccurrences ec
                 JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
                 JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
-                WHERE eo1.summary_id IS NOT NULL
-                AND eo2.summary_id IS NOT NULL
+                WHERE eo1.{COL_NE_NORM_ID} IS NOT NULL
+                AND eo2.{COL_NE_NORM_ID} IS NOT NULL
                 AND eo1.document_id = eo2.document_id  -- Ensure same document
                 {"AND eo1.error_id IS NULL" if ignore_entities_with_error_codes else ""}
                 {"AND eo2.error_id IS NULL" if ignore_entities_with_error_codes else ""}
