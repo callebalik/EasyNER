@@ -233,54 +233,156 @@ class SchemaManager:
         self.cursor.execute(self.stmt_view_eco_deprecated)
         self.conn.commit()
         self.logger.info("Views created successfully.")
+
+class Analysis:
+    """
+    Main analysis engine for co-occurrence analysis.
+    Assumes that the tables and views have been set up.
+
+    Process:
+    1. Record entity co-occurrences
+    2. Aggregate entity co-occurrences into a summary table
+    3.
+
+    """
+    def __init__(self):
+        self.logger = None
+        self.cursor = None
+        self.conn = None
+        self.conn_params_dict = None
+
+    def record_entity_cooccurrences_multithreaded(
+        self, level: str = "document", batch_size=20000, num_reader_threads=32
+    ) -> None:
+        """
+        Counts entity co-occurrences using ReaderWriterPair.
+        NOT idempotent, will add new co-occurrences to the database.
+
+        document_batch CTE: Selects a batch of document IDs based on LIMIT and OFFSET, ordered by id.
+        doc_entities CTE: Selects all entities from {TABLE_NE} that belong to the document IDs from document_batch.
+        Main SELECT Statement:
+            Joins doc_entities with itself to find entity pairs within the same document.
+            Filters out existing co-occurrences (using NOT EXISTS).
+            Filters based on overlap flags of entities.
+            Applies sentence distance filter (conditionally).
+            Calculates sentence distance (conditionally).
+            Returns DISTINCT pairs of entity IDs and sentence distance.
+
+        This ensures document atomicity across batches
+        and allows for parallel processing of entity co-occurrences.
+        """
+        if level not in ["document", "sentence"]:
+            raise ValueError("Level must be either 'document' or 'sentence'")
+
+        def reader_query_fn(level):  # Define reader_query as a function
+            return f"""--sql
+                    WITH document_batch AS (
+                        SELECT d.id AS doc_id
+                        FROM {TABLE_DOCS} d
+                        ORDER BY d.id
+                        LIMIT :limit OFFSET :offset
+                    ),
+                    doc_entities AS (
                         SELECT
-                            ne1.named_entity as type1,
-                            ne2.named_entity as type2,
-                            COUNT(*) as pair_count
-                        FROM temp_new_cooccurrences t
-                        JOIN entity_occurrences e1 ON e1.id = t.e1_id
-                        JOIN entity_occurrences e2 ON e2.id = t.e2_id
-                        JOIN named_entities ne1 ON ne1.id = e1.entity_id
-                        JOIN named_entities ne2 ON ne2.id = e2.entity_id
-                        GROUP BY ne1.named_entity, ne2.named_entity
-                        ORDER BY pair_count DESC
-                        LIMIT 5
+                            ne.id,
+                            ne.{DOC_ID},
+                            ne.{NE_SENT_IDX},
+                            ne.{NE_NORM_ID}
+                        FROM {TABLE_NE} ne
+                        WHERE ne.{DOC_ID} IN (SELECT doc_id FROM document_batch)
+                    ),
+                    distinct_pairs AS (
+                        SELECT DISTINCT
+                            e1.id AS {E1_ID},
+                            e2.id AS {E2_ID}
+                        FROM doc_entities e1
+                        JOIN doc_entities e2 ON
+                            e1.document_id = e2.document_id AND
+                            e1.id < e2.id AND -- Ensure canonical order and avoid self-joins
+                            e1.{NE_NORM_ID} IS NOT NULL AND
+                            e2.{NE_NORM_ID} IS NOT NULL -- This should filter out any entities with error codes or overlap as they do not have normalized IDs
+                            {"AND ABS(e1." + {NE_SENT_IDX} + "- e2." + {NE_SENT_IDX} + ") <= 5" if level == "sentence" else ""}
+                        WHERE NOT EXISTS ( -- Do not include existing co-occurrences
+                            SELECT 1
+                            FROM {TABLE_COOCCURRENCES} ec
+                            WHERE ec.e1_id = e1.id AND ec.e2_id = e2.id
+                        )
                     )
-                    SELECT * FROM new_pairs
-                    """
-                )
-                type_stats = cursor.fetchall()
-                logger.info("\nTop entity type pairs:")
-                for type1, type2, count in type_stats:
-                    logger.info(f"  {type1} - {type2}: {count:,} pairs")
-            cursor.execute(
-                """
-                SELECT
-                    COUNT(*) as total_pairs,
-                    (SELECT COUNT(DISTINCT entity_id)
-                        FROM entity_occurrences
-                        WHERE id IN (SELECT e1_id FROM entity_cooccurrences
-                                            UNION
-                                            SELECT e2_id FROM entity_cooccurrences)) as total_entities,
-                    COALESCE(AVG(sentence_distance), 0) as avg_distance
-                FROM entity_cooccurrences
-                """
-            )
-            total_stats = cursor.fetchone()
-            logger.info(
-                f"\nCo-occurrence identification complete:"
-                f"\n- Total unique pairs: {total_stats[0]:,}"
-                f"\n- Unique entities involved: {total_stats[1]:,}"
-                + (
-                    f"\n- Average sentence distance: {total_stats[2]:.2f}"
-                    if level_local == "sentence"
-                    else ""
-                )
-            )
-            return None
+                    SELECT -- Return the final distinct pair
+                        p.e1_id,
+                        p.e2_id
+                        {", (SELECT ABS(e1." + {NE_SENT_IDX} + " - e2." + {NE_SENT_IDX} + ") FROM doc_entities e1 JOIN doc_entities e2 ON e1.id = p.e1_id AND e2.id = p.e2_id) AS sentence_distance" if level == "sentence" else ""}
+                    FROM distinct_pairs p
 
-        base_executor.execute_operation(lambda conn: operation(conn, level),)
 
+                """
+
+        try:
+            # For query plan logging, provide sample values
+            query_with_params = reader_query_fn(level).replace(':limit', '1000').replace(':offset','100')  # Use sample values
+            self.log_query_plan(query_with_params)
+        except Exception as e:
+            self.logger.error(f"Error creating reader query: {e}")
+            raise
+
+
+
+        def cooccurrence_process_function(batch, conn_params):
+            """Processes a batch of entity co-occurrence data."""
+            return batch  # For now, minimal processing, it done database side - just pass the batch through
+
+        def cooccurrence_write_function(batch, cursor, conn, logger):
+            """Writes a batch of entity co-occurrences to the database using executemany."""
+            logger.info(f"Writing batch of {len(batch)} co-occurrences to the database.")
+            sql = f"""--sql
+                    INSERT INTO {TABLE_COOCCURRENCES} (e1_id, e2_id {", sentence_distance" if level == "sentence" else ""})
+                    VALUES (?, ? {", ?" if level == "sentence" else ""})
+                """
+            try:
+                cursor.executemany(
+                    sql, batch
+                )  # Directly use the batch from reader as it's pre-formatted
+            except Exception as e:
+                conn.rollback()  # Rollback transaction on error for the current batch
+                print(
+                    f"Error in write_function with : {e}. Transaction rolled back for current batch."
+                )
+                return False  # Indicate failure (optional error handling)
+            return True  # Indicate success (optional success indication)
+
+        # --- COUNT QUERY TO GET ACCURATE total_count ---
+        # count_query = "SELECT COUNT(*) FROM (" + reader_query_fn(level) + ")"
+        # self.cursor.execute(count_query)
+        # total_count = self.cursor.fetchone()[0]
+        total_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}").fetchone()[0]
+
+        self.logger.info(
+            f"Total documents to process for co-occurrences: {total_count:,}"
+        )
+
+        rw_pair = ReaderWriterPair(
+            conn_params=self.conn_params_dict,
+            reader_query=reader_query_fn(level),  # Pass reader query function
+            batch_size=batch_size,
+            process_function=cooccurrence_process_function,
+            write_function=cooccurrence_write_function,
+            num_reader_threads=num_reader_threads,
+            logger=self.logger,
+            max_queue_size=500,
+            profiling_writer_enabled=True,
+            profiling_reader_enabled=True,
+            writer_batch_chunking=4,
+            total_rows=total_count,  # Use the accurate count
+            process_title=f"Co-occurrence counting at {level} level",
+        )
+
+        self.logger.info(
+            f"Starting ReaderWriterPair to count entity co-occurrences at {level} level."
+        )
+        rw_pair.run()
+        self.logger.info(
+            f"ReaderWriterPair process finished for {level} level co-occurrence counting."
+        )
 
     def count_entity_cooccurrences_multithreaded(self, level: str = "document", batch_size=5000, num_reader_threads=32) -> None:
         """
