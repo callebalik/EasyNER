@@ -11,6 +11,7 @@
 
             <div class="view-actions">
                 <a href="{{ url_for('table_view', table_name=view_name) }}" class="action-button">View Data</a>
+                <button class="action-button" onclick="loadSampleData('{{ view_name }}')" id="sample-btn-{{ view_name }}">Load Sample Data</button>
                 <button class="action-button delete-button" onclick="deleteView('{{ view_name }}')" style="background: #dc3545;">Delete View</button>
             </div>
 
@@ -45,30 +46,17 @@
                 <div id="explain-{{ view_name }}" class="explain-result" style="display: none;"></div>
             </div>
 
-            {% if view_info.sample %}
-            <h3>Sample Data</h3>
-            <table class="sample-table">
-                <thead>
-                    <tr>
-                        {% for key in view_info.sample[0].keys() %}
-                        <th>{{ key }}</th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in view_info.sample %}
-                    <tr>
-                        {% for value in row.values() %}
-                        <td>{{ value }}</td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% endif %}
+            <div id="sample-container-{{ view_name }}" style="display: none;">
+                <h3>Sample Data</h3>
+                <div class="sample-loading" id="sample-loading-{{ view_name }}" style="display: none;">
+                    Loading sample data...
+                </div>
+                <div class="sample-error" id="sample-error-{{ view_name }}" style="display: none;"></div>
+                <div class="sample-content" id="sample-content-{{ view_name }}"></div>
+            </div>
         </div>
     {% endfor %}
-    {# Tables section removed for separate pages as per request #}
+    <!-- Tables section removed for separate pages as per request -->
 </div>
 
 <style>
@@ -303,6 +291,22 @@ h3 {
 .error-message i, .info-message i {
     font-size: 1.2em;
 }
+
+.sample-loading {
+    text-align: center;
+    padding: 1rem;
+    color: #666;
+    font-style: italic;
+}
+
+.sample-error {
+    padding: 1rem;
+    margin: 1rem 0;
+    background-color: #fee;
+    color: #c33;
+    border: 1px solid #fcc;
+    border-radius: 4px;
+}
 </style>
 
 <script>
@@ -402,6 +406,92 @@ function explainView(viewName) {
     } else {
         container.style.display = 'none';
     }
+}
+
+function loadSampleData(viewName) {
+    const container = document.getElementById('sample-container-' + viewName);
+    const loading = document.getElementById('sample-loading-' + viewName);
+    const error = document.getElementById('sample-error-' + viewName);
+    const content = document.getElementById('sample-content-' + viewName);
+    const button = document.getElementById('sample-btn-' + viewName);
+
+    // If already loaded and visible, just toggle visibility
+    if (container.style.display !== 'none' && content.innerHTML) {
+        container.style.display = 'none';
+        button.textContent = 'Load Sample Data';
+        return;
+    }
+
+    // Show loading state
+    container.style.display = 'block';
+    loading.style.display = 'block';
+    error.style.display = 'none';
+    content.innerHTML = '';
+    button.textContent = 'Loading...';
+
+    fetch('/view/' + viewName + '/sample')
+        .then(response => response.json())
+        .then(data => {
+            loading.style.display = 'none';
+
+            if (data.error) {
+                error.textContent = data.error;
+                error.style.display = 'block';
+                button.textContent = 'Load Sample Data';
+                return;
+            }
+
+            if (data.message === 'No data available') {
+                error.textContent = 'No sample data available';
+                error.style.display = 'block';
+                button.textContent = 'Load Sample Data';
+                return;
+            }
+
+            // Create table for sample data
+            const sample = data.sample;
+            if (sample && sample.length > 0) {
+                const table = document.createElement('table');
+                table.className = 'sample-table';
+
+                // Create header
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                Object.keys(sample[0]).forEach(key => {
+                    const th = document.createElement('th');
+                    th.textContent = key;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+
+                // Create body
+                const tbody = document.createElement('tbody');
+                sample.forEach(row => {
+                    const tr = document.createElement('tr');
+                    Object.values(row).forEach(value => {
+                        const td = document.createElement('td');
+                        td.textContent = value !== null ? value : 'NULL';
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+
+                content.appendChild(table);
+                button.textContent = 'Hide Sample Data';
+            } else {
+                error.textContent = 'No sample data available';
+                error.style.display = 'block';
+                button.textContent = 'Load Sample Data';
+            }
+        })
+        .catch(err => {
+            loading.style.display = 'none';
+            error.textContent = 'Error loading sample data: ' + err.message;
+            error.style.display = 'block';
+            button.textContent = 'Load Sample Data';
+        });
 }
 </script>
 {% endblock %}

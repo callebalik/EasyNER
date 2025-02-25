@@ -499,6 +499,7 @@ def entity_cooccurrences_table():
         db.logger.error(f"Error loading entity co-occurrences table: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/entity-cooccurrences/summary/table")
 def entity_cooccurrences_summary_table():
     try:
@@ -884,7 +885,76 @@ def debug_entity_cooccurrences_summary():
         return jsonify({"error": str(e)}), 500
 
 
-# Enhanced table views # Doesn't work
+@app.route("/view/<view_name>/sample")
+def get_view_sample(view_name):
+    try:
+        db = get_db()
+        # Check if it's actually a view first
+        view_check = db.execute(
+            "SELECT type FROM sqlite_master WHERE type='view' AND name=?", [view_name]
+        )
+        if not view_check:
+            return jsonify({"error": "View not found"}), 404
+
+        # Get schema info for column names
+        schema = db.execute(f"PRAGMA table_info({view_name})")
+        columns = [col[1] for col in schema]
+
+        # Get sample row
+        sample_sql = f"SELECT * FROM {view_name} LIMIT 1"
+        sample = db.execute(sample_sql)
+
+        if not sample:
+            return jsonify({"message": "No data available"}), 404
+
+        # Convert sample to dictionary
+        sample_data = [dict(zip([col for col in columns], row)) for row in sample]
+
+        return jsonify({"sample": sample_data})
+    except Exception as e:
+        db.logger.error(f"Error fetching sample for view {view_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/views")
+def show_views():
+    try:
+        db = get_db()
+        views_info = {}
+
+        # Get list of views with their full definitions
+        views = db.execute("""
+            SELECT name, sql
+            FROM sqlite_master
+            WHERE type='view'
+        """)
+
+        for view in views:
+            view_name = view[0]
+            create_sql = view[1]
+
+            if create_sql:
+                create_sql = ' '.join(line.strip() for line in create_sql.splitlines())
+                create_sql = re.sub(r'\s+', ' ', create_sql)
+
+            # Get view structure
+            schema_sql = f"PRAGMA table_info({view_name})"
+            schema = db.execute(schema_sql)
+
+            views_info[view_name] = {
+                "schema": [
+                    dict(zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col))
+                    for col in schema
+                ],
+                "definition": create_sql
+            }
+
+        return render_template("views.html", views=views_info)
+    except Exception as e:
+        db.logger.error(f"Error loading views: {e}")
+        return render_template("error.html", message="Error loading views"), 500
+
+
 @app.route("/tables/<table_name>")
 def view_table(table_name):
     try:
