@@ -3,6 +3,7 @@ from multiprocessing import Lock, Value
 import threading
 import sqlite3
 import queue
+from queue import Queue
 import logging
 from tqdm import tqdm
 import time
@@ -41,20 +42,21 @@ class Reader:
     """
 
     def __init__(
-        self,
+     self,
         conn_params,
         query: str,
         batch_size: int,
         process_function,
-        data_queue,
-        lock: Lock,  # Added lock
-        shared_processed_count,  # Added shared_processed_count
-        stop_event: threading.Event = None,  # Added stop_event
-        logger=None,
-        queue_size_backpressure_threshold=50,
-        progress_queue=None,  # Added progress_queue
+        data_queue: Queue,  # Use multiprocessing.Queue for type hint
+        lock: Lock,
+        shared_processed_count: Value,
+        stop_event: threading.Event = None,
+        logger: logging.Logger = None,
+        queue_size_backpressure_threshold: int =50,
+        progress_queue: Queue = None, # Use multiprocessing.Queue for type hint
         profiling_filename: str = None,
-        total_count=None,  # Added total_count
+        total_rows: int = None,
+        batch_queue: Queue = None,  # Batch queue for chunk assignment (REQUIRED for chunking)
     ):
         """
         Initializes the Reader.
@@ -70,6 +72,10 @@ class Reader:
             progress_queue (queue.Queue, optional): Queue to send progress updates.
             profiling_enabled (bool, optional): Enable profiling for Reader's run method. Defaults to False.
         """
+        if batch_queue is None:
+            raise ValueError("batch_queue must be provided for Reader when using chunking strategy.")
+        self.batch_queue = batch_queue
+
         self.lock = lock
         self.stop_event = stop_event  # Store stop_event
         self.shared_processed_count = shared_processed_count  # Initialize shared processed count
@@ -81,8 +87,8 @@ class Reader:
         self.logger = logger
         self.qsize_backbpressure_threshold = queue_size_backpressure_threshold
         self.progress_queue = progress_queue  # Store progress_queue
-        self.total_count = total_count  # Store total_count
-        self.profiling_file: str = None
+        self.total_count = total_rows  # Store total_count
+        self.profiling_file = profiling_filename
 
     def _read_and_process(self):
         """... (Reader class _read_and_process method) ..."""
@@ -91,8 +97,7 @@ class Reader:
         try:
             conn = sqlite3.connect(**self.conn_params)
             cursor = conn.cursor()
-            cursor.execute(self.query)
-            total_processed = 0
+            total_processed_in_thread = 0
             log_queue_size_interval = (
                 2  # Log queue size every N batches (adjust as needed)
             )
@@ -113,10 +118,28 @@ class Reader:
                             )
                             break
 
-                batch = cursor.fetchmany(self.batch_size)
+                try:
+                    batch_desc = self.batch_queue.get(
+                        timeout=10
+                    )  # Get batch assignment from queue
+                    if batch_desc is None:
+                        break
+                except queue.Empty:
+                    self.logger.debug("Reader thread: batch_queue is empty. Exiting read loop.")
+                    break
+
+                offset = batch_desc["offset"]
+                limit = batch_desc["limit"]
+
+                params = {"offset": offset, "limit": limit} # Parameters for query
+                self.logger.debug(f"Executing query with params: {params}")
+                cursor.execute(self.query, params)
+                batch = cursor.fetchmany(limit) # Redundant limit as execute already limits the query, but safety net
+
                 if not batch:
-                    self.logger.debug("Reader thread: no more data from cursor")
-                    break  # No more data
+                    self.logger.warning(f"Reader thread: Unexpectedly got empty batch from cursor at offset {offset} from batch queue.") # Unepected as each batch should have data, unless query is incorrect and we've checked for total processed before fetching.
+                    self.batch_queue.task_done() # Signal task done even if batch is unexpectedly empty
+                    continue # Skip processing and get next batch from queue (or exit if queue is empty)
 
                 processed_batch = self.process_function(batch, self.conn_params)
 
@@ -135,7 +158,7 @@ class Reader:
                     self.data_queue.put(
                         processed_batch
                     )  # Put bastch into queue AFTER backpressure check
-                    total_processed += len(
+                    total_processed_in_thread += len(
                         processed_batch
                     )  # Count processed items, not fetched
 
@@ -148,7 +171,7 @@ class Reader:
                 if batch_counter % log_queue_size_interval == 0:
                     queue_size = self.data_queue.qsize()
                     self.logger.debug(
-                        f"READ PROCESSED BATCH (lenght {len(processed_batch)}) - Queue size: {queue_size} (total processed in thread: {total_processed})"
+                        f"READ PROCESSED BATCH (lenght {len(processed_batch)}) - Queue size: {queue_size} (total processed in thread: {total_processed_in_thread})"
                     )
 
                 if (
@@ -196,10 +219,10 @@ class Reader:
 
         if self.profiling_file:
             self.logger.debug(
-                f"START: READ + PROCESS (profiling -> '{prof_filename}')"
+                f"START: READ + PROCESS (profiling -> '{self.profiling_file}')"
             )
             run_with_profiling(
-                lambda: self._run_internal(num_threads), prof_filename
+                lambda: self._run_internal(num_threads), self.profiling_file
             )  # Use lambda to call internal run with args
         else:
             self._run_internal(num_threads)
@@ -408,13 +431,13 @@ class ReaderWriterPair:
         reader_query,
         process_function,
         write_function,
+        total_rows: int,
         logger: logging.Logger = None,
         batch_size: int = 1000,
         num_reader_threads : int =4,
         max_queue_size: int =50,
         writer_batch_chunking: int =2,
         process_title: str = None,
-        total_count: int = None,
         profiling_reader_enabled=False,  # Added profiling_enabled
         profiling_writer_enabled=False,  # Added profiling_enabled):
     ):
@@ -422,6 +445,7 @@ class ReaderWriterPair:
         Initializes the ReaderWriterPair, creating the queue and instances of Reader and Writer.
 
         Args:
+            total_rows (int): Total number of rows to process. Must be provided for chunking.
             conn_params (dict): Database connection parameters.
             reader_query (str): SQL query for the Reader.
             batch_size (int): Batch size for reading.
@@ -430,7 +454,6 @@ class ReaderWriterPair:
             num_reader_threads (int, optional): Number of reader threads. Defaults to 4.
             logger (logging.Logger, optional): Logger instance. Defaults to a basic logger.
             max_queue_size (int, optional): Maximum size of the internal data queue. Defaults to 50.
-            total_count (int, optional): Total count of items to process. Defaults to None.
             profiling_reader_enabled (bool, optional): Enable profiling for Reader. Defaults to False.
             profiling_writer_enabled (bool, optional): Enable profiling for Writer. Defaults to False.
         """
@@ -440,13 +463,37 @@ class ReaderWriterPair:
             raise ValueError(
                 "Reader query must include an ORDER BY clause to ensure consistent row processing."
             )
+        if ":offset" not in reader_query:
+            raise ValueError(
+                "Reader query must include a :offset parameter for threaded pagination."
+            )
+        if ":limit" not in reader_query:
+            raise ValueError(
+                "Reader query must include a :limit parameter for threaded pagination."
+            )
+        # **NEW CHECKS: Ensure exactly ONE :limit and ONE :offset placeholder**
+        if reader_query.lower().count(':limit') != 1:
+            raise ValueError(
+                "Reader query must contain exactly one ':limit' parameter placeholder."
+            )
+        if reader_query.lower().count(':offset') != 1:
+            raise ValueError(
+                "Reader query must contain exactly one ':offset' parameter placeholder."
+            )
+
+
 
         self.conn_params = conn_params
-        self.batch_size = batch_size
+
         self.process_function = process_function
         self.write_function = write_function
         self.num_reader_threads = num_reader_threads
         self.logger = logger or self._setup_logger()
+
+        # Initialize queues
+        self.batch_size = batch_size
+        self.batch_queue = queue.Queue()  # Create batch queue for chunking
+
         self.data_queue = queue.Queue(
             maxsize=max_queue_size
         )  # Pair class creates the queue
@@ -459,13 +506,13 @@ class ReaderWriterPair:
 
         self.stop_event = threading.Event()  # Add a general stop event
 
-        self.total_count = total_count  # Store total_count
+        self.total_rows = total_rows  # Store total_count
         self.total_processed = multiprocessing.Value("i", 0)
         self.total_processed_lock = multiprocessing.Lock()  # Create the lock
         self.process_title = process_title  # Store process title if provided
 
         self.pbar_aggregated = tqdm(
-            total=total_count, desc="Total Progress"
+            total=total_rows, desc="Total Progress"
         )  # Initialize tqdm for aggregated progress
 
         self.profiling_reader_enabled = os.getenv(
@@ -496,6 +543,7 @@ class ReaderWriterPair:
             process_function,
             self.data_queue,
             logger=self.logger,
+            batch_queue=self.batch_queue,  # Pass batch_queue to Reader
             queue_size_backpressure_threshold=max_queue_size
             - 5,  # Adjusted backpressure threshold for when readers start to pause to avoid maxing out queue
             progress_queue=self.progress_queue,  # Pass progress_queue to Reader
@@ -503,7 +551,7 @@ class ReaderWriterPair:
             stop_event=self.stop_event,  # Add a general stop event
             lock=self.total_processed_lock,  # Pass lock to Reader
             shared_processed_count=self.total_processed,  # Pass shared_processed_count to Reader
-            total_count=self.total_count,  # Pass total_count
+            total_rows=self.total_rows,  # Pass total_count
 
 
         )
@@ -518,6 +566,19 @@ class ReaderWriterPair:
             stop_event=self.stop_event,  # Add a general stop event
         )
 
+
+
+    def _populate_batch_queue(self):
+        if self.total_rows is None:
+            raise ValueError("total_rows must be provided for chunking.")
+
+        num_batches = (self.total_rows + self.batch_size - 1) // self.batch_size # Calculate number of batches
+        self.logger.info(f"Populating batch queue with {num_batches} batches based on total_rows: {self.total_rows}.")
+        for i in range(num_batches):
+            offset = i * self.batch_size
+            limit = self.batch_size
+            self.batch_queue.put({'offset': offset, 'limit': limit})
+        self.logger.info("Batch queue population complete.")
 
 
     def _progress_aggregation_process(self):  # Aggregation thread function
@@ -593,6 +654,8 @@ class ReaderWriterPair:
         Runs the Reader and Writer threads CONCURRENTLY (Corrected Thread Management).
         """
         try:
+            self._populate_batch_queue()
+
             self.logger.info(
                 f"Starting ReaderWriterPair with {self.num_reader_threads} reader threads."
             )
@@ -606,7 +669,7 @@ class ReaderWriterPair:
             self.logger.info(
                 f"ReaderWriterPair: Starting {self.num_reader_threads} reader threads"
                 f"{' for process ' + self.process_title if self.process_title else ''}."
-                f"{' with total count ' + str(self.total_count) if self.total_count is not None else ''}"
+                f"{' with total count ' + str(self.total_rows) if self.total_rows is not None else ''}"
             )
             for _ in range(self.num_reader_threads):
                 thread = threading.Thread(
@@ -650,6 +713,9 @@ class ReaderWriterPair:
             )  # Wait for aggregation thread to finish, with a timeout
 
             self.logger.info("ReaderWriterPair process completed.")
+
+            self.batch_queue.join() # <-- **ADD batch_queue.join() here, after data_queue.join() and before thread joins**
+
         except KeyboardInterrupt:
 
             timeout: float = 2  # Define timeout at the start for clarity
