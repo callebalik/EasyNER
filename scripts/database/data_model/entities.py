@@ -9,12 +9,13 @@ PNM_stem = "PNM"
 TABLE_NE_DIS = TABLE_NE + "_" + DIS_stem
 TABLE_NE_PNM = TABLE_NE + "_" + PNM_stem
 
-TABLE_COOCCURRENCES = "co"
+TABLE_COOCCURRENCES = "cooccurrences"
+TABLE_CO_AGGR = "co" + "_aggregated"
 
 TABLE_DOCS = "documents"
 TABLE_SENTENCES = "sentences"
 TABLE_ERROR = "eo_error_codes"
-TABLE_CO_AGGR = "co_aggregated"
+
 
 
 COL_NE_CLASS_ID = "entity_id"  # Named entity text column name
@@ -38,6 +39,8 @@ VIEW_NE_RAW = "view_ne_raw"
 
 VIEW_NE_COMP = VIEW_PREFIX + TABLE_NE + "_compiled"
 VIEW_NE_STATS = VIEW_PREFIX + TABLE_NE + "_stats"
+VIEW_COOCCURRENCES = VIEW_PREFIX + TABLE_COOCCURRENCES
+VIEW_COOCCURRENCES_AGGREGATED = VIEW_PREFIX + TABLE_CO_AGGR
 import math
 import sqlite3
 
@@ -848,6 +851,8 @@ class EntityOccurrence:
                         nec.{COL_NE_CLASS_NAME} as NE_CLASS,
                         nea.{COL_NE_NORM_ID} as AGGR_ID,
                         nea.{COL_NE_TXT_NORM} as TXT_NORM,
+                        nea.fq as FQ,
+                        nea.doc_count as DOC_COUNT,
                         doc.title as DOC_TITLE,
                         eo.{COL_NE_DOC_ID} as DOC_ID,
                         eo.{COL_NE_SENT_IDX} as SENT_IDX,
@@ -884,9 +889,11 @@ class EntityOccurrence:
                         eo.{COL_NE_CLASS_ID} as CLASS_ID,
                         eo.{COL_NE_NORM_ID} as AGGR_ID,
                         eo.{COL_NE_DOC_ID} as DOC_ID,
-                        eo.{COL_NE_SENT_IDX} as SENT_IDX
+                        eo.{COL_NE_SENT_IDX} as SENT_IDX,
+                        nea.{COL_NE_DOC_COUNT} as DOC_COUNT
                     FROM
                         {TABLE_NE} eo
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
                 """
 
             self.log_query_plan(view_sql)
@@ -1320,13 +1327,83 @@ class EntityCooccurence:
             CREATE TABLE IF NOT EXISTS {TABLE_CO_AGGR} (
                 e1_id INTEGER NOT NULL,
                 e2_id INTEGER NOT NULL,
-                fq INTEGER NOT NULL,
-                pmi REAL NOT NULL,
+                fq_document_level INTEGER DEFAULT NULL,
+                fq_sentence_level INTEGER DEFAULT NULL,
+                uniq_docs INTEGER DEFAULT NULL,
+                pmi REAL DEFAULT NULL,
                 PRIMARY KEY (e1_id, e2_id),
                 FOREIGN KEY (e1_id) REFERENCES {TABLE_NE_AGGR}(id),
                 FOREIGN KEY (e2_id) REFERENCES {TABLE_NE_AGGR}(id)
             )
         """
+        self.stmt_view_cooccurrences = f"""--sql
+            CREATE VIEW IF NOT EXISTS {VIEW_COOCCURRENCES} AS
+            SELECT
+                e1_id,
+                e2_id,
+                {COL_CO_SENT_DIST},
+                {COL_CO_AGGR_ID},
+                nea1.{COL_NE_TXT_NORM} as e1_norm,
+                nea2.{COL_NE_TXT_NORM} as e2_norm,
+                ne1.{COL_NE_CLASS_ID} as e1_class,
+                ne2.{COL_NE_CLASS_ID} as e2_class,
+                ne1.{COL_NE_DOC_ID} as e1_doc_id,
+                ne2.{COL_NE_DOC_ID} as e2_doc_id
+            FROM {TABLE_COOCCURRENCES} co
+            JOIN {TABLE_NE} ne1 ON co.e1_id = ne1.id
+            JOIN {TABLE_NE} ne2 ON co.e2_id = ne2.id
+            JOIN {TABLE_NE_AGGR} nea1 ON ne1.{COL_NE_AGGREGATED_ID} = nea1.norm_id
+            JOIN {TABLE_NE_AGGR} nea2 ON ne2.{COL_NE_AGGREGATED_ID} = nea2.norm_id
+        """
+        self.stmt_view_cooccurrences_aggregated = f"""--sql
+            CREATE VIEW IF NOT EXISTS {VIEW_COOCCURRENCES_AGGREGATED} AS
+            SELECT
+                coa.e1_id,
+                coa.e2_id,
+                coa.fq_document_level,
+                coa.fq_sentence_level,
+                coa.uniq_docs,
+                coa.pmi,
+                nea1.{COL_NE_TXT_NORM} as e1_norm,
+                nea2.{COL_NE_TXT_NORM} as e2_norm,
+                nea1.{COL_NE_CLASS_ID} as e1_class,
+                nea2.{COL_NE_CLASS_ID} as e2_class
+            FROM {TABLE_CO_AGGR} coa
+            JOIN {TABLE_NE_AGGR} nea1 ON coa.e1_id = nea1.norm_id
+            JOIN {TABLE_NE_AGGR} nea2 ON coa.e2_id = nea2.norm_id
+
+        """
+        self.stmt_view_cooccurrences_stats = f"""--sql
+        CREATE VIEW IF NOT EXISTS {VIEW_COOCCURRENCES}_stats AS
+        SELECT
+            CASE
+                WHEN ne1.{COL_NE_NORM_ID} < ne2.{COL_NE_NORM_ID} THEN ne1.id
+                ELSE ne2.id
+            END AS e1_id,  -- Still use original e1_id for joining, but canonicalize normalized IDs
+            CASE
+                WHEN ne1.{COL_NE_NORM_ID} < ne2.{COL_NE_NORM_ID} THEN ne2.id
+                ELSE ne1.id
+            END AS e2_id,  -- Still use original e2_id for joining, but canonicalize normalized IDs
+            CASE
+                WHEN ne1.{COL_NE_NORM_ID} < ne2.{COL_NE_NORM_ID} THEN ne1.{COL_NE_NORM_ID}
+                ELSE ne2.{COL_NE_NORM_ID}
+            END AS e1_norm_id, -- Canonicalized normalized e1_norm_id
+            CASE
+                WHEN ne1.{COL_NE_NORM_ID} < ne2.{COL_NE_NORM_ID} THEN ne2.{COL_NE_NORM_ID}
+                ELSE ne1.{COL_NE_NORM_ID}
+            END AS e2_norm_id, -- Canonicalized normalized e2_norm_id
+            coa.fq_document_level as fq_document_level,
+            coa.fq_sentence_level as fq_sentence_level,
+            coa.uniq_docs as uniq_docs,
+            coa.pmi as pmi,
+            ne1.{COL_NE_DOC_ID} as doc_id,
+            ne1.{COL_NE_SENT_IDX} as sent_idx_1,
+            ne2.{COL_NE_SENT_IDX} as sent_idx_2
+        FROM {TABLE_CO_AGGR} coa
+        JOIN {TABLE_NE} ne1 ON coa.e1_id = ne1.id  -- Join on original e1_id
+        JOIN {TABLE_NE} ne2 ON coa.e2_id = ne2.id  -- Join on original e2_id
+        """
+
 
     def setup_tables(self):
         """
@@ -1340,6 +1417,26 @@ class EntityCooccurence:
         self.conn.commit()
 
         self.logger.info("Tables created successfully.")
+
+    def setup_views(self):
+        """
+        Drop and recreate the view for entity co-occurrences.
+        """
+        self.logger.info("Setting up views for entity co-occurrence analysis...")
+
+        self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_COOCCURRENCES}")
+        self.cursor.execute(self.stmt_view_cooccurrences)
+
+        self.conn.commit()
+
+        self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_COOCCURRENCES_AGGREGATED}")
+        self.cursor.execute(self.stmt_view_cooccurrences_aggregated)
+        self.conn.commit()
+
+        self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_COOCCURRENCES}_stats")
+        self.cursor.execute(self.stmt_view_cooccurrences_stats)
+        self.conn.commit()
+        self.logger.info("Views created successfully.")
 
     def generate_cooccurrence_matrix(
         self, target_table="entity_occurrences_summary", batch_size=10000
