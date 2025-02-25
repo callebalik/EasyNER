@@ -7,6 +7,7 @@ body {
     padding: 20px;
     line-height: 1.6;
     font-size: 15px;
+    display: block;
 }
 .container {
     max-width: 1200px;
@@ -17,12 +18,28 @@ body {
     padding: 1rem;
     margin: -20px -20px 2rem -20px;
     color: white;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-start;
+
+    .nav-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding: 0.5rem;
+        background: rgba(255,255,255,0.05);
+        border-radius: 6px;
+        min-width: 200px;
+    }
 
     a {
         color: white;
         text-decoration: none;
-        margin-right: 1rem;
         padding: 0.5rem;
+        width: 100%;
+        box-sizing: border-box;
 
         &:hover {
             background: rgba(255,255,255,0.1);
