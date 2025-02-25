@@ -4,12 +4,16 @@ from .data_model import entities
 import os
 import sass
 import plotly.graph_objects as go
+import importlib  # Added this import
+from .statistics.sankey_diagram import create_disease_phenomena_sankey
+from .statistics.visualization_manager import VisualizationManager
 
 # Set template directory to current directory/templates
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 app = Flask(__name__, template_folder=template_dir)
 
 # Initialize single database connection
+visualization_manager = VisualizationManager(app)
 db_instance = None
 
 
@@ -1084,127 +1088,17 @@ def table_view(table_name):
 def disease_phenomena_sankey():
     try:
         db = get_db()
-
-        # Query the view_disease_phenomena_summary
-        query = """
-            SELECT disease, phenomenon, fq_document_level, pmi, fq_disease, fq_phenomenon, uniq_documents_disease, uniq_documents_phenomenon
-            FROM view_disease_phenomena_summary
-            WHERE fq_document_level > 0
-            AND pmi > 8
-            ORDER BY pmi DESC, fq_document_level DESC
-        """
-        data = db.execute(query)
-
-        # Prepare data for Sankey diagram
-        label = []
-        source = []
-        target = []
-        value = []
-
-        # Collect unique nodes
-        diseases = set()
-        phenomena = set()
-        for row in data:
-            diseases.add(row[0])
-            phenomena.add(row[1])
-
-        diseases = sorted(list(diseases))
-        phenomena = sorted(list(phenomena))
-        label = diseases + phenomena
-
-        # Generate mellow color scheme
-        import numpy as np
-
-        def generate_mellow_hsl(hue_range, count, saturation=30, lightness=70):
-            return [
-                f"hsl({hue}, {saturation}%, {lightness}%)"
-                for hue in np.linspace(hue_range[0], hue_range[1], count, dtype=int)
-            ]
-
-        num_diseases = len(diseases)
-        num_phenomena = len(phenomena)
-
-        # Disease colors (blue-green tones)
-        disease_colors = (
-            generate_mellow_hsl([210, 120], num_diseases) if num_diseases > 0 else []
+        # Import the module dynamically to ensure we get the latest version
+        from .statistics import sankey_diagram
+        importlib.reload(sankey_diagram)
+        return visualization_manager.get_cached_visualization(
+            'sankey_diagram',
+            db,
+            sankey_diagram.create_disease_phenomena_sankey
         )
-
-        # Phenomenon colors (warm orange/pink tones)
-        phenomenon_colors = (
-            generate_mellow_hsl([30, 60], num_phenomena) if num_phenomena > 0 else []
-        )
-
-        node_colors = disease_colors + phenomenon_colors
-
-        # Create mappings from entity to index
-        entity_to_index = {entity: i for i, entity in enumerate(label)}
-
-        # Populate links
-        for row in data:
-            disease = row[0]
-            phenomenon = row[1]
-            frequency = row[2]
-            pmi = row[3]
-
-            source_index = entity_to_index[disease]
-            target_index = entity_to_index[phenomenon]
-
-            source.append(source_index)
-            target.append(target_index)
-            value.append(pmi)
-
-        # Normalize fq_disease and fq_phenomenon for node width
-        max_fq = max(row[4] for row in data)  # fq_disease
-        max_fq = max(max_fq, max(row[5] for row in data))  # fq_phenomenon
-
-        # node_widths = []
-        # for l in label:
-        #     if l in diseases:
-        #         # Find the fq_disease for this disease
-        #         fq = next((row[4] for row in data if row[0] == l), 1)  # Default to 1 if not found
-        #     else:
-        #         # Find the fq_phenomenon for this phenomenon
-        #         fq = next((row[5] for row in data if row[1] == l), 1)  # Default to 1 if not found
-        #     node_widths.append(max(1, fq / max_fq * 30))  # Scale to a reasonable width (e.g., max 30)
-
-        # Normalize fq_document_level for link opacity
-        max_document_level = max(row[2] for row in data)
-        link_opacities = [row[2] / max_document_level for row in data]
-
-        # Create Sankey diagram
-        link = {
-            "source": source,
-            "target": target,
-            "value": value,
-            "color": [
-                f"rgba(50,50,50,{opacity})" for opacity in link_opacities
-            ],  # Grey links with varying opacity
-        }
-        node = {
-            "pad": 10,
-            "thickness": 30,
-            "line": {"color": "black", "width": 0.5},
-            "label": label,
-            "color": node_colors,
-        }
-        layout = dict(
-            title="Disease-Phenomena Sankey Diagram",
-            height=1472,
-            width=950,
-            font=dict(size=10),
-        )
-        sankey = go.Sankey(link=link, node=node)
-        fig = go.Figure(sankey, layout=layout)
-        graph_html = fig.to_html(full_html=False)
-
-        return render_template("disease_phenomena_sankey.html", graph_html=graph_html)
-
     except Exception as e:
-        db.logger.error(f"Error generating Sankey diagram: {e}")
-        return (
-            render_template("error.html", message="Error generating Sankey diagram"),
-            500,
-        )
+        app.logger.error(f"Error in disease phenomena sankey route: {e}")
+        return render_template("error.html", message="Error generating Sankey diagram"), 500
 
 
 @app.route("/indexes")
