@@ -227,7 +227,7 @@ class EasyNerDBHandler:
         else:
             if not os.path.isabs(backup_path):
                 backup_path = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)), backup_path
+                    os.path.dirname(self.db_path), backup_path
                 )
 
         self.logger.info(f"Backing up database to {backup_path}")
@@ -241,6 +241,10 @@ class EasyNerDBHandler:
             self.logger.info(f"Database backed up successfully to {backup_path}")
         except sqlite3.Error as e:
             self.logger.error(f"Backup failed: {str(e)}")
+            raise
+
+        except KeyboardInterrupt:
+            self.logger.error("Backup interrupted.")
             raise
 
     def _log_query_plan(self, sql, params: dict = None):
