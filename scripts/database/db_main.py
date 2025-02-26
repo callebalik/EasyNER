@@ -576,14 +576,23 @@ class DBEntryPoint:
         from .data_model.entity_occurrence import EntityOccurrence
         from .data_model.entity_cooccurrence import EntityCooccurrence
 
-        # Initialize components with db_handler dependency
-        # self.data_exchanger = DBDataExchanger(self.db)
-        # self.data_cleaner = DBDataCleaner(self.db)
-        # self.analysis = DBAnalysis(self.db)
-        # self.statistics = DBStatistics(self.db)
+        # Initialize data_exchanger and attach it to the db instance
+        self.data_exchanger = DBDataExchanger(self.db.conn, self.db.cursor, self.db.logger)
+        self.db.data_exchanger = self.data_exchanger
+
+        # Initialize other components
+        self.data_cleaner = DBDataCleaner(
+            self.db.conn, self.db.cursor, self.db.logger, self.data_exchanger, config=self.db.config
+        )
+        self.analysis = DBAnalysis(
+            self.db.conn, self.db.cursor, self.db.logger, self.data_exchanger, self.db.log_query_plan, self.db.execute_with_log, self.db.conn_params_dict
+        )
+        self.statistics = DBStatistics(
+            self.db.conn, self.db.cursor, self.db.logger, self.data_exchanger
+        )
 
         # Initialize entity handling components
-        # self.eo = EntityOccurrence(self.db)
+        self.ne = EntityOccurrence(self.db)
         self.co = EntityCooccurrence(self.db)
 
     def __enter__(self):
