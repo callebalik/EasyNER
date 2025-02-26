@@ -8,7 +8,7 @@ import logging
 from ..db_data_exchanger import DBDataExchanger
 from ..db_main import EasyNerDBHandler
 from pathlib import Path
-
+from ..core.db_engine import ReaderWriterPair
 class BaseComponent:
     """ Common base class for all components with shared logger and database connection. """
     def init_deps(self, db_system : EasyNerDBHandler,):
@@ -447,6 +447,159 @@ class Preprocessor(BaseComponent):
             self.logger.warning("User interrupted. Rolling back changes.")
             raise
 
+    def identity_overlap(self):
+        """
+        Identify overlapping entities in the NE table and set the OVERLAP flag.
+        Idempotent operation, will not overwrite existing values in OVERLAP.
+        Based on the following rules:
+        - If two entities have the same DOC_ID and SENT_IDX and their spans overlap, set OVERLAP = TRUE
+
+        Groups entities by document and sentence index, then checks for overlapping spans within each group. For 30 000 000 records, with avg 10 sentences per document
+
+        Using ReaderWriterPair for multithreaded reading and single-threaded writing
+        Must therefore have a order by, limit and offset
+        """
+
+
+        # Create reader query
+
+        reader_query = f"""--sql
+            WITH sentence_entities AS (
+                SELECT
+                    n1.{DOC_ID},
+                    n1.{SENT_IDX},
+                    n1.{NE_PRIMARY_ID},
+                    n1.{SPAN_START},
+                    n1.{SPAN_END},
+                    GROUP_CONCAT(                -- Concatenate other spans in the group
+                        n2.{NE_PRIMARY_ID} || ',' ||      -- Entity ID
+                        n2.{SPAN_START} || ',' ||  -- Start position
+                        n2.{SPAN_END},            -- End position
+                        ';'                        -- Separator between entities
+                    ) as other_spans
+                FROM {TABLE_NE} n1
+                LEFT JOIN {TABLE_NE} n2 ON
+                    n1.{DOC_ID} = n2.{DOC_ID} AND
+                    n1.{SENT_IDX} = n2.{SENT_IDX} AND
+                    n2.{NE_PRIMARY_ID} != n1.{NE_PRIMARY_ID} AND    -- Don't include the entity itself
+                    n2.{SPAN_START} <= n1.{SPAN_END} AND              -- Start before the end
+                    n2.{SPAN_END} >= n1.{SPAN_START}                 -- This should drastically reduce the number of comparisons
+
+                WHERE n1.{NE_OVERLAP} IS 0    -- Only process unprocessed entities
+                GROUP BY
+                    n1.{DOC_ID},
+                    n1.{SENT_IDX},
+                    n1.{NE_PRIMARY_ID},
+                    n1.{SPAN_START},
+                    n1.{SPAN_END}
+                ORDER BY n1.{DOC_ID}, n1.{SENT_IDX}, n1.{SPAN_START}
+                LIMIT :limit OFFSET :offset
+            )
+            SELECT * FROM sentence_entities;
+
+            -- Sample output:
+            -- DOC_ID  SENT_IDX  NE_ID  current_start  current_end  other_spans
+            -- 1       0         1      0              5           "2,3,8;3,12,15;8,15,20"
+            --                                                      ^ ID|start|end ; ID|start|end ; ID|start|end
+
+            """
+
+        # Simplify and optimize query
+        reader_query = f"""--sql
+            SELECT
+                CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM {TABLE_NE} n2
+                    WHERE n1.{DOC_ID} = n2.{DOC_ID}
+                    AND n1.{SENT_IDX} = n2.{SENT_IDX}
+                    AND n2.{NE_PRIMARY_ID} != n1.{NE_PRIMARY_ID}
+                    AND n2.{SPAN_START} <= n1.{SPAN_END}
+                    AND n2.{SPAN_END} >= n1.{SPAN_START}
+                ) THEN 1 ELSE 0 END as has_overlap,
+                n1.{NE_PRIMARY_ID}
+            FROM {TABLE_NE} n1
+            WHERE n1.{NE_OVERLAP} IS 0
+            ORDER BY n1.{DOC_ID}, n1.{SENT_IDX}, n1.{SPAN_START}
+            LIMIT :limit OFFSET :offset
+"""
+        self.log_query_plan(reader_query, params={"limit": 100, "offset": 0})
+
+        def process_function(batch, conn_params):
+            """Process a batch of records to detect overlaps"""
+            results = []
+            print(f"Processing batch of {len(batch)} records")
+            for doc_id, sent_idx, ne_id, current_start, current_end, other_spans in batch:
+                if not other_spans:
+                    continue
+
+                # other_spans format: "ID|start|end"
+
+                # Process spans in groups of 3 (ne_id , start , end)
+
+                # other_spans = "2,3,8;3,12,15;8,15,20"
+
+                # # First split by semicolon:
+                spans = other_spans.split(';')
+                # entities = ["2,3,8", "3,12,15", "8,15,20"]
+
+                # # For each entity, split by comma:
+                # entity1 = [2, 3, 8]    # id=2, start=3, end=8
+                # entity2 = [3, 12, 15]  # id=3, start=12, end=15
+                # entity3 = [8, 15, 20]  # id=8, start=15, end=20
+
+                for span in spans:
+                    other_id, other_start, other_end = map(int, span.split(','))
+
+                    # Single condition for all overlap cases:
+                    # If one span starts before the other ends, they overlap
+                    # If A overlaps with B, then both:
+                    # A starts before B ends (current_start <= other_end)
+                    # B starts before A ends (other_start <= current_end)
+                    # This single condition catches all cases:
+
+                    # Complete containment in either direction
+                    # Partial overlaps at either end
+                    # Equal spans
+                    if (current_start <= other_end and other_start <= current_end):
+                        results.append((1, ne_id))
+                        # self.logger.debug(
+                        #     f"Overlap found in doc {doc_id}, sentence {sent_idx}: "
+                        #     f"Entity {ne_id}({current_start},{current_end}) "
+                        #     f"overlaps with {other_id}({other_start},{other_end})"
+                        # )
+                        break  # One overlap is enoughis enough to mark the entity
+
+            return results
+
+        # Replace current process_function with:
+
+        def process_function(batch, conn_params):
+            """Process a batch of records to detect overlaps"""
+            # Each row now has just ne_id and has_overlap flag (1 or 0)
+            return batch
+
+
+        def writer_function(results, cursor, conn):
+            """Write results back to the database"""
+            cursor.executemany(f"UPDATE {TABLE_NE} SET {NE_OVERLAP} = ? WHERE {NE_PRIMARY_ID} = ?", results)
+
+
+        total_rows = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE} WHERE {NE_OVERLAP} IS 0").fetchone()[0]
+
+        self.logger.info(f"Processing {total_rows} entities for overlaps...")
+        # Create reader-writer pair
+        rw_pair = ReaderWriterPair(
+            conn_params=self.conn_params_dict,
+            batch_size=50000,
+            max_queue_size=10,
+            num_reader_threads=4,
+            reader_query=reader_query,
+            process_function=process_function,
+            write_function=writer_function,
+            total_rows=total_rows
+        )
+
+        rw_pair.run()
 
 
 class Analysis(BaseComponent):
