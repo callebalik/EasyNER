@@ -136,12 +136,18 @@ class Reader:
                 cursor.execute(self.query, params)
                 batch = cursor.fetchmany(limit) # Redundant limit as execute already limits the query, but safety net
 
+                self.logger.debug(f"Reader thread: Fetched batch size from DB: {len(batch)}")
+
+
                 if not batch:
                     self.logger.warning(f"Reader thread: Unexpectedly got empty batch from cursor at offset {offset} from batch queue.") # Unepected as each batch should have data, unless query is incorrect and we've checked for total processed before fetching.
                     self.batch_queue.task_done() # Signal task done even if batch is unexpectedly empty
                     continue # Skip processing and get next batch from queue (or exit if queue is empty)
 
                 processed_batch = self.process_function(batch, self.conn_params)
+
+                self.logger.debug(f"Reader thread: Processed batch size: {len(processed_batch)}") # NEW LOG - PROCESSED BATCH SIZE
+
 
                 if processed_batch:  # Only put into queue if there is processed data
                     # while (
@@ -155,12 +161,18 @@ class Reader:
                     #     )  # Pause reader thread to let writer catch up
                     #     # (Optionally) You could add a timeout to this loop to prevent indefinite blocking in extreme cases
 
+                    self.logger.debug(f"Reader thread: Queueing batch of size: {len(processed_batch)} before put(). Queue size: {self.data_queue.qsize()}") # NEW LOG - BEFORE PUT
+
+
                     self.data_queue.put(
                         processed_batch
                     )  # Put bastch into queue AFTER backpressure check
                     total_processed_in_thread += len(
                         processed_batch
                     )  # Count processed items, not fetched
+
+                    self.logger.debug(f"Reader thread: Queued batch of size: {len(processed_batch)} after put(). Queue size: {self.data_queue.qsize()}") # NEW LOG - AFTER PUT
+
 
                     if (
                         self.progress_queue
@@ -308,9 +320,7 @@ class Writer:
         self.logger = logger
         self.written_count = 0  # Initialize processed_count for Writer
         self.profiling_filename = profiling_filename
-        self.batch_chunking = (
-            batch_chunking  # Accumulte multiple batches before writing
-        )
+        self.batch_chunking = batch_chunking  # Accumulte multiple batches before writing
         self.num_reader_threads = num_reader_threads  # Store number of reader threads
 
 
@@ -335,6 +345,9 @@ class Writer:
                 batch = (
                     self.data_queue.get()
                 )  # Get batch from queue (same queue as Reader's)
+
+                self.logger.debug(f"Writer thread: Got batch from queue - size: {len(batch) if batch else 'Sentinel'}")
+
                 if batch is None:  # Sentinel value received
                     self.data_queue.task_done()  # Signal task completion for sentinel
                     sentinel_count += 1
@@ -350,14 +363,21 @@ class Writer:
                         )
                         continue  # Skip processing sentinel
 
-                # if self.batch_chunking > 1: # If batch_chunking is enabled
-                #     for _ in range(self.batch_chunking - 1):
-                #         if self.data_queue.empty():
-                #             break # Exit inner loop if queue is empty and run with current batch
-                #         if self.data_queue.get() is None: # Must still run with current batch(es) if sentinel is received before breaking
-                #             sentinel_count += 1
-                #             break
-                #         else: batch = batch + self.data_queue.get() # Get next batch and append to current batch
+                # ENABLE THIS BATCH CHUNKING CODE
+                if self.batch_chunking > 1:
+                    accumulated_size = len(batch)
+                    for _ in range(self.batch_chunking - 1):
+                        if self.data_queue.empty():
+                            break
+                        next_batch = self.data_queue.get()
+                        if next_batch is None:
+                            sentinel_count += 1
+                            self.data_queue.task_done()
+                            break
+                        accumulated_size += len(next_batch)
+                        batch.extend(next_batch)
+                        self.data_queue.task_done()
+                        self.logger.debug(f"Writer thread: Accumulated batch size now {accumulated_size}")
 
                 try:
                     self.write_function(batch, cursor, conn)  # Call the write function
@@ -433,10 +453,10 @@ class ReaderWriterPair:
         write_function,
         total_rows: int,
         logger: logging.Logger = None,
-        batch_size: int = 1000,
+        batch_size: int = 5000,
         num_reader_threads : int =4,
-        max_queue_size: int =50,
-        writer_batch_chunking: int =2,
+        max_queue_size: int =200,
+        writer_batch_chunking: int =10, # X batches to accumulate before writing to baleance read/write speed
         process_title: str = None,
         profiling_reader_enabled=False,  # Added profiling_enabled
         profiling_writer_enabled=False,  # Added profiling_enabled):
@@ -481,9 +501,9 @@ class ReaderWriterPair:
                 "Reader query must contain exactly one ':offset' parameter placeholder."
             )
 
-
-
         self.conn_params = conn_params
+
+
 
         self.process_function = process_function
         self.write_function = write_function
@@ -536,6 +556,8 @@ class ReaderWriterPair:
             writer_batch_chunking  # Added writer_batch_chunking
         )
         # Instantiate Reader and Writer, passing the *same* data_queue to both
+        self._log_query_plan(reader_query)  # Log query plan for Reader query
+
         self.reader = Reader(
             conn_params,
             reader_query,
@@ -629,95 +651,143 @@ class ReaderWriterPair:
         db.close()
         return logger
 
-    def _log_query_plan(self, sql, params=None):
+    def _log_query_plan(self, sql):
         """
-        Executes a query, logs its query plan, and returns the results.
+        Logs the query execution plan for the provided SQL query.
+        Handles named parameters by providing sensible defaults.
         """
-        try:
-            if params:
-                self.cursor.execute(f"EXPLAIN QUERY PLAN {sql}", params)
-            else:
-                self.cursor.execute(f"EXPLAIN QUERY PLAN {sql}")
+        import sqlite3
 
-            plan = self.cursor.fetchall()
-            s = f"EXPLAIN QUERY PLAN {sql};\n"
-            for step in plan:
-                s += str(dict(step)) + "\n"
-            self.logger.debug(s)
+        try:
+            # Provide default values for common named parameters
+            mock_params = {
+                ':limit': self.batch_size,  # Use the batch size from the class
+                ':offset': 0                # Start at 0
+            }
+
+            # Extract any other named parameters from the query
+            # This regex finds all named parameters like :name in the SQL
+            import re
+            param_names = re.findall(r':(\w+)', sql)
+            for name in param_names:
+                if f':{name}' not in mock_params:
+                    mock_params[f':{name}'] = 1  # Default value for other params
+
+            with sqlite3.connect(**self.conn_params) as conn:
+                cursor = conn.cursor()
+                explain_sql = f"EXPLAIN QUERY PLAN {sql}"
+
+                self.logger.debug(f"Executing query plan with params: {mock_params}")
+                cursor.execute(explain_sql, mock_params)
+
+                plan = cursor.fetchall()
+                if plan:
+                    plan_text = "\n".join(str(row) for row in plan)
+                    self.logger.debug(f"Query plan:\n{plan_text}")
+                else:
+                    self.logger.debug("No query plan returned")
 
         except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return None
+            self.logger.warning(f"Error getting query plan (non-critical): {e}")
+        except Exception as e:
+            self.logger.warning(f"Unexpected error in query plan (non-critical): {e}")
+
 
     def run(self):
         """
-        Runs the Reader and Writer threads CONCURRENTLY (Corrected Thread Management).
+        Runs the Reader and Writer threads with proper queue monitoring and cleanup.
         """
+        reader_threads = []
+        writer_thread = None
+        aggregation_thread = None
+
         try:
+            # 1. FIRST: Set up and start all threads
             self._populate_batch_queue()
 
-            self.logger.info(
-                f"Starting ReaderWriterPair with {self.num_reader_threads} reader threads."
-            )
-
+            # Start aggregation thread first
+            self.logger.info("Starting progress aggregation thread")
             aggregation_thread = threading.Thread(
                 target=self._progress_aggregation_process, daemon=True
-            )  # Create aggregation thread
-            aggregation_thread.start()  # Start aggregation thread
-
-            reader_threads = []  # Keep track of reader threads
-            self.logger.info(
-                f"ReaderWriterPair: Starting {self.num_reader_threads} reader threads"
-                f"{' for process ' + self.process_title if self.process_title else ''}."
-                f"{' with total count ' + str(self.total_rows) if self.total_rows is not None else ''}"
             )
+            aggregation_thread.start()
+
+            # Start reader threads
+            self.logger.info(f"ReaderWriterPair: Starting {self.num_reader_threads} reader threads")
             for _ in range(self.num_reader_threads):
-                thread = threading.Thread(
-                    target=self.reader.run
-                )  # Corrected reader.run call - no args (single-threaded Reader.run will be used)
+                thread = threading.Thread(target=self.reader.run)
+                thread.daemon = True
                 reader_threads.append(thread)
                 thread.start()
 
-            writer_thread = threading.Thread(target=self.writer.run)  # Start writer thread
-            self.logger.debug("START: WRITER TREAD")
+            # Start writer thread
+            self.logger.info("Starting writer thread")
+            writer_thread = threading.Thread(target=self.writer.run)
+            writer_thread.daemon = True
             writer_thread.start()
 
-            self.logger.debug(
-                "ReaderWriterPair: Waiting for queue to be empty before joining queue to enshure are data is enventually writte"
-            )  # Corrected placement of queue.join()
-            """
-            Ensuring Data Integrity: If the ReaderWriterPair didn't wait for the queue to be empty before joining the writer thread, there would be a risk that some data processed by the readers would still be sitting in the queue when the writer thread terminates. This data would never be written to the database, leading to data loss and inconsistency.
-            """
-            self.logger.debug(
-                f"ReaderWriterPair: Queue size before join: {self.data_queue.qsize()}, pending tasks: {self.data_queue.unfinished_tasks}"
-            )
-            self.data_queue.join()
+            # 2. SECOND: Monitor overall processing progress
+            while True:
+                # Exit if all data has been processed
+                if self.total_processed.value >= self.total_rows:
+                    self.logger.info(f"All {self.total_rows} rows have been processed. Proceeding to cleanup.")
+                    break
 
-            self.logger.debug(
-                f"ReaderWriterPair: Queue join completed. Queue size: {self.data_queue.qsize()}, pending tasks: {self.data_queue.unfinished_tasks}"
-            )
+                # Exit if stop event is set
+                if self.stop_event.is_set():
+                    self.logger.info("Stop event detected during monitoring. Proceeding to cleanup.")
+                    break
 
-            self.logger.info("ReaderWriterPair: WAIT FOR READER to complete.")
+                # Brief sleep to allow for keyboard interrupts
+                time.sleep(0.3)
+
+            # 3. THIRD: Monitor batch queue until empty (needed before readers finish)
+            self.logger.debug("Waiting for batch queue to be processed...")
+            batch_queue_timeout = 300
+            batch_queue_start = time.time()
+            while self.batch_queue.unfinished_tasks > 0:
+                if self.stop_event.is_set():
+                    self.logger.warning("Stop event detected while waiting for batch queue. Breaking.")
+                    break
+                if time.time() - batch_queue_start > batch_queue_timeout:
+                    self.logger.warning(f"Batch queue wait timed out after {batch_queue_timeout} seconds.")
+                    break
+                time.sleep(1)
+            self.logger.debug(f"Batch queue monitoring completed. Unfinished tasks: {self.batch_queue.unfinished_tasks}")
+
+            # 4. FOURTH: Wait for data queue to empty (needed before writer finishes)
+            self.logger.debug("Waiting for data queue to be processed...")
+            data_queue_timeout = 300
+            data_queue_start = time.time()
+            while self.data_queue.unfinished_tasks > 0:
+                if self.stop_event.is_set():
+                    self.logger.warning("Stop event detected while waiting for data queue. Breaking.")
+                    break
+                if time.time() - data_queue_start > data_queue_timeout:
+                    self.logger.warning(f"Data queue wait timed out after {data_queue_timeout} seconds.")
+                    break
+                time.sleep(1)
+            self.logger.debug(f"Data queue monitoring completed. Unfinished tasks: {self.data_queue.unfinished_tasks}")
+
+            # 5. FIFTH: Join reader threads (they should be done by now)
+            self.logger.info("Joining reader threads...")
             for thread in reader_threads:
-                thread.join()  # Wait for all reader threads to finish
+                thread.join(timeout=5)
 
-            self.logger.info("ReaderWriterPair: WAIT FOR WRITER = complete.")
-            writer_thread.join()  # Wait for writer thread to finish
+            # 6. SIXTH: Join writer thread (should be done after data queue is empty)
+            self.logger.info("Joining writer thread...")
+            if writer_thread:
+                writer_thread.join(timeout=5)
 
-            self.logger.info(
-                "ReaderWriterPair: Signaling progress aggregation thread to stop."
-            )
-            self.aggregation_thread_stop_event.set()  # Signal aggregation thread to stop
-            aggregation_thread.join(
-                timeout=10
-            )  # Wait for aggregation thread to finish, with a timeout
+            # 7. FINALLY: Stop and join aggregation thread
+            self.logger.info("Stopping aggregation thread...")
+            self.aggregation_thread_stop_event.set()
+            if aggregation_thread:
+                aggregation_thread.join(timeout=5)
 
             self.logger.info("ReaderWriterPair process completed.")
 
-            self.batch_queue.join() # <-- **ADD batch_queue.join() here, after data_queue.join() and before thread joins**
-
         except KeyboardInterrupt:
-
             timeout: float = 2  # Define timeout at the start for clarity
 
             try:
@@ -726,7 +796,13 @@ class ReaderWriterPair:
                 self.logger.warning(
                     f"ReaderWriterPair: Keyboard interrupt detected. Requesting threads to stop within {timeout} s."
                 )
-            except Exception as e_set_event: # More descriptive variable name
+
+                # Drain both queues to unblock threads
+                self._drain_queue(self.data_queue)
+                self._drain_queue(self.batch_queue)
+                self._drain_queue(self.progress_queue)
+
+            except Exception as e_set_event:
                 self.logger.error(f"Error setting thread stop events during keyboard interrupt: {e_set_event}")
 
             finally:
@@ -736,9 +812,19 @@ class ReaderWriterPair:
                         thread.join(timeout)
                     writer_thread.join(timeout)
                     aggregation_thread.join(timeout)
-                except Exception as e_join_threads: # More descriptive variable name
+                except Exception as e_join_threads:
                     self.logger.error(f"Error joining threads during keyboard interrupt: {e_join_threads}")
                 finally:
                     self.logger.warning(
                         "ReaderWriterPair: Keyboard interrupt cleanup complete."
                     )
+
+    # Add this helper method to the ReaderWriterPair class:
+    def _drain_queue(self, q):
+        """Helper method to drain a queue and unblock any threads waiting on it"""
+        try:
+            while True:
+                q.get_nowait()
+                q.task_done()
+        except queue.Empty:
+            pass
