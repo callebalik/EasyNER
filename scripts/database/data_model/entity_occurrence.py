@@ -951,6 +951,413 @@ class Preprocessor(BaseComponent):
 
         rw_pair.run()
 
+        def populate_normalized_txt_column(self):
+            """
+            Populate the TXT_NORM column in the NE table with normalized entity text.
+            Uses ReaderWriterPair for efficient multithreaded processing.
+
+            - Filters out entities with error codes
+            - Filters out entities that overlap with other entities (OVERLAP = TRUE)
+            - Only processes entities where TXT_NORM is NULL
+            """
+            self.logger.info("Populating normalized text column (TXT_NORM)...")
+
+            # Create index for faster querying
+            ind = Index(TABLE_NE, [NE_OVERLAP, ERROR_ID, TXT_NORM], logger=self.logger)
+            ind.create_if_not_exists(self.cursor)
+
+            # Create reader query that selects entities needing normalization
+            reader_query = f"""--sql
+                SELECT {NE_PRIMARY_ID}, {TXT}
+                FROM {TABLE_NE}
+                WHERE {TXT_NORM} IS NULL
+                AND {ERROR_ID} IS NULL
+                AND {NE_OVERLAP} = 0
+                ORDER BY {DOC_ID}, {SENT_IDX}
+                LIMIT :limit OFFSET :offset
+            """
+
+            # Define process function to normalize text
+            def process_function(batch, conn_params):
+                """Process a batch of entities by normalizing their text"""
+                normalized_entities = []
+                for ne_id, text in batch:
+                    normalized_text = self._normalize_entity_text(text)
+                    normalized_entities.append((normalized_text, ne_id))
+                return normalized_entities
+
+            # Define writer function to update the database
+            def writer_function(results, cursor, conn):
+                """Write normalized text values to database"""
+                # Set pragmas for better write performance
+                cursor.execute("PRAGMA synchronous = OFF")
+                cursor.execute("PRAGMA journal_mode = MEMORY")
+                cursor.execute("PRAGMA temp_store = MEMORY")
+
+                # Update database with normalized text values
+                cursor.executemany(
+                    f"UPDATE {TABLE_NE} SET {TXT_NORM} = ? WHERE {NE_PRIMARY_ID} = ?",
+                    results
+                )
+
+            # Get total rows to process
+            total_rows = self.cursor.execute(f"""
+                SELECT COUNT(*) FROM {TABLE_NE}
+                WHERE {TXT_NORM} IS NULL
+                AND {ERROR_ID} IS NULL
+                AND {NE_OVERLAP} = 0
+            """).fetchone()[0]
+
+            self.logger.info(f"Found {total_rows} entities that need normalization")
+
+            if total_rows == 0:
+                self.logger.info("No entities to normalize. Exiting.")
+                return
+
+            # Create reader-writer pair for parallel processing
+            rw_pair = ReaderWriterPair(
+                conn_params=self.conn_params_dict,
+                batch_size=50000,
+                max_queue_size=10,
+                num_reader_threads=8,  # Use more threads for better performance on text processing
+                writer_batch_chunking=5,  # Accumulate 5 batches before writing
+                reader_query=reader_query,
+                process_function=process_function,
+                write_function=writer_function,
+                total_rows=total_rows,
+                process_title="Normalizing entity text"
+            )
+
+            # Execute the normalization
+            rw_pair.run()
+
+            self.logger.info(f"Normalization complete. Processed {total_rows} entities.")
+
+            # Create index on TXT_NORM for faster lookups
+            index_norm = Index(TABLE_NE, [TXT_NORM], logger=self.logger)
+            index_norm.create_if_not_exists(self.cursor)
+            index_norm.analyze(self.cursor)
+
+            # Analyze the database to optimize query plans
+            self.cursor.execute(f"ANALYZE {TABLE_NE}")
+
+        def _normalize_entity_text(self, text):
+            """
+            Normalize entity text by:
+            1. Converting to lowercase
+            2. Removing leading/trailing whitespace
+            3. Removing special characters
+            4. Expanding contractions
+            5. Removing stop words (optional)
+            6. Handling possessive forms
+            7. Removing special leading characters (%, ", -, etc.)
+
+            Args:
+                text: The entity text to normalize
+
+            Returns:
+                Normalized entity text
+            """
+            import re
+            import string
+            from functools import lru_cache
+
+            # Use caching to avoid reprocessing identical texts
+            @lru_cache(maxsize=10000)
+            def _normalize_text_cached(input_text):
+                if not input_text:
+                    return ""
+
+                # 1. Convert to lowercase
+                normalized = input_text.lower()
+
+                # 2. Remove leading/trailing whitespace
+                normalized = normalized.strip()
+
+                # 7. Remove special leading character combinations
+                normalized = re.sub(r'^[%"\'`-]+\s*', '', normalized)  # Remove leading %, ", ', `, - with optional spaces
+                normalized = re.sub(r'^\s*[%"\'`-]+\s*', '', normalized)  # Remove leading spaces followed by %, ", ', `, - with optional spaces
+
+                # 6. Handle possessive forms (before general punctuation removal)
+                # Remove 's at the end of words
+                normalized = re.sub(r'\'s\b', '', normalized)  # Remove "'s" at word boundaries
+                normalized = re.sub(r's\'\b', 's', normalized)  # Convert "s'" to "s" at word boundaries (plural possessive)
+
+                # 3. Remove special characters and punctuation (keep hyphens)
+                punct_translator = str.maketrans('', '', string.punctuation.replace('-', ''))
+                normalized = normalized.translate(punct_translator)
+
+                # Replace multiple spaces with single space
+                normalized = re.sub(r'\s+', ' ', normalized)
+
+                # 4. Expand common contractions
+                contractions = {
+                    "ain't": "is not",
+                    "aren't": "are not",
+                    "can't": "cannot",
+                    "couldn't": "could not",
+                    "didn't": "did not",
+                    "doesn't": "does not",
+                    "don't": "do not",
+                    "hadn't": "had not",
+                    "hasn't": "has not",
+                    "haven't": "have not",
+                    "he'd": "he would",
+                    "he'll": "he will",
+                    "he's": "he is",
+                    "i'd": "i would",
+                    "i'll": "i will",
+                    "i'm": "i am",
+                    "i've": "i have",
+                    "isn't": "is not",
+                    "it's": "it is",
+                    "let's": "let us",
+                    "mustn't": "must not",
+                    "shan't": "shall not",
+                    "she'd": "she would",
+                    "she'll": "she will",
+                    "she's": "she is",
+                    "shouldn't": "should not",
+                    "that's": "that is",
+                    "there's": "there is",
+                    "they'd": "they would",
+                    "they'll": "they will",
+                    "they're": "they are",
+                    "they've": "they have",
+                    "we'd": "we would",
+                    "we'll": "we will",
+                    "we're": "we are",
+                    "we've": "we have",
+                    "weren't": "were not",
+                    "what'll": "what will",
+                    "what're": "what are",
+                    "what's": "what is",
+                    "what've": "what have",
+                    "where's": "where is",
+                    "who'd": "who would",
+                    "who'll": "who will",
+                    "who's": "who is",
+                    "who've": "who have",
+                    "won't": "will not",
+                    "wouldn't": "would not",
+                    "you'd": "you would",
+                    "you'll": "you will",
+                    "you're": "you are",
+                    "you've": "you have",
+                }
+
+                # Word boundary to ensure we match whole words only
+                for contraction, expansion in contractions.items():
+                    normalized = re.sub(r'\b' + contraction + r'\b', expansion, normalized)
+
+                # Handle specific domain entities or edge cases
+                # Standardize COVID-19
+                normalized = re.sub(r'covid[-\s]?19', 'covid19', normalized)
+
+                # Final cleanup: Remove any remaining non-alphanumeric except spaces and hyphens
+                normalized = re.sub(r'[^\w\s-]', '', normalized)
+
+                # Remove redundant hyphens
+                normalized = re.sub(r'-+', '-', normalized)  # Multiple hyphens to single hyphen
+                normalized = re.sub(r'(^-|-$)', '', normalized)  # Remove leading/trailing hyphens
+
+                # Final whitespace normalization
+                normalized = re.sub(r'\s+', ' ', normalized).strip()
+
+                return normalized
+
+            # Call the cached function
+            return _normalize_text_cached(text)
+
+        def populate_normalized_txt_column(self):
+            """
+            Populate the TXT_NORM column in the NE table with normalized entity text.
+            Uses ReaderWriterPair for efficient multithreaded processing.
+
+            - Filters out entities with error codes
+            - Filters out entities that overlap with other entities (OVERLAP = TRUE)
+            - Only processes entities where TXT_NORM is NULL
+            """
+            self.logger.info("Starting text normalization process...")
+
+            # Create index for faster querying
+            self.logger.info("Creating supporting indexes...")
+
+            # Index for the query filtering
+            ind1 = Index(TABLE_NE, [TXT_NORM, ERROR_ID, NE_OVERLAP], logger=self.logger)
+            ind1.create_if_not_exists(self.cursor)
+
+            # Index for the ordering in reader query (important for offset/limit)
+            ind2 = Index(TABLE_NE, [DOC_ID, SENT_IDX], logger=self.logger)
+            ind2.create_if_not_exists(self.cursor)
+
+            # Create reader query that selects entities needing normalization
+            reader_query = f"""--sql
+                SELECT {NE_PRIMARY_ID}, {TXT}
+                FROM {TABLE_NE}
+                WHERE {TXT_NORM} IS NULL
+                AND {ERROR_ID} IS NULL
+                AND {NE_OVERLAP} = 0
+                ORDER BY {DOC_ID}, {SENT_IDX}
+                LIMIT :limit OFFSET :offset
+            """
+
+            # Log query plan
+            self.log_query_plan(reader_query, {"limit": 1000, "offset": 0})
+
+            # Define process function that runs in reader threads with thread-local optimizations
+            def process_function(batch, conn_params):
+                """Process a batch of entities by normalizing their text"""
+                import re
+                import string
+                from functools import lru_cache
+
+                # Pre-compile regex patterns for performance
+                leading_chars_pattern = re.compile(r'^[%"\'`-]+\s*')
+                leading_space_chars_pattern = re.compile(r'^\s*[%"\'`-]+\s*')
+                possessive_s_pattern = re.compile(r'\'s\b')
+                plural_possessive_pattern = re.compile(r's\'\b')
+                whitespace_pattern = re.compile(r'\s+')
+                covid_pattern = re.compile(r'covid[-\s]?19')
+                non_alnum_pattern = re.compile(r'[^\w\s-]')
+                redundant_hyphen_pattern = re.compile(r'-+')
+                edge_hyphen_pattern = re.compile(r'(^-|-$)')
+
+                # Create translation table once per thread
+                punct_translator = str.maketrans('', '', string.punctuation.replace('-', ''))
+
+                # Pre-compile contraction regex patterns
+                contractions = {
+                    "ain't": "is not", "aren't": "are not", "can't": "cannot",
+                    "couldn't": "could not", "didn't": "did not", "doesn't": "does not",
+                    "don't": "do not", "hadn't": "had not", "hasn't": "has not",
+                    "haven't": "have not", "he'd": "he would", "he'll": "he will",
+                    "he's": "he is", "i'd": "i would", "i'll": "i will",
+                    "i'm": "i am", "i've": "i have", "isn't": "is not",
+                    "it's": "it is", "let's": "let us", "mustn't": "must not",
+                    "shan't": "shall not", "she'd": "she would", "she'll": "she will",
+                    "she's": "she is", "shouldn't": "should not", "that's": "that is",
+                    "there's": "there is", "they'd": "they would", "they'll": "they will",
+                    "they're": "they are", "they've": "they have", "we'd": "we would",
+                    "we'll": "we will", "we're": "we are", "we've": "we have",
+                    "weren't": "were not", "what'll": "what will", "what're": "what are",
+                    "what's": "what is", "what've": "what have", "where's": "where is",
+                    "who'd": "who would", "who'll": "who will", "who's": "who is",
+                    "who've": "who have", "won't": "will not", "wouldn't": "would not",
+                    "you'd": "you would", "you'll": "you will", "you're": "you are",
+                    "you've": "you have"
+                }
+                contraction_patterns = [(re.compile(r'\b' + re.escape(c) + r'\b'), e)
+                                    for c, e in contractions.items()]
+
+                # Create result buffer
+                normalized_entities = []
+
+                # Thread-local LRU cache for frequently seen identical strings
+                @lru_cache(maxsize=5000)
+                def normalize_text_cached(text):
+                    if not text:
+                        return ""
+
+                    # 1. Convert to lowercase & trim
+                    normalized = text.lower().strip()
+
+                    # 2. Remove special leading character combinations
+                    normalized = leading_chars_pattern.sub('', normalized)
+                    normalized = leading_space_chars_pattern.sub('', normalized)
+
+                    # 3. Handle possessive forms
+                    normalized = possessive_s_pattern.sub('', normalized)
+                    normalized = plural_possessive_pattern.sub('s', normalized)
+
+                    # 4. Remove punctuation except hyphens
+                    normalized = normalized.translate(punct_translator)
+
+                    # 5. Normalize whitespace (initial pass)
+                    normalized = whitespace_pattern.sub(' ', normalized)
+
+                    # 6. Expand contractions
+                    for pattern, replacement in contraction_patterns:
+                        normalized = pattern.sub(replacement, normalized)
+
+                    # 7. Domain-specific normalizations
+                    normalized = covid_pattern.sub('covid19', normalized)
+
+                    # 8. Final cleanup
+                    normalized = non_alnum_pattern.sub('', normalized)
+                    normalized = redundant_hyphen_pattern.sub('-', normalized)
+                    normalized = edge_hyphen_pattern.sub('', normalized)
+
+                    # 9. Final whitespace normalization
+                    normalized = whitespace_pattern.sub(' ', normalized).strip()
+
+                    return normalized
+
+                # Process each entity in batch
+                for ne_id, text in batch:
+                    normalized_text = normalize_text_cached(text)
+                    normalized_entities.append((normalized_text, ne_id))
+
+                return normalized_entities
+
+            # Define writer function to update the database
+            def writer_function(results, cursor, conn):
+                """Write normalized text values to database with optimized settings"""
+                # Set pragmas for better write performance
+                cursor.execute("PRAGMA synchronous = OFF")
+                cursor.execute("PRAGMA journal_mode = MEMORY")
+                cursor.execute("PRAGMA temp_store = MEMORY")
+                cursor.execute("PRAGMA cache_size = 100000")  # ~100MB cache
+
+                # Update database with normalized text values
+                cursor.executemany(
+                    f"UPDATE {TABLE_NE} SET {TXT_NORM} = ? WHERE {NE_PRIMARY_ID} = ?",
+                    results
+                )
+
+            # Get total rows to process
+            total_rows = self.cursor.execute(f"""
+                SELECT COUNT(*) FROM {TABLE_NE}
+                WHERE {TXT_NORM} IS NULL
+                AND {ERROR_ID} IS NULL
+                AND {NE_OVERLAP} = 0
+            """).fetchone()[0]
+
+            self.logger.info(f"Found {total_rows} entities that need normalization")
+
+            if total_rows == 0:
+                self.logger.info("No entities to normalize. Exiting.")
+                return
+
+            # Create reader-writer pair for parallel processing with optimized parameters
+            rw_pair = ReaderWriterPair(
+                conn_params=self.conn_params_dict,
+                batch_size=50000,           # 50K entities per batch
+                max_queue_size=16,          # Allow up to 16 batches in queue (800K entities)
+                num_reader_threads=8,       # 8 parallel reader threads for text processing
+                writer_batch_chunking=10,   # Write 10 batches (500K entities) in one transaction
+                reader_query=reader_query,
+                process_function=process_function,
+                write_function=writer_function,
+                total_rows=total_rows,
+                process_title="Normalizing entity text"
+            )
+
+            # Execute the normalization process
+            self.logger.info("Starting multi-threaded text normalization...")
+            rw_pair.run()
+
+            self.logger.info(f"Text normalization complete. Processed {total_rows} entities.")
+
+            # Create final index on normalized text for faster lookups
+            self.logger.info("Creating index on normalized text column...")
+            index_norm = Index(TABLE_NE, [TXT_NORM], logger=self.logger)
+            index_norm.create_if_not_exists(self.cursor)
+            index_norm.analyze(self.cursor)
+
+            # Analyze the table to optimize future query plans
+            self.cursor.execute(f"ANALYZE {TABLE_NE}")
+            self.logger.info("Normalization process complete.")
 
 class Analysis(BaseComponent):
     def __init__(self, parent):
