@@ -934,54 +934,54 @@ def show_tables():
         db = get_db()
         tables_info = {}
 
-        # Get list of tables
+        # Get list of tables ordered alphabetically
         tables = db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type='table' AND name NOT LIKE 'sqlite_%'
+            ORDER BY name ASC
+            """
         )
 
         for table in tables:
             table_name = table[0]
 
-            # Get table structure
-            schema_sql = f"PRAGMA table_info({table_name})"
-            schema = db.execute(schema_sql)
+            # Get table schema information
+            schema = db.execute(f"PRAGMA table_info({table_name})")
+            columns = [
+                {
+                    "name": col[1],
+                    "type": col[2],
+                    "notnull": col[3] == 1,
+                    "dflt_value": col[4],
+                    "pk": col[5] == 1
+                }
+                for col in schema
+            ]
 
-            # Get foreign key info
-            foreign_keys_sql = f"PRAGMA foreign_key_list({table_name})"
-            foreign_keys = db.execute(foreign_keys_sql)
+            # Get foreign keys information
+            foreign_keys = db.execute(f"PRAGMA foreign_key_list({table_name})")
+            fk_info = [
+                {
+                    "from_column": fk[3],
+                    "to_table": fk[2],
+                    "to_column": fk[4]
+                }
+                for fk in foreign_keys
+            ]
 
+            # Store comprehensive table information
             tables_info[table_name] = {
                 "name": table_name,
-                "schema": [
-                    dict(
-                        zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col)
-                    )
-                    for col in schema
-                ],
-                "foreign_keys": [
-                    dict(
-                        zip(
-                            [
-                                "id",
-                                "seq",
-                                "table",
-                                "from",
-                                "to",
-                                "on_update",
-                                "on_delete",
-                                "match",
-                            ],
-                            fk,
-                        )
-                    )
-                    for fk in foreign_keys
-                ],
+                "columns": columns,
+                "foreign_keys": fk_info
             }
 
         return render_template("tables.html", tables=tables_info)
     except Exception as e:
-        db.logger.error(f"Error loading tables: {e}")
-        return render_template("error.html", message="Error loading tables"), 500
+        app.logger.error(f"Error loading tables: {e}")
+        return render_template("error.html", message=f"Error loading tables: {str(e)}"), 500
 
 
 @app.route("/table/<table_name>/rowcount")
@@ -1514,6 +1514,31 @@ def validate_view_api(view_name):
             "is_valid": False,
             "error": str(e)
         }), 500
+
+
+@app.route("/table/<table_name>/schema")
+def get_table_schema(table_name):
+    try:
+        db = get_db()
+        # Get table creation SQL
+        result = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+            [table_name]
+        )
+
+        # Check if we have results and handle them properly
+        if not result or len(result) == 0:
+            return jsonify({"error": f"Table {table_name} not found or has no schema"}), 404
+
+        create_sql = result[0][0]  # Access the first column of the first row
+
+        if not create_sql:
+            return jsonify({"error": f"Table {table_name} exists but has no schema definition"}), 404
+
+        return jsonify({"schema": create_sql})
+    except Exception as e:
+        app.logger.error(f"Error getting schema for {table_name}: {e}")
+        return jsonify({"error": f"Error retrieving schema: {str(e)}"}), 500
 
 
 if __name__ == "__main__":

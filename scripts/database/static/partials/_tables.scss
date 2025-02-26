@@ -1,0 +1,361 @@
+@import 'variables';
+
+// Shared table styles for tables overview page
+.table-card {
+    @extend %section-card;
+    margin-bottom: 15px;
+    transition: border-color 0.2s;
+
+    &:hover {
+        border-color: $primary-color;
+    }
+
+    .table-header {
+        padding: 10px;
+        background-color: $background-light;
+        border-radius: $border-radius $border-radius 0 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        margin: -20px -20px 15px -20px;
+        border-bottom: 1px solid $border-color;
+
+        &.expanded .toggle-icon {
+            transform: rotate(90deg);
+        }
+
+        .toggle-icon {
+            margin-right: 10px;
+            transition: transform 0.3s;
+        }
+
+        .schema-button {
+            margin-left: auto;
+            font-size: $small-font-size;
+            background: $primary-color;
+            color: white;
+            padding: 5px 10px;
+            border-radius: $border-radius;
+            cursor: pointer;
+
+            &:hover {
+                background: $primary-dark;
+            }
+        }
+    }
+
+    .table-actions {
+        margin: 15px 0;
+
+        .action-button {
+            background: $primary-color;
+            color: white;
+            border: none;
+            padding: $base-padding 15px;
+            border-radius: $border-radius;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-right: 10px;
+
+            &:hover {
+                background: $primary-dark;
+            }
+        }
+
+        .rowcount {
+            color: $text-light;
+        }
+    }
+
+    .table-schema {
+        margin-top: 20px;
+
+        h3 {
+            color: $text-light;
+            margin: 10px 0;
+        }
+
+        .schema-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+
+            .schema-item {
+                border: 1px solid $border-color;
+                padding: 8px;
+                border-radius: $border-radius;
+                background: $background-lighter;
+
+                .column-name {
+                    font-weight: bold;
+                    display: block;
+                }
+
+                .column-type {
+                    color: $text-light;
+                    font-size: $small-font-size;
+                }
+
+                .column-constraints {
+                    font-size: $small-font-size;
+                    color: $accent-color;
+                }
+            }
+        }
+    }
+
+    .foreign-keys {
+        margin-top: 20px;
+
+        h3 {
+            color: $text-light;
+            margin: 10px 0;
+        }
+
+        .fk-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+
+            .fk-item {
+                border: 1px solid $border-color;
+                padding: 8px;
+                border-radius: $border-radius;
+                background: $background-lighter;
+                display: flex;
+                align-items: center;
+
+                .fk-from {
+                    font-weight: bold;
+                    margin-right: 5px;
+                }
+
+                .fk-arrow {
+                    margin: 0 5px;
+                    color: $text-light;
+                }
+
+                .fk-link {
+                    color: $primary-color;
+                    text-decoration: none;
+
+                    &:hover {
+                        text-decoration: underline;
+                    }
+                }
+            }
+        }
+    }
+
+    .schema-container {
+        margin: 15px 0;
+
+        .schema-sql {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 15px;
+            border-radius: $border-radius;
+            overflow-x: auto;
+            font-family: monospace;
+            white-space: pre;
+
+            .table-link {
+                color: #61afef;
+                text-decoration: none;
+
+                &:hover {
+                    text-decoration: underline;
+                }
+            }
+        }
+    }
+}
+
+// View cards styling
+.view-section {
+    @extend %section-card;
+    margin-bottom: 30px;
+
+    h2 {
+        @extend %section-header;
+    }
+
+    .view-actions {
+        margin: $base-margin 0;
+
+        .action-button {
+            background: $primary-color;
+            color: white;
+            border: none;
+            padding: $base-padding 15px;
+            border-radius: $border-radius;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-right: 10px;
+
+            &:hover {
+                background: $primary-dark;
+            }
+        }
+
+        .delete-button {
+            background: $error-color;
+
+            &:hover {
+                background: darken($error-color, 10%);
+            }
+        }
+    }
+
+    .definition-container {
+        background-color: $background-color;
+        padding: 15px;
+        border: 1px solid $border-color;
+        border-radius: $border-radius;
+        margin: 15px 0;
+
+        .definition-header {
+            margin-bottom: 10px;
+            overflow: hidden;
+
+            .explain-button {
+                background: $accent-color;
+                color: white;
+                font-size: $small-font-size;
+                padding: 5px 10px;
+                border: none;
+                border-radius: $border-radius;
+                cursor: pointer;
+                float: right;
+
+                &:hover {
+                    background: $accent-dark;
+                }
+            }
+        }
+
+        .sql-definition {
+            background-color: $background-color;
+            padding: 15px;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+
+        .explain-result {
+            margin-top: 15px;
+            padding: 10px;
+            background: $background-lighter;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 10px;
+
+                th, td {
+                    padding: $base-padding;
+                    text-align: left;
+                    border-bottom: 1px solid $border-color;
+                }
+
+                th {
+                    background: #eee;
+                    font-weight: bold;
+                }
+            }
+        }
+    }
+
+    .sample-loading, .loading {
+        text-align: center;
+        padding: 1rem;
+        color: $text-light;
+        font-style: italic;
+    }
+
+    .sample-error, .error-message {
+        padding: 1rem;
+        margin: 1rem 0;
+        background-color: $error-light;
+        color: $error-color;
+        border: 1px solid $error-border;
+        border-radius: $border-radius;
+    }
+
+    .info-message {
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: $border-radius;
+        background-color: #e3f2fd;
+        color: $primary-color;
+        border: 1px solid #bbdefb;
+    }
+}
+
+// Schema tables
+.schema-table, .sample-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    border: 1px solid $border-color;
+
+    th, td {
+        border: 1px solid $border-color;
+        padding: $base-padding;
+        text-align: left;
+    }
+
+    th {
+        background-color: $accent-color;
+        color: white;
+    }
+
+    tr:nth-child(even) {
+        background-color: $background-lighter;
+    }
+}
+
+// Query plan tables
+.query-plan {
+    margin-top: 15px;
+    background: $background-color;
+    border-radius: $border-radius;
+    box-shadow: $card-shadow;
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: monospace;
+        font-size: $small-font-size;
+
+        th {
+            background: $background-lighter;
+            padding: 10px;
+            text-align: left;
+            border-bottom: 2px solid $border-color;
+            font-weight: 600;
+        }
+
+        td {
+            padding: $base-padding 10px;
+            border-bottom: 1px solid $border-color;
+            vertical-align: top;
+
+            &:last-child {
+                color: $text-light;
+                max-width: 500px;
+                word-break: break-word;
+            }
+        }
+
+        tr:hover {
+            background: $background-lighter;
+        }
+    }
+}

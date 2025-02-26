@@ -5,140 +5,67 @@
 {% block content %}
 <h1>Database Tables</h1>
 
-{% for table_name, table in tables.items() %}
-<div class="table-card">
-    <h2>{{ table.name }}</h2>
+{% for table_name, table in tables|dictsort %}
+<div class="table-card" id="{{ table.name }}">
+    <h2 class="table-header" onclick="toggleTableContent(this)">
+        <span class="toggle-icon">▶</span>
+        {{ table.name }}
+        <span class="schema-button" onclick="toggleSchema(event, '{{ table.name }}')">Show Schema</span>
+    </h2>
 
-    <div class="table-actions">
-        <button onclick="calculateRowCount('{{ table.name }}')" class="action-button">Calculate Row Count</button>
-        <a href="/table/{{ table.name }}" class="action-button">View Sample Data</a>
-        <button onclick="deleteTable('{{ table.name }}')" class="action-button delete-button" style="background: #dc3545;">Delete Table</button>
-        <span id="rowcount-{{ table.name }}" class="rowcount"></span>
-    </div>
+    <div class="table-content" style="display: none;">
+        <div class="schema-container" id="schema-{{ table.name }}" style="display: none;">
+            <pre class="schema-sql" id="schema-sql-{{ table.name }}">Loading schema...</pre>
+        </div>
 
-    <div class="table-schema">
-        <h3>Schema</h3>
-        <table class="schema-table">
-            <thead>
-                <tr>
-                    <th>Column</th>
-                    <th>Type</th>
-                    <th>Constraints</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for column in table.schema %}
-                <tr>
-                    <td>{{ column.name }}</td>
-                    <td>{{ column.type }}</td>
-                    <td>
-                        {% if column.pk %}PRIMARY KEY{% endif %}
-                        {% if not column.notnull %}NULLABLE{% endif %}
-                    </td>
-                </tr>
+        <div class="table-actions">
+            <a href="/table/{{ table.name }}" class="action-button">Browse</a>
+            <button onclick="calculateRowCount('{{ table.name }}')" class="action-button">Count Rows</button>
+            <span class="rowcount" id="rowcount-{{ table.name }}"></span>
+        </div>
+
+        <div class="table-schema">
+            <h3>Columns</h3>
+            <div class="schema-grid">
+                {% if table.columns %}
+                    {% for col in table.columns %}
+                    <div class="schema-item">
+                        <span class="column-name">{{ col.name }}</span>
+                        <span class="column-type">{{ col.type }}</span>
+                        <span class="column-constraints">
+                            {% if col.pk %}PK{% endif %}
+                            {% if col.notnull %}NOT NULL{% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+
+        {% if table.foreign_keys %}
+        <div class="foreign-keys">
+            <h3>Foreign Keys</h3>
+            <div class="fk-grid">
+                {% for fk in table.foreign_keys %}
+                <div class="fk-item">
+                    <span class="fk-from">{{ fk.from_column }}</span>
+                    <span class="fk-arrow">→</span>
+                    <a href="#{{ fk.to_table }}" class="fk-link" data-target="{{ fk.to_table }}">
+                        {{ fk.to_table }}.{{ fk.to_column }}
+                    </a>
+                </div>
                 {% endfor %}
-            </tbody>
-        </table>
+            </div>
+        </div>
+        {% endif %}
     </div>
-
-    {% if table.foreign_keys %}
-    <div class="foreign-keys">
-        <h3>Foreign Key Relationships</h3>
-        <ul class="fk-list">
-            {% for fk in table.foreign_keys %}
-            <li>
-                Column <strong>{{ fk.from }}</strong> →
-                <a href="#{{ fk.table }}" class="fk-link">{{ fk.table }}.{{ fk.to }}</a>
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
 </div>
 {% endfor %}
 
-<style>
-.table-card {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    margin: 20px 0;
-    padding: 20px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.table-card h2 {
-    margin-top: 0;
-    color: #2196f3;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 10px;
-}
-
-.table-actions {
-    margin: 15px 0;
-}
-
-.action-button {
-    background: #2196f3;
-    color: white;
-    border: none;
-    padding: 8px 15px;
-    border-radius: 4px;
-    cursor: pointer;
-    text-decoration: none;
-    display: inline-block;
-    margin-right: 10px;
-}
-
-.action-button:hover {
-    background: #1976d2;
-}
-
-.delete-button:hover {
-    background: #c82333 !important;
-}
-
-.rowcount {
-    color: #666;
-    margin-left: 10px;
-}
-
-.schema-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 10px 0;
-}
-
-.schema-table th, .schema-table td {
-    padding: 8px;
-    text-align: left;
-    border-bottom: 1px solid #eee;
-}
-
-.schema-table th {
-    background: #f5f5f5;
-    font-weight: bold;
-}
-
-.fk-list {
-    list-style: none;
-    padding: 0;
-}
-
-.fk-list li {
-    margin: 5px 0;
-    color: #666;
-}
-
-.fk-link {
-    color: #2196f3;
-    text-decoration: none;
-}
-
-.fk-link:hover {
-    text-decoration: underline;
-}
-</style>
+<!-- Add Highlight.js library for SQL syntax highlighting -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/sql.min.js"></script>
 
 <script>
 function calculateRowCount(tableName) {
@@ -148,13 +75,9 @@ function calculateRowCount(tableName) {
     fetch('/table/' + tableName + '/rowcount')
         .then(response => response.json())
         .then(data => {
-            if (data.error) {
-                throw new Error(data.error);
-            }
             resultSpan.textContent = ` Row count: ${data.row_count}`;
         })
         .catch(err => {
-            console.error('Error:', err);
             resultSpan.textContent = ' Error calculating row count';
         });
 }
@@ -166,19 +89,22 @@ function deleteTable(tableName) {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.error) {
-                alert('Error deleting table: ' + data.error);
+            if (data.success) {
+                document.getElementById(tableName).remove();
             } else {
-                // Remove the table card from the page
-                const tableCard = document.querySelector(`.table-card h2:contains('${tableName}')`).closest('.table-card');
-                tableCard.remove();
+                alert(`Error: ${data.error}`);
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             alert('Error deleting table. Please try again.');
         });
     }
+}
+
+function toggleTableContent(header) {
+    const content = header.nextElementSibling;
+    const isExpanded = header.classList.toggle('expanded');
+    content.style.display = isExpanded ? 'block' : 'none';
 }
 
 // Add text content selector for jQuery-like functionality
@@ -186,16 +112,195 @@ Element.prototype.contains = function(text) {
     return this.textContent.includes(text);
 };
 
-// Smooth scroll to table when clicking foreign key link
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('fk-link')) {
-        e.preventDefault();
-        const targetId = e.target.getAttribute('href');
-        const targetElement = document.querySelector(targetId);
-        if (targetElement) {
-            targetElement.scrollIntoView({ behavior: 'smooth' });
+// Separate fetchSchema function for reuse
+function fetchSchema(tableName) {
+    const schemaSql = document.getElementById(`schema-sql-${tableName}`);
+
+    if (!schemaSql) return;
+
+    fetch(`/table/${tableName}/schema`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.schema) {
+                // First apply syntax highlighting
+                schemaSql.textContent = data.schema;
+                hljs.highlightElement(schemaSql);
+
+                // Then add clickable links after highlighting is done
+                setTimeout(() => {
+                    addTableLinksToSchema(schemaSql);
+                }, 0);
+            } else {
+                schemaSql.textContent = 'Schema not available';
+            }
+        })
+        .catch(error => {
+            schemaSql.textContent = `Error loading schema: ${error.message}`;
+        });
+}
+
+// Function to add table links to schema after highlighting
+function addTableLinksToSchema(schemaElement) {
+    // Get all table names to search for references to them
+    const tableNames = Array.from(document.querySelectorAll('.table-card'))
+        .map(card => card.id)
+        .filter(id => id); // Filter out any empty ids
+
+    if (tableNames.length === 0) return;
+
+    // Traverse the schema element's child nodes
+    traverseAndReplace(schemaElement, tableNames);
+}
+
+function traverseAndReplace(element, tableNames) {
+    for (let i = 0; i < element.childNodes.length; i++) {
+        const node = element.childNodes[i];
+
+        if (node.nodeType === Node.TEXT_NODE) {
+            // For text nodes, attempt to replace table names with links
+            tableNames.forEach(tableName => {
+                const regex = new RegExp(`\\b${tableName}\\b`, 'g');
+                let match;
+
+                // Loop through all matches in the text node
+                while ((match = regex.exec(node.textContent)) !== null) {
+                    // Check if the match is already part of a link
+                    if (node.parentNode && node.parentNode.tagName === 'A') {
+                        continue; // Skip if it's already a link
+                    }
+
+                    // Extract the matched table name
+                    const matchedText = match[0];
+
+                    // Create a new link element
+                    const link = document.createElement('a');
+                    link.className = 'table-link';
+                    link.href = `#${tableName}`;
+                    link.onclick = function(event) {
+                        navigateToTable(tableName);
+                    };
+                    link.textContent = matchedText;
+
+                    // Create a new text node for the remaining text before the match
+                    const textBefore = node.textContent.substring(0, match.index);
+                    const beforeNode = document.createTextNode(textBefore);
+
+                    // Create a new text node for the remaining text after the match
+                    const textAfter = node.textContent.substring(match.index + matchedText.length);
+                    const afterNode = document.createTextNode(textAfter);
+
+                    // Insert the new nodes into the DOM
+                    node.parentNode.insertBefore(beforeNode, node);
+                    node.parentNode.insertBefore(link, node);
+                    node.parentNode.insertBefore(afterNode, node);
+
+                    // Remove the original text node
+                    node.parentNode.removeChild(node);
+
+                    // Reset the index to continue from the new afterNode
+                    i++; // Increment i to account for the new node
+                    break; // Break to prevent infinite loops
+                }
+            });
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            // Recursively traverse element nodes
+            traverseAndReplace(node, tableNames);
         }
     }
+}
+
+// Add a dedicated function for table navigation that we call from onclick
+function navigateToTable(tableName, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    const targetElement = document.getElementById(tableName);
+
+    if (targetElement) {
+        // Expand the target table if it's not already expanded
+        const header = targetElement.querySelector('.table-header');
+        const content = targetElement.querySelector('.table-content');
+        if (content.style.display === 'none') {
+            header.classList.add('expanded');
+            content.style.display = 'block';
+        }
+
+        // Also show the schema for the target table
+        const schemaContainer = document.getElementById(`schema-${tableName}`);
+        const schemaButton = targetElement.querySelector('.schema-button');
+        const schemaSql = document.getElementById(`schema-sql-${tableName}`);
+
+        if (schemaContainer && schemaContainer.style.display === 'none') {
+            // Show schema and fetch it if needed
+            schemaButton.textContent = 'Hide Schema';
+            schemaContainer.style.display = 'block';
+
+            if (schemaSql && schemaSql.textContent === 'Loading schema...') {
+                fetchSchema(tableName);
+            }
+        }
+
+        // Scroll to the target table
+        targetElement.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
+}
+
+// Replace existing handleTableLinkClick with the new navigateToTable function
+function handleTableLinkClick(e) {
+    const tableName = this.getAttribute('data-table') || this.getAttribute('href').substring(1);
+    navigateToTable(tableName, e);
+}
+
+// Improved smooth scroll to table when clicking foreign key link with expansion
+document.addEventListener('click', function(e) {
+    // Check for both regular foreign key links and schema foreign key links
+    if (e.target.classList.contains('fk-link') ||
+        e.target.classList.contains('fk-schema-link') ||
+        e.target.classList.contains('table-link')) {
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Get target table name
+        let targetName;
+        if (e.target.dataset.target) {
+            targetName = e.target.dataset.target;
+        } else if (e.target.getAttribute('href')) {
+            targetName = e.target.getAttribute('href').substring(1);
+        }
+
+        if (targetName) {
+            navigateToTable(targetName);
+        }
+    }
+});
+
+function toggleSchema(event, tableName) {
+    event.stopPropagation(); // Prevent triggering the table header collapse
+    const schemaContainer = document.getElementById(`schema-${tableName}`);
+    const schemaButton = event.target;
+    const schemaSql = document.getElementById(`schema-sql-${tableName}`);
+
+    if (schemaContainer.style.display === 'none') {
+        // Only fetch if we haven't already
+        schemaButton.textContent = 'Hide Schema';
+        schemaContainer.style.display = 'block';
+
+        // Fetch schema if not already loaded
+        if (schemaSql.textContent === 'Loading schema...') {
+            fetchSchema(tableName);
+        }
+    } else {
+        schemaButton.textContent = 'Show Schema';
+        schemaContainer.style.display = 'none';
+    }
+}
+
+// Make sure this runs when the DOM is fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Any global setup can go here
 });
 </script>
 {% endblock %}
