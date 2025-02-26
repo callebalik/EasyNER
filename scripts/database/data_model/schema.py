@@ -111,7 +111,7 @@ schema_create_table_ne = f"""--sql
                     {CLASS_ID} INTEGER,
                     {DOC_ID} INTEGER,
                     {SENT_IDX} INTEGER,
-                    {TXT_NORM} TEXT, -- Normalized text if we want to store it here for simplicity
+                    {TXT_NORM} TEXT, --  TXT_NORM in NE is a denormalization for performance - not a foreign key, NE_AGGR.TXT_NORM is the canonical version - the master record
                     {NE_NORM_ID} INTEGER,
                     {ERROR_ID} VARCHAR(20),
                     {NE_OVERLAP} BOOLEAN,
@@ -120,10 +120,12 @@ schema_create_table_ne = f"""--sql
                     FOREIGN KEY ({DOC_ID}) REFERENCES {TABLE_DOCS} ({DOC_ID}),
                     FOREIGN KEY ({DOC_ID},{SENT_IDX}) REFERENCES {TABLE_SENTENCES} ({DOC_ID},{SENT_IDX}),
                     FOREIGN KEY ({CLASS_ID}) REFERENCES {TABLE_NE_CLASS} ({CLASS_ID}),
-                    FOREIGN KEY ({TXT_NORM}) REFERENCES {TABLE_NE_AGGR} ({NE_NORM_ID}),
+                    FOREIGN KEY ({NE_NORM_ID}) REFERENCES {TABLE_NE_AGGR} ({NE_NORM_ID}),
                     FOREIGN KEY ({ERROR_ID}) REFERENCES {TABLE_NE_ERROR} ({ERROR_ID})
                 );
                 """
+
+
 
 schema_create_table_ne_lookup = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_NE_LOOKUP} (
@@ -137,10 +139,12 @@ schema_create_table_ne_lookup = f"""--sql
 
 schema_create_table_ne_aggregated = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_NE_AGGR} (
-                    {NE_NORM_ID} INTEGER,
+                    {NE_NORM_ID} INTEGER PRIMARY KEY AUTOINCREMENT,
                     {CLASS_ID} INTEGER,
                     {TXT_NORM} TEXT,
-                    PRIMARY KEY ({NE_NORM_ID}, {CLASS_ID}),
+                    {FQ} INTEGER,
+                    {UNIQ_DOCS} INTEGER,
+                    UNIQUE ({CLASS_ID}, {TXT_NORM}),
                     FOREIGN KEY ({CLASS_ID}) REFERENCES {TABLE_NE_CLASS} ({CLASS_ID})
                 );
                 """

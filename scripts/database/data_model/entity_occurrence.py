@@ -1,6 +1,7 @@
 # entity_occurrence_module.py
 import csv
 import sqlite3
+import time
 
 from tqdm import tqdm
 from .schema import *
@@ -198,6 +199,129 @@ class SchemaManager(BaseComponent):
         except Exception as e:
             self.logger.error(f"Verification failed with error: {e}")
             raise
+
+    def migrate_and_setup_ne_aggregation(self):
+        """
+        Complete schema migration and setup for NE aggregation.
+
+        Uses * for column selection to preserve all columns without explicitly naming them.
+        Only the foreign key constraint between NE and NE_AGGR is modified.
+        """
+        import sqlite3
+        import time
+
+        self.logger.info("Starting entity aggregation schema migration...")
+        start_time = time.time()
+
+        # Check if NE_AGGR exists
+        ne_aggr_exists = self.cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (TABLE_NE_AGGR,)
+        ).fetchone() is not None
+
+        # Check for incorrect foreign key constraint
+        fk_constraints = self.cursor.execute(f"PRAGMA foreign_key_list({TABLE_NE})").fetchall()
+
+        has_incorrect_fk = False
+        for fk in fk_constraints:
+            if fk[2] == TABLE_NE_AGGR and fk[3] == TXT_NORM:
+                has_incorrect_fk = True
+                self.logger.warning(
+                    f"Found incorrect FK: {TABLE_NE}.{TXT_NORM} → {TABLE_NE_AGGR}.{NE_NORM_ID}"
+                )
+                break
+
+        # If NE has incorrect FK constraints, we need to recreate it
+        if has_incorrect_fk:
+            self.logger.info("Recreating NE table to fix FK constraints...")
+
+            # Check if we have any data in NE
+            ne_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE}").fetchone()[0]
+
+            if ne_count > 0:
+                self.logger.info(f"NE table contains {ne_count:,} rows, creating backup...")
+
+                # Create backup of NE table with all columns using *
+                self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_NE}_backup AS SELECT * FROM {TABLE_NE}")
+                backup_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE}_backup").fetchone()[0]
+                self.logger.info(f"Backed up {backup_count:,} rows from {TABLE_NE}")
+
+                try:
+                    # Drop and recreate NE table with correct FK constraints
+                    self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_NE}")
+
+                    # Create NE table with correct FK constraint using schema_create_table_ne from schema.py
+                    self.cursor.execute(schema_create_table_ne)
+
+                    # Copy data back from backup using * for all columns
+                    self.cursor.execute(f"INSERT INTO {TABLE_NE} SELECT * FROM {TABLE_NE}_backup")
+
+                    self.logger.info(f"Restored {self.cursor.rowcount:,} rows to {TABLE_NE} with correct schema")
+
+                    # Make sure we commit after this important operation
+                    self.conn.commit()
+
+                except Exception as e:
+                    self.conn.rollback()
+                    self.logger.error(f"Error during NE table migration: {e}")
+                    return False
+
+        # Create or recreate NE_AGGR table
+        try:
+            if ne_aggr_exists:
+                # Check if NE_AGGR has data
+                aggr_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}").fetchone()[0]
+
+                if aggr_count > 0:
+                    self.logger.info(f"NE_AGGR table contains {aggr_count:,} rows, creating backup...")
+                    self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_NE_AGGR}_backup AS SELECT * FROM {TABLE_NE_AGGR}")
+
+                # Drop the table to recreate it with correct schema
+                self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_NE_AGGR}")
+
+            # Create NE_AGGR with proper schema from schema.py
+            self.cursor.execute(schema_create_table_ne_aggregated)
+            self.logger.info(f"Created {TABLE_NE_AGGR} table with correct schema")
+
+            # Create essential indexes for NE_AGGR
+            self.logger.info("Creating essential indexes for NE_AGGR...")
+            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE_AGGR}_class_txt ON {TABLE_NE_AGGR} ({CLASS_ID}, {TXT_NORM})")
+            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE_AGGR}_txt ON {TABLE_NE_AGGR} ({TXT_NORM})")
+
+            # Restore NE_AGGR data if we had a backup
+            if ne_aggr_exists and aggr_count > 0:
+                self.logger.info(f"Restoring data to {TABLE_NE_AGGR}...")
+                try:
+                    # Use * for column selection to preserve all original columns
+                    self.cursor.execute(f"INSERT INTO {TABLE_NE_AGGR} SELECT * FROM {TABLE_NE_AGGR}_backup")
+                    self.logger.info(f"Restored {self.cursor.rowcount:,} rows to {TABLE_NE_AGGR}")
+                except sqlite3.IntegrityError:
+                    # Handle any uniqueness violations
+                    self.logger.warning("Integrity error during restore. Inserting only unique combinations...")
+                    self.cursor.execute(f"""
+                    INSERT INTO {TABLE_NE_AGGR} ({CLASS_ID}, {TXT_NORM})
+                    SELECT DISTINCT {CLASS_ID}, {TXT_NORM} FROM {TABLE_NE_AGGR}_backup
+                    """)
+                    self.logger.info(f"Restored {self.cursor.rowcount:,} unique rows to {TABLE_NE_AGGR}")
+
+            # Create indexes for NE table
+            self.logger.info("Creating/updating indexes for NE table...")
+            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE}_norm_id ON {TABLE_NE} ({NE_NORM_ID})")
+            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE}_txt_norm ON {TABLE_NE} ({TXT_NORM})")
+            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE}_class_txt ON {TABLE_NE} ({CLASS_ID}, {TXT_NORM})")
+
+            # Final commit
+            self.conn.commit()
+
+            elapsed = time.time() - start_time
+            self.logger.info(f"Schema migration completed in {elapsed:.2f} seconds")
+
+            return True
+
+        except Exception as e:
+            self.conn.rollback()
+            self.logger.error(f"Error during schema setup: {e}")
+            return False
 
     def _show_sample_mismatches(self, cursor):
             """Show sample of mismatches between old and new tables"""
