@@ -120,19 +120,18 @@ class DBDataExchanger:
             )
             return []
 
-    def get_named_entity_id(self, named_entity: str) -> int:
+    def get_named_entity_id(self, named_entity_class: str) -> int:
         try:
-            self.cursor.execute(
-                "SELECT id FROM named_entities WHERE named_entity = ?", (named_entity,)
-            )
+            self.cursor.execute(f"SELECT {CLASS_ID} FROM {TABLE_NE_CLASS} WHERE {NE_CLASS} = ?", (named_entity_class,))
+
             result = self.cursor.fetchone()
             if result:
                 return result[0]
             else:
-                self.logger.warning(f"No ID found for named entity: {named_entity}")
+                self.logger.warning(f"No ID found for named entity: {named_entity_class}")
                 return None  # Or raise an exception if appropriate
         except sqlite3.Error as e:
-            self.logger.error(f"Error fetching named entity ID for {named_entity}: {e}")
+            self.logger.error(f"Error fetching named entity ID for {named_entity_class}: {e}")
             return None
 
 
