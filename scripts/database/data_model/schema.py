@@ -1,3 +1,5 @@
+import logging
+
 
 TABLE_DOCS = "documents"
 TABLE_SENTENCES = "sentences"
@@ -158,4 +160,65 @@ schema_create_table_ne_error = f"""--sql
                     UNIQUE ({ERROR_DESC})
                 );
                 """
+
+# ----------------------
+# Views
+# ----------------------
+
+# ----------------------
+# Indexes (ind + TABLE +)
+# ----------------------
+class Index:
+    """
+    Represents an SQL index.
+    'stmt' should include 'CREATE INDEX IF NOT EXISTS' or 'CREATE UNIQUE INDEX IF NOT EXISTS'.
+    """
+    def __init__(self, table: str, columns: list[str], unique: bool = False, where: str = None, logger: logging.Logger=None):
+        self.table = table
+        self.columns = columns
+        self.unique = unique
+        self.where = where
+        self.logger = logger
+        self.stmt = self._create_stmt()
+
+    def _create_stmt(self):
+        """Create the SQL statement for this index."""
+        unique = "UNIQUE " if self.unique else ""
+        # Create safe index name - remove special chars and lowercase
+        index_name = f"idx_{self.table}_" + "_".join(col.lower() for col in self.columns)
+        columns_str = ", ".join(self.columns)
+        where = f" WHERE {self.where}" if self.where else ""
+
+        return f"CREATE {unique}INDEX IF NOT EXISTS {index_name} ON {self.table} ({columns_str}){where}"
+
+    def __str__(self) -> str:
+        return self.stmt
+
+
+    def create_if_not_exists(self, cursor):
+        """Execute the CREATE INDEX IF NOT EXISTS statement for this index."""
+        try:
+            cursor.execute(self.stmt)
+            if self.logger:
+                self.logger.info(f"Created index for table {self.table} with columns {self.columns}.")
+            else:
+                print(f"Created index for table {self.table} with columns {self.columns}.")
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to create index for table {self.table}: {e}")
+            else:
+                print(f"Failed to create index for table {self.table}: {e}")
+
+    def analyze(self, cursor):
+        """Run ANALYZE on the table after creating or updating the index."""
+        cursor.execute(f"ANALYZE {self.table};")
+
+    def drop(self, cursor):
+        """Drop the index."""
+        cursor.execute(f"DROP INDEX IF EXISTS {self.stmt};")
+
+
+
+IDX_NE_ERROR_ID_NOT_NULL = Index(TABLE_NE, [ERROR_ID], where=f"{ERROR_ID} IS NOT NULL")
+
 
