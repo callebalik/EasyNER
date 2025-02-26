@@ -199,14 +199,29 @@ class Index:
         return self.stmt
 
 
-    def create_if_not_exists(self, cursor):
-        """Execute the CREATE INDEX IF NOT EXISTS statement for this index."""
+    def create_if_not_exists(self, cursor, analyze: bool = False):
+        """
+        Execute the CREATE INDEX IF NOT EXISTS statement for this index.
+        If 'analyze' is True, run ANALYZE on the indexed table if the index is created.
+        """
+        # Check if the index already exists
+        cursor.execute(f"PRAGMA index_list({self.table});")
+        indexes = cursor.fetchall()
+        for index in indexes:
+            if index[1] == f"idx_{self.table}_" + "_".join(col.lower() for col in self.columns):
+                if self.logger:
+                    self.logger.info(f"Index for table {self.table} with columns {self.columns} already exists.")
+                else:
+                    print(f"Index for table {self.table} with columns {self.columns} already exists.")
+                return
         try:
             cursor.execute(self.stmt)
             if self.logger:
                 self.logger.info(f"Created index for table {self.table} with columns {self.columns}.")
             else:
                 print(f"Created index for table {self.table} with columns {self.columns}.")
+            if analyze:
+                self.analyze(cursor)
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to create index for table {self.table}: {e}")
@@ -214,7 +229,12 @@ class Index:
                 print(f"Failed to create index for table {self.table}: {e}")
 
     def analyze(self, cursor):
-        """Run ANALYZE on the table after creating or updating the index."""
+        """Run ANALYZE on the indexed table"""
+        if self.logger:
+            self.logger.info(f"Running ANALYZE on table {self.table}.")
+        else:
+            print(f"Running ANALYZE on table {self.table}.")
+
         cursor.execute(f"ANALYZE {self.table};")
 
     def drop(self, cursor):
