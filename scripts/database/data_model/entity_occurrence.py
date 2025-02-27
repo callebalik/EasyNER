@@ -294,11 +294,6 @@ class SchemaManager(BaseComponent):
             self.cursor.execute(schema_create_table_ne_aggregated)
             self.logger.info(f"Created {TABLE_NE_AGGR} table with correct schema")
 
-            # Create essential indexes for NE_AGGR
-            self.logger.info("Creating essential indexes for NE_AGGR...")
-            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE_AGGR}_class_txt ON {TABLE_NE_AGGR} ({CLASS_ID}, {TXT_NORM})")
-            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE_AGGR}_txt ON {TABLE_NE_AGGR} ({TXT_NORM})")
-
             # Restore NE_AGGR data if we had a backup
             if ne_aggr_exists and aggr_count > 0:
                 self.logger.info(f"Restoring data to {TABLE_NE_AGGR}...")
@@ -314,12 +309,6 @@ class SchemaManager(BaseComponent):
                     SELECT DISTINCT {CLASS_ID}, {TXT_NORM} FROM {TABLE_NE_AGGR}_backup
                     """)
                     self.logger.info(f"Restored {self.cursor.rowcount:,} unique rows to {TABLE_NE_AGGR}")
-
-            # Create indexes for NE table
-            self.logger.info("Creating/updating indexes for NE table...")
-            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE}_norm_id ON {TABLE_NE} ({NE_NORM_ID})")
-            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE}_txt_norm ON {TABLE_NE} ({TXT_NORM})")
-            self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NE}_class_txt ON {TABLE_NE} ({CLASS_ID}, {TXT_NORM})")
 
             # Final commit
             self.conn.commit()
@@ -1322,7 +1311,7 @@ class Preprocessor(BaseComponent):
             self.cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{TABLE_NE_ERROR}'")
             if not self.cursor.fetchone():
                 self.logger.info(f"Creating {TABLE_NE_ERROR} table...")
-                self.cursor.execute(schema_create_table_ne_error)
+                self.cursor.execute(ne_error_schema)
                 self.conn.commit()
 
             # 3 Populate error codes table
