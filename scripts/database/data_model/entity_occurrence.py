@@ -35,8 +35,8 @@ class SchemaManager(BaseComponent):
         self.cursor.execute(schema_create_table_sentences)
         self.cursor.execute(schema_create_table_ne_lookup)
         self.cursor.execute(schema_create_table_ne_aggregated)
-        self.cursor.execute(schema_create_table_ne_class)
-        self.cursor.execute(schema_create_table_ne_error)
+        self.cursor.execute(ne_class_schema)
+        self.cursor.execute(ne_error_schema)
         self.cursor.execute(schema_create_table_ne)
 
         self.conn.commit()
