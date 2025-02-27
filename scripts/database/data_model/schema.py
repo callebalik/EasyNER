@@ -170,6 +170,40 @@ schema_create_table_ne_error = f"""--sql
 # ----------------------
 # Views
 # ----------------------
+class View:
+    """
+    Represents an SQL view.
+    'stmt' should only include the SELECT statement.
+    """
+
+    def __init__(self, name: str, select_stmt: str, suffix: str = None):
+        self.name = "v_" + name + ("_" + suffix if suffix else "")
+        self.stmt = select_stmt
+
+    def create_if_not_exists(self, cursor):
+        """Execute the CREATE VIEW IF NOT EXISTS statement for this view."""
+        cursor.execute(f"CREATE VIEW IF NOT EXISTS {self.name} AS {self.stmt};")
+
+    def __str__(self) -> str:
+        return self.stmt
+
+    def drop(self, cursor):
+        """Drop the view."""
+        cursor.execute(f"DROP VIEW IF EXISTS {self.name};")
+
+    def refresh(self, cursor):
+        """Refresh the view by dropping and recreating it."""
+        try:
+            self.drop(cursor)
+            self.create_if_not_exists(cursor)
+        except Exception as e:
+            print(f"Failed to refresh view {self.name}: {e}")
+
+
+
+    def __repr__(self) -> str:
+        return self.name
+
 
 # ----------------------
 # Indexes (ind + TABLE +)
