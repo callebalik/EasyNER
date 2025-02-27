@@ -22,12 +22,13 @@ class SchemaManager(BaseComponent):
                 CREATE TABLE IF NOT EXISTS {TABLE_COOCCURRENCES} (
                     {E1_ID} INTEGER NOT NULL,
                     {E2_ID} INTEGER NOT NULL,
-                    {COL_CO_SENT_DIST} INTEGER,
-                    {COL_CO_AGGR_ID} INTEGER,
+                    {SENT_DIST} INTEGER,
+                    {AGGR_ID} INTEGER,
                     PRIMARY KEY ({E1_ID}, {E2_ID})
+
                     FOREIGN KEY ({E1_ID}) REFERENCES {TABLE_NE}({NE_PRIMARY_ID}),
                     FOREIGN KEY ({E2_ID}) REFERENCES {TABLE_NE}({NE_PRIMARY_ID}),
-                    FOREIGN KEY ({COL_CO_AGGR_ID}) REFERENCES {TABLE_CO_AGGR}({BACKLINK_FOR_CO_OCCURRENCES})
+                    FOREIGN KEY ({AGGR_ID}) REFERENCES {TABLE_CO_AGGR}({BACKLINK_FOR_CO_OCCURRENCES})
                 )
             """
         self.stmt_table_entity_cooccurrences_aggregated = f"""--sql
@@ -39,8 +40,8 @@ class SchemaManager(BaseComponent):
                 {UNIQ_DOCS} INTEGER DEFAULT NULL,
                 {PMI} REAL DEFAULT NULL,
                 PRIMARY KEY ({E1_NORM_ID}, {E2_NORM_ID}),
-                FOREIGN KEY ({E1_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NEA_PRIMARY_ID}),
-                FOREIGN KEY ({E2_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NEA_PRIMARY_ID})
+                FOREIGN KEY ({E1_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NE_NORM_ID}),
+                FOREIGN KEY ({E2_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NE_NORM_ID})
             )
         """
         self.stmt_view_cooccurrences = f"""--sql
@@ -48,19 +49,19 @@ class SchemaManager(BaseComponent):
             SELECT
                 {E1_ID},
                 {E2_ID},
-                {COL_CO_SENT_DIST},
-                {COL_CO_AGGR_ID},
-                nea1.{COL_NE_TXT_NORM} as e1_norm,
-                nea2.{COL_NE_TXT_NORM} as e2_norm,
-                ne1.{COL_NE_CLASS_ID} as e1_class,
-                ne2.{COL_NE_CLASS_ID} as e2_class,
-                ne1.{COL_NE_DOC_ID} as e1_doc_id,
-                ne2.{COL_NE_DOC_ID} as e2_doc_id
+                {SENT_DIST},
+                {AGGR_ID},
+                nea1.{TXT_NORM} as e1_norm,
+                nea2.{TXT_NORM} as e2_norm,
+                ne1.{CLASS_ID} as e1_class,
+                ne2.{CLASS_ID} as e2_class,
+                ne1.{DOC_ID} as e1_doc_id,
+                ne2.{DOC_ID} as e2_doc_id
             FROM {TABLE_COOCCURRENCES} co
             JOIN {TABLE_NE} ne1 ON co.e1_id = ne1.id
             JOIN {TABLE_NE} ne2 ON co.e2_id = ne2.id
-            JOIN {TABLE_NE_AGGR} nea1 ON ne1.{COL_NE_AGGREGATED_ID} = nea1.norm_id
-            JOIN {TABLE_NE_AGGR} nea2 ON ne2.{COL_NE_AGGREGATED_ID} = nea2.norm_id
+            JOIN {TABLE_NE_AGGR} nea1 ON ne1.{NE_NORM_ID} = nea1.norm_id
+            JOIN {TABLE_NE_AGGR} nea2 ON ne2.{NE_NORM_ID} = nea2.norm_id
         """
         self.stmt_view_cooccurrences_aggregated = f"""--sql
             CREATE VIEW IF NOT EXISTS {VIEW_COOCCURRENCES_AGGREGATED} AS
@@ -71,10 +72,10 @@ class SchemaManager(BaseComponent):
                 coa.fq_sentence_level,
                 coa.uniq_docs,
                 coa.pmi,
-                nea1.{COL_NE_TXT_NORM} as e1_norm,
-                nea2.{COL_NE_TXT_NORM} as e2_norm,
-                nea1.{COL_NE_CLASS_ID} as e1_class,
-                nea2.{COL_NE_CLASS_ID} as e2_class
+                nea1.{TXT_NORM} as e1_norm,
+                nea2.{TXT_NORM} as e2_norm,
+                nea1.{CLASS_ID} as e1_class,
+                nea2.{CLASS_ID} as e2_class
             FROM {TABLE_CO_AGGR} coa
             JOIN {TABLE_NE_AGGR} nea1 ON coa.e1_id = nea1.norm_id
             JOIN {TABLE_NE_AGGR} nea2 ON coa.e2_id = nea2.norm_id
@@ -103,9 +104,9 @@ class SchemaManager(BaseComponent):
             coa.fq_sentence_level as fq_sentence_level,
             coa.uniq_docs as uniq_docs,
             coa.pmi as pmi,
-            ne1.{COL_NE_DOC_ID} as doc_id,
-            ne1.{NE_SENT_IDX} as sent_idx_1,
-            ne2.{NE_SENT_IDX} as sent_idx_2
+            ne1.{DOC_ID} as doc_id,
+            ne1.{SENT_IDX} as sent_idx_1,
+            ne2.{SENT_IDX} as sent_idx_2
         FROM {TABLE_CO_AGGR} coa
         JOIN {TABLE_COOCCURRENCES} co ON coa.e1_id = co.e1_id AND coa.e2_id = co.e2_id
         JOIN {TABLE_NE} ne1 ON co.e1_id = ne1.id
@@ -121,15 +122,15 @@ class SchemaManager(BaseComponent):
         CREATE VIEW IF NOT EXISTS {VIEW_DIS_PNM} AS
         SELECT
             CASE
-                WHEN ne1.{COL_NE_CLASS_ID} = 1 THEN coa.e1_id
+                WHEN ne1.{CLASS_ID} = 1 THEN coa.e1_id
                 ELSE coa.e2_id
             END AS e1_id, -- DIS entity ID
-            nea1.{COL_NE_TXT_NORM} as DIS,
+            nea1.{TXT_NORM} as DIS,
             CASE
-                WHEN ne1.{COL_NE_CLASS_ID} = 1 THEN coa.e2_id
+                WHEN ne1.{CLASS_ID} = 1 THEN coa.e2_id
                 ELSE coa.e1_id
             END AS e2_id, -- PNM entity ID
-            nea2.{COL_NE_TXT_NORM} as PNM,
+            nea2.{TXT_NORM} as PNM,
             coa.fq_document_level as fq_document_level,
             coa.fq_sentence_level as fq_sentence_level,
             coa.uniq_docs as uniq_docs,
@@ -140,9 +141,9 @@ class SchemaManager(BaseComponent):
         JOIN {TABLE_NE} ne1 ON coa.e1_id = ne1.{NE_NORM_ID} -- Join on original e1_id
         JOIN {TABLE_NE} ne2 ON coa.e2_id = ne2.{NE_NORM_ID}  -- Join on original e2_id
         WHERE
-            (ne1.{COL_NE_CLASS_ID} = 1 AND ne2.{COL_NE_CLASS_ID} = 2
+            (ne1.{CLASS_ID} = 1 AND ne2.{CLASS_ID} = 2
             OR
-            ne1.{COL_NE_CLASS_ID} = 2 AND ne2.{COL_NE_CLASS_ID} = 1
+            ne1.{CLASS_ID} = 2 AND ne2.{CLASS_ID} = 1
         )
         """
         self.stmt_materialized_table_pnm_dis = self.stmt_view_dis_pnm.replace("CREATE VIEW", "CREATE TABLE").replace(f"{VIEW_DIS_PNM}", f"{TABLE_DIS_PNM}")
@@ -150,15 +151,15 @@ class SchemaManager(BaseComponent):
             CREATE VIEW IF NOT EXISTS {VIEW_DIS_PNM} AS
             SELECT DISTINCT -- Keep DISTINCT for safety
                 CASE
-                    WHEN nea1.{COL_NE_CLASS_ID} = 1 THEN coa.e1_id
+                    WHEN nea1.{CLASS_ID} = 1 THEN coa.e1_id
                     ELSE coa.e2_id
                 END AS e1_id, -- DIS entity ID
-                nea1.{COL_NE_TXT_NORM} as DIS,
+                nea1.{TXT_NORM} as DIS,
                 CASE
-                    WHEN nea1.{COL_NE_CLASS_ID} = 1 THEN coa.e2_id
+                    WHEN nea1.{CLASS_ID} = 1 THEN coa.e2_id
                     ELSE coa.e1_id
                 END AS e2_id, -- PNM entity ID
-                nea2.{COL_NE_TXT_NORM} as PNM,
+                nea2.{TXT_NORM} as PNM,
                 coa.fq_document_level as fq_document_level,
                 coa.fq_sentence_level as fq_sentence_level,
                 coa.uniq_docs as uniq_docs,
@@ -167,9 +168,9 @@ class SchemaManager(BaseComponent):
             JOIN {TABLE_NE_AGGR} nea1 ON coa.e1_id = nea1.norm_id
             JOIN {TABLE_NE_AGGR} nea2 ON coa.e2_id = nea2.norm_id
             WHERE
-                (nea1.{COL_NE_CLASS_ID} = 1 AND nea2.{COL_NE_CLASS_ID} = 2
+                (nea1.{CLASS_ID} = 1 AND nea2.{CLASS_ID} = 2
                 OR
-                nea1.{COL_NE_CLASS_ID} = 2 AND nea2.{COL_NE_CLASS_ID} = 1
+                nea1.{CLASS_ID} = 2 AND nea2.{CLASS_ID} = 1
                 )
             """
 
@@ -217,8 +218,8 @@ class SchemaManager(BaseComponent):
         SELECT
             eco.e1_id_normalized,
             eco.e2_id_normalized,
-            nea1.{COL_NE_TXT_NORM} as e1_txt_norm,
-            nea2.{COL_NE_TXT_NORM} as e2_txt_norm,
+            nea1.{TXT_NORM} as e1_txt_norm,
+            nea2.{TXT_NORM} as e2_txt_norm,
             eco.fq_document_level,
             eco.fq_sentence_level,
             eco.uniq_documents,
