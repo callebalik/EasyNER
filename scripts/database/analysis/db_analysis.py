@@ -8,9 +8,10 @@ import math
 from tqdm import tqdm
 import time
 from ..core.db_engine import ReaderWriterPair
-from ..data_model.entities import EntityOccurrence, NamedEntity, EntityCooccurence
+from ..data_model.entities import EntityOccurrence, EntityCooccurence
 from ..data_model.docs import Docs
 from ..data_model.sent import Sentence
+from ..data_model.named_entity import NamedEntity
 
 class DBAnalysis:
 
@@ -46,7 +47,7 @@ class DBAnalysis:
         """
         Aggregate entity occurrences.
         """
-        
+
     def suite_analysis(self) -> None:
         """
         Run a suite of analysis steps in sequence:
@@ -58,7 +59,7 @@ class DBAnalysis:
         # Baseline analysis
         self.count_named_entity_fq()
 
-        # Entity occurrence analysis 
+        # Entity occurrence analysis
         self.entity_occurrence.identify_overlap()
         self.aggregate_entity_occurrences()
         self.entity_occurrence.calc_intra_doc_fq()
