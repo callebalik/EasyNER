@@ -179,7 +179,15 @@ class Index:
     Represents an SQL index.
     'stmt' should include 'CREATE INDEX IF NOT EXISTS' or 'CREATE UNIQUE INDEX IF NOT EXISTS'.
     """
-    def __init__(self, table: str, columns: list[str], unique: bool = False, where: str = None, logger: logging.Logger=None):
+
+    def __init__(
+        self,
+        table: str,
+        columns: list[str],
+        unique: bool = False,
+        where: str = None,
+        logger: logging.Logger = None,
+    ):
         self.table = table
         self.columns = columns
         self.unique = unique
@@ -191,7 +199,9 @@ class Index:
         """Create the SQL statement for this index."""
         unique = "UNIQUE " if self.unique else ""
         # Create safe index name - remove special chars and lowercase
-        index_name = f"idx_{self.table}_" + "_".join(col.lower() for col in self.columns)
+        index_name = f"idx_{self.table}_" + "_".join(
+            col.lower() for col in self.columns
+        )
         columns_str = ", ".join(self.columns)
         where = f" WHERE {self.where}" if self.where else ""
 
@@ -199,7 +209,6 @@ class Index:
 
     def __str__(self) -> str:
         return self.stmt
-
 
     def create_if_not_exists(self, cursor, analyze: bool = False):
         """
@@ -210,18 +219,28 @@ class Index:
         cursor.execute(f"PRAGMA index_list({self.table});")
         indexes = cursor.fetchall()
         for index in indexes:
-            if index[1] == f"idx_{self.table}_" + "_".join(col.lower() for col in self.columns):
+            if index[1] == f"idx_{self.table}_" + "_".join(
+                col.lower() for col in self.columns
+            ):
                 if self.logger:
-                    self.logger.info(f"Index for table {self.table} with columns {self.columns} already exists.")
+                    self.logger.info(
+                        f"Index for table {self.table} with columns {self.columns} already exists."
+                    )
                 else:
-                    print(f"Index for table {self.table} with columns {self.columns} already exists.")
+                    print(
+                        f"Index for table {self.table} with columns {self.columns} already exists."
+                    )
                 return
         try:
             cursor.execute(self.stmt)
             if self.logger:
-                self.logger.info(f"Created index for table {self.table} with columns {self.columns}.")
+                self.logger.info(
+                    f"Created index for table {self.table} with columns {self.columns}."
+                )
             else:
-                print(f"Created index for table {self.table} with columns {self.columns}.")
+                print(
+                    f"Created index for table {self.table} with columns {self.columns}."
+                )
             if analyze:
                 self.analyze(cursor)
         except Exception as e:
