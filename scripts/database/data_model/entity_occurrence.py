@@ -2542,6 +2542,8 @@ class EntityOccurrence():
     def __init__(self, db_system_instance):
         self.db_system = db_system_instance
         self.data_exchanger = db_system_instance.data_exchanger
+        self.log_query_plan = db_system_instance.log_query_plan
+
         self.schema_manager = SchemaManager(self)
         self.preprocessor = Preprocessor(self)
         self.analysis = Analysis(self)
