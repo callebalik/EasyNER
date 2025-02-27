@@ -410,6 +410,18 @@ class EasyNerDBHandler:
         tables = [table[0] for table in tables]
         return {"tables": tables}
 
+    @property
+    def views(self) -> dict:
+        """
+        Get information about the views in the database.
+
+        :return: A dictionary containing information about the views in the database.
+        """
+        self.cursor.execute("SELECT name FROM sqlite_master WHERE type='view';")
+        views = self.fetchall()
+        views = [view[0] for view in views]
+        return {"views": views}
+
     def optimize_db_performance_parameters(self):
         # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
         self.conn.execute("PRAGMA journal_mode = WAL")
