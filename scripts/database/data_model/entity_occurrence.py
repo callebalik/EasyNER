@@ -2547,6 +2547,9 @@ class EntityOccurrence():
         self.analysis = Analysis(self)
         self.statistics = Statistics(self)
         self.tests = Tests(self, self.statistics)
+        self.aggregator = Aggregator(self)
+
+
 
     @property
     def conn(self):
