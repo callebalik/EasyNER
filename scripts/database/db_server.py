@@ -313,7 +313,7 @@ def get_named_entity_types():
 
 @app.route("/entity-occurrences")
 def list_entity_occurrences():
-    result = display_table("view_ne_raw")
+    result = display_table({VIEW_NE_PRESENTATION.name})
     if "error" in result:
         return render_template("error.html", message=result["error"]), 500
     return render_template(

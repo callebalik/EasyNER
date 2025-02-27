@@ -43,6 +43,17 @@ class SchemaManager(BaseComponent):
 
         self.logger.info("Tables created successfully.")
 
+    def setup_views(self):
+        """Create views for entity occurrences if they don't exist"""
+        self.logger.info("Setting up views for entity occurrence analysis...")
+
+        VIEW_NE_VALIDATION_NORMALIZATION.refresh(self.cursor)
+        VIEW_NE_PRESENTATION.refresh(self.cursor)
+
+        self.conn.commit()
+
+        self.logger.info("Views created successfully.")
+
     def migrate_ne_table(self):
         """Migrate data from entity_occurrences to NE table"""
         self.logger.info("Starting migration to NE table...")

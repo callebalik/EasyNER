@@ -205,6 +205,49 @@ class View:
         return self.name
 
 
+VIEW_NE_PRESENTATION = View(
+    name=TABLE_NE,
+    suffix="PRESENTATION",
+    select_stmt=f"""--sql
+            SELECT
+                    ne.{NE_PRIMARY_ID},
+                    ne.{TXT},
+                    ne.{TXT_NORM},
+                    nec.{NE_CLASS},
+                    ne.{ERROR_ID},
+                    ne.{NE_OVERLAP},
+                    doc.title as document_title,
+                    ne.{DOC_ID}
+                FROM
+                    {TABLE_NE} ne
+                JOIN {TABLE_NE_CLASS} nec ON ne.{CLASS_ID} = nec.{CLASS_ID}
+                JOIN {TABLE_DOCS} doc ON ne.{DOC_ID} = doc.{DOC_ID}
+            """,
+)
+
+VIEW_NE_VALIDATION_NORMALIZATION = View(
+    name=TABLE_NE,
+    suffix="VALIDATION_NORMALIZATION",
+    select_stmt=f"""--sql
+            SELECT
+                    ne.{NE_PRIMARY_ID},
+                    ne.{TXT},
+                    ne.{TXT_NORM},
+                    nea.{TXT_NORM} as canonical_text,
+                    nec.{NE_CLASS},
+                    ne.{ERROR_ID},
+                    ne.{NE_OVERLAP},
+                    doc.title as document_title,
+                    ne.{DOC_ID}
+                FROM
+                    {TABLE_NE} ne
+                JOIN {TABLE_NE_CLASS} nec ON ne.{CLASS_ID} = nec.{CLASS_ID}
+                JOIN documents doc ON ne.{DOC_ID} = doc.{DOC_ID}
+                LEFT JOIN {TABLE_NE_AGGR} nea ON ne.{NE_NORM_ID} = nea.{NE_NORM_ID}
+            """,
+)
+
+
 # ----------------------
 # Indexes (ind + TABLE +)
 # ----------------------
