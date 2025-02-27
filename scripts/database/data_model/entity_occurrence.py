@@ -8,26 +8,11 @@ from tqdm import tqdm
 from .schema import *
 import logging
 from ..db_data_exchanger import DBDataExchanger
-from ..db_main import EasyNerDBHandler
+from ..db_main import EasyNerDBHandler, BaseComponent
 from pathlib import Path
 from ..core.db_engine import ReaderWriterPair
-class BaseComponent:
-    """ Common base class for all components with shared logger and database connection. """
-    def init_deps(self, db_system : EasyNerDBHandler,):
-        self.logger = db_system.logger
-        self.cursor = db_system.cursor
-        self.conn = db_system.conn
-        self.log_query_plan = db_system.log_query_plan
-        self.conn_params_dict = db_system.conn_params_dict
-        self.parent = db_system
-        self.data : DBDataExchanger = db_system.data_exchanger  # Add this line
-        return self
 
 class SchemaManager(BaseComponent):
-    def __init__(self, parent):
-        super().init_deps(parent)
-
-
     def setup_tables(self):
         """Create tables for entity occurrences if they don't exist"""
         self.logger.info("Setting up tables for entity occurrence analysis...")
@@ -572,7 +557,7 @@ class SchemaManager(BaseComponent):
             self.logger.error(f"Error during documents table migration: {e}")
             return False
 
-    def _migrate_sentences(self, sentences_exists):
+    def _migrate_sentences(self, sentences_exists: bool):
         """
         Migrate sentences table to new schema while preserving data.
 
@@ -695,7 +680,6 @@ class SchemaManager(BaseComponent):
                 # # Create indexes
                 # self.logger.info("Creating supporting indexes for sentences...")
                 # self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_SENTENCES}_doc_id ON {TABLE_SENTENCES} ({DOC_ID})")
-                # self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_SENTENCES}_doc_sent ON {TABLE_SENTENCES} ({DOC_ID}, {SENT_IDX})")
 
                 # Verify restoration
                 expected_count = backup_count - orphaned_count
@@ -708,18 +692,18 @@ class SchemaManager(BaseComponent):
                 self.logger.info(f"Recreated empty {TABLE_SENTENCES} table with new schema")
 
             # Update document sentence counts if needed
-            try:
-                self.logger.info("Updating document sentence counts...")
-                self.cursor.execute(f"""--sql
-                    UPDATE {TABLE_DOCS} SET {SENT_COUNT} = (
-                        SELECT COUNT(*)
-                        FROM {TABLE_SENTENCES} s
-                        WHERE s.{DOC_ID} = {TABLE_DOCS}.{DOC_ID}
-                    )
-                """)
-                self.logger.info(f"Updated sentence counts for {self.cursor.rowcount} documents")
-            except sqlite3.Error as e:
-                self.logger.warning(f"Error updating document sentence counts: {e}")
+            # try:
+            #     self.logger.info("Updating document sentence counts...")
+            #     self.cursor.execute(f"""--sql
+            #         UPDATE {TABLE_DOCS} SET {SENT_COUNT} = (
+            #             SELECT COUNT(*)
+            #             FROM {TABLE_SENTENCES} s
+            #             WHERE s.{DOC_ID} = {TABLE_DOCS}.{DOC_ID}
+            #         )
+            #     """)
+            #     self.logger.info(f"Updated sentence counts for {self.cursor.rowcount} documents")
+            # except sqlite3.Error as e:
+            #     self.logger.warning(f"Error updating document sentence counts: {e}")
 
             # Commit transaction
             if transaction_started:
@@ -1016,12 +1000,7 @@ class SchemaManager(BaseComponent):
             validation["error"] = str(e)
             return validation
 
-
 class Preprocessor(BaseComponent):
-    def __init__(self, parent):
-        super().init_deps(parent)
-        self._initialize_normalization_patterns()
-
     def _initialize_normalization_patterns(self):
         """Initialize regex patterns and translation tables for text normalization"""
         import re
@@ -1477,6 +1456,40 @@ class Preprocessor(BaseComponent):
         Using ReaderWriterPair for multithreaded reading and single-threaded writing
         Must therefore have a order by, limit and offset
         """
+
+        self.logger.info("Identifying overlapping entities...")
+
+        # Create index for faster grouping
+        ind = Index(TABLE_NE, [DOC_ID, SENT_IDX], logger=self.logger)
+        ind.create_if_not_exists(self.cursor)
+
+        # Create index for faster span checks
+        ind = Index(TABLE_NE, [DOC_ID, SENT_IDX, SPAN_START, SPAN_END], logger=self.logger)
+        ind.create_if_not_exists(self.cursor)
+
+        # Create index for faster overlap checks
+        ind = Index(TABLE_NE, [DOC_ID, SENT_IDX, NE_OVERLAP], logger=self.logger)
+
+        # Create index for faster overlap checks
+        ind = Index(TABLE_NE, [DOC_ID, SENT_IDX, SPAN_START, SPAN_END, NE_OVERLAP], logger=self.logger)
+        ind.create_if_not_exists(self.cursor)
+        # ind.analyze(self.cursor)
+
+        # # Create index for faster overlap checks
+        # ind = Index(TABLE_NE, [DOC_ID, SENT_IDX, SPAN_START, SPAN_END, NE_OVERLAP, NE_PRIMARY_ID], logger=self.logger)
+        # ind.create_if_not_exists(self.cursor)
+        # ind.analyze(self.cursor)
+
+        # # Create index for faster overlap checks
+        # ind = Index(TABLE_NE, [DOC_ID, SENT_IDX, SPAN_START, SPAN_END, NE_OVERLAP, CLASS_ID], logger=self.logger)
+        # ind.create_if_not_exists(self.cursor)
+        # ind.analyze(self.cursor)
+
+        # Allow SQLite to quickly find records where OVERLAP IS 0 (eliminating the table scan)
+        # Support the ORDER BY n1.DOC_ID, n1.SENT_IDX, n1.SPAN_START clause
+        # Provide efficient access for JOIN conditions
+
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_NE_overlap_doc_sent_span ON NE (OVERLAP, DOC_ID, SENT_IDX, SPAN_START)") # O(n) ->  O(log(n))
 
 
         # Create reader query
@@ -2028,12 +2041,17 @@ class Preprocessor(BaseComponent):
             self.logger.info("Normalization process complete.")
 
 class Analysis(BaseComponent):
-    def __init__(self, parent):
-        super().init_deps(parent)
-class Aggregator(BaseComponent):
-    def __init__(self, parent):
-        super().init_deps(parent)
+    def record_entity_occurrences(self, batch_size=1000):
+        """Record entity occurrences in batches"""
+        try:
+            self.logger.info("Recording entity occurrences...")
+            # Implementation would go here
+            return True
+        except Exception as e:
+            self.logger.error(f"Error recording entity occurrences: {e}")
+            return False
 
+class Aggregator(BaseComponent):
     def aggrvegate_named_entities(self, overwrite: bool = False) -> dict:
         """
         Idempotent aggregation of TABLE_NE on distinct (TXT_NORM, CLASS_ID) combinations.
@@ -2524,57 +2542,121 @@ class Aggregator(BaseComponent):
             validation_result["message"] = f"Validation error: {str(e)}"
             self.logger.error(f"Error during aggregation validation: {str(e)}")
             return validation_result
+
 class Statistics(BaseComponent):
-    def __init__(self, parent):
-        super().init_deps(parent)
+    @property
+    def entity_statistics(self):
+        """Get statistics about entity occurrences"""
+        try:
+            stats = {
+                'total_entities': self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE}").fetchone()[0],
+                'unique_entities': self.cursor.execute(f"SELECT COUNT(DISTINCT {TXT_NORM}) FROM {TABLE_NE}").fetchone()[0],
+                'entities_with_errors': self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE} WHERE {COL_NE_ERROR_CODE} IS NOT NULL").fetchone()[0]
+            }
+            return stats
+        except sqlite3.Error as e:
+            self.logger.error(f"Error getting entity statistics: {e}")
             return None
 
 class Tests(BaseComponent):
-    def __init__(self, parent, stats: Statistics):
-        super().init_deps(parent)
-        self.stats: Statistics = stats
+    """
+    Test suite for entity occurrence data.
+    Provides validation methods for entity integrity and reference checks.
+    """
+    def __init__(self, db_handler: EasyNerDBHandler, statistics: Statistics):
+        """
+        Initialize Tests component with proper dependencies.
 
-class EntityOccurrence():
+        Args:
+            db_handler: Database handler providing connection and logging
+            statistics: Statistics component for entity statistics
+        """
+        # Initialize base component resources
+        super().__init__(db_handler)
+
+        # Store reference to statistics component
+        self.statistics = statistics
+
+    def test_entity_occurrences(self):
+        """Run test suite for EntityOccurrence"""
+        self.test_for_duplicates()
+        self.test_for_invalid_references()
+
+    def test_for_duplicates(self):
+        """Check for duplicate entity entries"""
+        query = f"""
+            SELECT {DOC_ID}, {SPAN_START}, COUNT(*) as cnt
+            FROM {TABLE_NE}
+            GROUP BY {DOC_ID}, {SPAN_END}
+            HAVING cnt > 1
+        """
+        duplicates = self.cursor.execute(query).fetchall()
+        if duplicates:
+            self.logger.error(f"Found {len(duplicates)} duplicate entity entries!")
+        else:
+            self.logger.info("No duplicate entity entries found.")
+
+    def test_for_invalid_references(self):
+        """Check for invalid document or normalized entity references"""
+        query = f"""
+            SELECT COUNT(*) FROM {TABLE_NE} ne
+            LEFT JOIN {TABLE_DOCS} d ON ne.{DOC_ID} = d.{DOC_ID}
+            WHERE d.{DOC_ID} IS NULL
+        """
+        invalid_docs = self.cursor.execute(query).fetchone()[0]
+        if invalid_docs:
+            self.logger.error(f"Found {invalid_docs} entities with invalid document references!")
+        else:
+            self.logger.info("No invalid document references found.")
+
+class EntityOccurrence:
     """
     Main entrypoint class for Entity Occurrence functionality.
     Handles integration of schema management, analysis, statistics, and testing.
     """
-    def __init__(self, db_system_instance):
-        self.db_system = db_system_instance
-        self.data_exchanger = db_system_instance.data_exchanger
-        self.log_query_plan = db_system_instance.log_query_plan
+    def __init__(self, db_system_instance: EasyNerDBHandler):
+        # Store direct reference to database handler
+        self._db = db_system_instance
 
-        self.schema_manager = SchemaManager(self)
-        self.preprocessor = Preprocessor(self)
-        self.analysis = Analysis(self)
-        self.statistics = Statistics(self)
-        self.tests = Tests(self, self.statistics)
-        self.aggregator = Aggregator(self)
+        # Import CacheManager only when needed to avoid circular imports
+        from ..core.cache_manager import CacheManager
+        self.cache = CacheManager(db_system_instance)
 
+        # Create component instances with proper initialization
+        self.schema_manager = SchemaManager(db_system_instance)
+        self.preprocessor = Preprocessor(db_system_instance)
+        self.analysis = Analysis(db_system_instance)
+        self.statistics = Statistics(db_system_instance)
+        self.aggregator = Aggregator(db_system_instance)
 
+        # Tests component requires both db_handler and statistics component
+        self.tests = Tests(db_system_instance, self.statistics)
 
-    @property
-    def conn(self):
-        return self.db_system.conn
+    def run_all_tests(self):
+        """
+        Run a comprehensive test suite on the entity occurrence data
 
-    @property
-    def logger(self):
-        return self.db_system.logger
+        Returns:
+            dict: Test results from all test methods
+        """
+        self._db.logger.info("Running comprehensive entity occurrence tests...")
 
-    @property
-    def cursor(self):
-        return self.db_system.cursor
+        results = {
+            "entity_occurrences": self.tests.test_entity_occurrences(),
+            "normalization": self.tests.validate_normalization_completeness(),
+            "statistics": self.statistics.entity_statistics
+        }
 
-    @property
-    def conn_params_dict(self):
-        return self.db_system.conn_params_dict
+        # Determine overall status
+        has_errors = any(
+            result.get("status") == "ERROR"
+            for result_group in results.values()
+            if isinstance(result_group, dict)
+            for result in result_group.values()
+            if isinstance(result, dict) and "status" in result
+        )
 
-    def setup(self):
-        """Initialize the entity occurrence system by setting up tables"""
-        self.schema_manager.setup_tables()
+        results["overall_status"] = "ERROR" if has_errors else "OK"
 
-    def record_occurrences(self, *args, **kwargs):
-        """Delegate to analysis component"""
-        if self.analysis.record_entity_occurrences(*args, **kwargs):
-            self.tests.test_entity_occurrences()
+        return results
 

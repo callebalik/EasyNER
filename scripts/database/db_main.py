@@ -1,86 +1,231 @@
+import functools
 import os
 import sys
 import logging
 import json
 import sqlite3
+from typing import Optional
 
-
+def db_error_handler(method):
+    """Decorator to handle database errors consistently"""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except sqlite3.Error as e:
+            self.logger.error(f"Database error in {method.__name__}: {str(e)}")
+            self.logger.debug(f"Args: {args}, Kwargs: {kwargs}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error in {method.__name__}: {str(e)}")
+            raise
+    return wrapper
 
 class EasyNerDBHandler:
-    def __init__(self, db_path: str = None, config_path: str = "../../config.json"):
+    def __init__(self, db_path: Optional[str] = None, config_path: str = "../../config.json"):
         """
         Initialize the database handler.
 
         :param db_path: Path to the SQLite database file.
+
         """
+
+        # Set up minimal logger for initialization
+        self.logger = logging.getLogger("EasyNerDB")
+        self.logger.setLevel(logging.DEBUG)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setLevel(logging.INFO)
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+
         self.config = self._load_config(config_path)
-
-        # Check if in development mode, if so, ignore db_path provided
-        if self.config["develop"]:
-            print("Setting up in development mode, ignoring database path provided")
-            pwd = os.path.dirname(os.path.abspath(__file__))
-            self.db_path = os.path.join(pwd, "development.db")
-        else:
-            if db_path is not None:
-                self.db_path = db_path
-            else:
-                print(
-                    "WARNING: Using No database path provided, continuing with database path provided in config"
-                )
-                self.db_path = self.config.get("db_path")
-
-        # Ensure db_path is absolute otherwise resolve it relative to the script
-        if not os.path.isabs(self.db_path):
-            # Resolve db_path relative to project root (config.json directory)
-            project_root = os.path.dirname(os.path.abspath(config_path))
-            self.db_path = os.path.join(project_root, self.db_path)
-
-        # Create Database if not present.
-        # Resolve sql schema, defaulting to schema path if user doesn't provide one after prompt
-        if not os.path.exists(self.db_path):
-            print(f"Database {self.db_path} does not exist. Creating database...")
-
-            if os.getenv("DB_RUN", False) == True or not sys.stdin.isatty(): # Check if running in a non-interactive environment
-                print("Running in non-interactive environment, using default schema path defined in config")
-                self.schema_path = self.config.get("schema_path")
-            else:
-                self.schema_path = input(
-                    "Please provide the path to the schema file, or press <Enter> to use the default schema path defined in config: "
-                )
-                if self.schema_path == "":
-                    self.schema_path = self.config.get("schema_path")
-            self.create_db(self.db_path, self.schema_path)
-
+        self.db_path = self._setup_path(db_path=db_path)
         self.name = os.path.basename(self.db_path)
+
+        # Now set up the full logging system with proper file paths
         self._setup_logging()
 
         # Connect to the database
         self.conn = sqlite3.connect(self.db_path)
-        # self._set_default_settings()
         self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
         self.cursor.row_factory = sqlite3.Row # Return rows as dictionaries for easy access
-        self.execute_with_log = self.execute_with_log
-        self.log_query_plan = self._log_query_plan
         self.logger.debug(f"Connected to database {self.db_path} and created cursor")
 
+        # Ensure cache table exists
+        self._init_cache()
+
+        # Load environment settings and store in cache
+        self._load_environment_settings()
+
         # Initialize components
-        # Import here to avoid circular dependencies and ensure all components are initialized before use
-        from .db_data_exchanger import DBDataExchanger
-        from .db_data_cleaner import DBDataCleaner
-        from .analysis.db_analysis import DBAnalysis
-        from .db_statistics import DBStatistics
-        from .data_model.entities import EntityOccurrence, EntityCooccurence
+        self._initialize_components()
+        self.logger.info("Database connection initialized")
 
+      # Support for context manager protocol
+    def __enter__(self):
+        """
+        Context manager entry point - provides direct access to database operations.
 
-        self.data_exchanger = DBDataExchanger(self.conn, self.cursor, self.logger)
-        self.data_cleaner = DBDataCleaner(
-            self.conn, self.cursor, self.logger, self.data_exchanger, config=self.config
-        )
-        self.analysis = DBAnalysis(self.conn, self.cursor, self.logger, self.data_exchanger, self.log_query_plan, self.execute_with_log, self.conn_params_dict)
-        self.statistics = DBStatistics(self.conn, self.cursor, self.logger, self.data_exchanger)
+        Returns:
+            self: The database handler instance
+        """
+        return self
 
-        self.eo = EntityOccurrence(self.conn, self.cursor, self.logger, log_query_plan=self._log_query_plan, conn_params_dict=self.conn_params_dict)
-        self.co = EntityCooccurence(self.conn, self.cursor, self.logger, log_query_plan=self._log_query_plan, conn_params_dict=self.conn_params_dict)
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Context manager exit point - handles cleanup with proper error handling.
+
+        Args:
+            exc_type: Exception type if an exception was raised, otherwise None
+            exc_value: Exception value if an exception was raised, otherwise None
+            traceback: Traceback if an exception was raised, otherwise None
+        """
+        if exc_type:
+            self.logger.error(f"Exception during database operation: {exc_type.__name__}: {exc_value}")
+            # Attempt rollback for database integrity errors
+            if issubclass(exc_type, sqlite3.Error):
+                try:
+                    self.logger.info("Rolling back transaction due to database exception")
+                    self.rollback()
+                except Exception as e:
+                    self.logger.error(f"Error during rollback: {str(e)}")
+
+        # Always perform clean WAL checkpoint and close connection
+        try:
+            # Force WAL checkpoint to prevent database corruption
+            self.execute("PRAGMA wal_checkpoint(FULL);")
+            self.close()
+            self.logger.debug("Database connection closed cleanly")
+        except Exception as e:
+            self.logger.error(f"Error during connection cleanup: {str(e)}")
+
+        # Don't suppress exceptions
+        return False
+
+    @db_error_handler
+    def _setup_path(self, db_path: Optional[str]) -> None:
+        # Database path selection with clear precedence:
+        # 1. DB_PATH environment variable
+        # 2. Development mode default path (if config["develop"]=True)
+        # 3. Explicitly provided db_path parameter
+        # 4. Path from config file
+
+        env_db_path = os.getenv("DB_PATH")
+        resolved_path = None
+        if env_db_path:
+            resolved_path = env_db_path
+            self.logger.info(f"Using database path from environment variable: {env_db_path}")
+        elif self.config.get("develop", False):
+            pwd = os.path.dirname(os.path.abspath(__file__))
+            resolved_path = os.path.join(pwd, "development.db")
+            self.logger.info("Setting up in development mode, ignoring database path provided")
+        elif db_path is not None:
+            resolved_path = db_path
+            self.logger.info(f"Using database path provided: {db_path}")
+        else:
+            resolved_path = self.config.get("db_path")
+            self.logger.info(f"Using database path from config: {resolved_path}")
+
+        # Ensure the path is absolute and resolved
+        if not resolved_path:
+            raise ValueError("Database path could not be resolved")
+
+        if not os.path.isabs(resolved_path):
+            raise ValueError("Database path must be absolute")
+
+        self.logger.info(f"Resolved database path: {resolved_path}")
+
+        return resolved_path
+
+    @db_error_handler
+    def _init_cache(self):
+        """Initialize the cache table if it doesn't exist"""
+        try:
+            # Try to use CacheManager if available
+            from .core.cache_manager import CacheManager
+            self.cache_manager = CacheManager(self)
+            self.logger.debug("Cache initialized using CacheManager")
+        except ImportError:
+            raise ImportError("CacheManager not available; cannot initialize cache")
+
+    @db_error_handler
+    def _load_environment_settings(self):
+        """Load settings from environment variables"""
+        env_settings = {}
+
+        # Batch size for processing
+        try:
+            env_batch_size = os.getenv("DEFAULT_BATCH_SIZE")
+            if env_batch_size:
+                env_settings["batch_size"] = int(env_batch_size)
+        except ValueError:
+            self.logger.warning(f"Invalid DEFAULT_BATCH_SIZE value: {os.getenv('DEFAULT_BATCH_SIZE')}")
+            env_settings["batch_size"] = 32
+
+        # Log level
+        env_log_level = os.getenv("LOG_LEVEL")
+        if env_log_level:
+            valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+            if env_log_level.upper() in valid_levels:
+                env_settings["log_level"] = env_log_level.upper()
+                # Update logger level
+                level = getattr(logging, env_log_level.upper())
+                self.logger.setLevel(level)
+                self.logger.info(f"Set log level to {env_log_level.upper()} from environment variable")
+
+        # Store settings in cache if we have a cache manager
+        if hasattr(self, 'cache_manager'):
+            self.cache_manager.set_global("environment_settings", env_settings)
+
+        return env_settings
+
+    @db_error_handler
+    def _initialize_components(self):
+        """
+        Initialize database components with proper composition pattern.
+
+        All components are attached directly to this instance for easy access:
+            db.ne.aggregator.method()
+            db.data_cleaner.method()
+
+        Components receive 'self' as dependency to access conn, cursor, logger.
+        """
+        try:
+            # Import component modules
+            from .db_data_exchanger import DBDataExchanger
+            from .db_data_cleaner import DBDataCleaner
+            from .analysis.db_analysis import DBAnalysis
+            from .db_statistics import DBStatistics
+            from .data_model.entity_occurrence import EntityOccurrence
+            from .data_model.entity_cooccurrence import EntityCooccurrence
+
+            # Initialize data_exchanger first (other components depend on it)
+            self.data_exchanger = DBDataExchanger(self.conn, self.cursor, self.logger)
+
+            # Initialize primary components
+            self.data_cleaner = DBDataCleaner(
+                self.conn, self.cursor, self.logger, self.data_exchanger, config=self.config
+            )
+
+            self.analysis = DBAnalysis(
+                self.conn, self.cursor, self.logger, self.data_exchanger,
+                self._log_query_plan, self.execute_with_log, self.conn_params_dict
+            )
+
+            self.statistics = DBStatistics(
+                self.conn, self.cursor, self.logger, self.data_exchanger
+            )
+
+            # Initialize entity handling components with direct reference to self
+            # This maintains the desired db.ne.component.method() pattern
+            self.ne = EntityOccurrence(self)
+            self.co = EntityCooccurrence(self)
+
+        except ImportError as e:
+            self.logger.error(f"Component initialization failed: {str(e)}")
+            raise
 
     @property
     def conn_params_dict(self):
@@ -101,6 +246,7 @@ class EasyNerDBHandler:
     def _set_default_settings(self):
         """
         Set default settings for the database connection.
+        Only call on a newly created database.
         """
         self.execute("PRAGMA foreign_keys = ON;")
         self.execute("PRAGMA journal_mode = WAL;")
@@ -159,7 +305,7 @@ class EasyNerDBHandler:
             file_handler = logging.FileHandler(log_file)
             file_handler.setLevel(logging.DEBUG)
             file_formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
+                "%(asctime)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             file_handler.setFormatter(file_formatter)
 
@@ -199,6 +345,27 @@ class EasyNerDBHandler:
         """
         if hasattr(self, "conn"):
             self.conn.close()
+
+    def _delete_views(self, view: str = None):
+        """
+        Delete views from the database. If no view is provided, all views are deleted.
+        Prompts the user for confirmation before deleting.
+
+        Args:
+            view (str, optional): Name of the view to delete
+        """
+        confirmation = input("Are you sure you want to delete the views? (y/n): ")
+        if confirmation.lower() != "y":
+            print("Operation cancelled.")
+            return
+
+        if view is None:
+            views = self.views["views"]
+            for view in views:
+                self.cursor.execute(f"DROP VIEW IF EXISTS {view};")
+        else:
+            self.cursor.execute(f"DROP VIEW IF EXISTS {view};")
+        self.conn.commit()
 
     def _empty_database_(self):
         """
@@ -398,7 +565,7 @@ class EasyNerDBHandler:
         return [{columns[i]: row[i] for i in range(len(columns))} for row in rows]
 
     @property
-    def tables(self):
+    def tables(self) -> dict:
         """
         Get information about the database.
 
@@ -575,41 +742,23 @@ class EasyNerDBHandler:
         conn.close()
         print(f"Database created at {db_path} using schema from {schema_path}")
 
-class DBEntryPoint:
-    def __init__(self, db_path: str = None, config_path: str = "../../config.json"):
-        """Initialize database components with proper dependency injection."""
-        self.db = EasyNerDBHandler(db_path, config_path)
+class BaseComponent:
+    """Common base class for all components with shared logger and database connection."""
+    def __init__(self, db_handler: EasyNerDBHandler):
+        # Direct attribute access from the database handler
+        self.logger = db_handler.logger
+        self.cursor = db_handler.cursor
+        self.conn = db_handler.conn
+        self.log_query_plan = db_handler._log_query_plan
+        self.conn_params_dict = db_handler.conn_params_dict
+        self.data = db_handler.data_exchanger
+        self.db = db_handler  # Keep a direct reference to the database handler
 
-        # Import core components
-        from .db_data_exchanger import DBDataExchanger
-        from .db_data_cleaner import DBDataCleaner
-        from .analysis.db_analysis import DBAnalysis
-        from .db_statistics import DBStatistics
-        from .data_model.entity_occurrence import EntityOccurrence
-        from .data_model.entity_cooccurrence import EntityCooccurrence
+        # Optional initialization hook for subclasses
+        self._initialize()
 
-        # Initialize data_exchanger and attach it to the db instance
-        self.data_exchanger = DBDataExchanger(self.db.conn, self.db.cursor, self.db.logger)
-        self.db.data_exchanger = self.data_exchanger
+    def _initialize(self):
+        """Hook for subclasses to perform additional initialization"""
+        pass
 
-        # Initialize other components
-        self.data_cleaner = DBDataCleaner(
-            self.db.conn, self.db.cursor, self.db.logger, self.data_exchanger, config=self.db.config
-        )
-        self.analysis = DBAnalysis(
-            self.db.conn, self.db.cursor, self.db.logger, self.data_exchanger, self.db.log_query_plan, self.db.execute_with_log, self.db.conn_params_dict
-        )
-        self.statistics = DBStatistics(
-            self.db.conn, self.db.cursor, self.db.logger, self.data_exchanger
-        )
-
-        # Initialize entity handling components
-        self.ne = EntityOccurrence(self.db)
-        self.co = EntityCooccurrence(self.db)
-
-    def __enter__(self):
-        return self.db
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if hasattr(self, 'db'):
-            self.db.close()
+    # Remove init_deps as it's redundant with proper inheritance
