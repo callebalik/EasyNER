@@ -75,8 +75,9 @@ VIEW_DIS_PNM = VIEW_PREFIX + "_DIS_PNM"
 TABLE_DIS_PNM = "DIS_PNM"
 
 TITLE = "TITLE"
-WORD_COUNT = "WORD_COUNT"
 SENT_COUNT = "SENT_COUNT"
+WORD_COUNT = "WORD_COUNT"
+TOKEN_COUNT = "TOKEN_COUNT"
 ALPHA_COUNT = "ALPHA_COUNT"
 
 # ----------------------
@@ -87,8 +88,9 @@ schema_create_table_docs = f"""--sql
                     {DOC_ID} INTEGER PRIMARY KEY,
                     {TITLE} TEXT,
                     {WORD_COUNT} INTEGER,
-                    {SENT_COUNT} INTEGER,
-                    {ALPHA_COUNT} INTEGER
+                    {TOKEN_COUNT} INTEGER,
+                    {ALPHA_COUNT} INTEGER,
+                    {SENT_COUNT} INTEGER
                 );
                 """
 
@@ -98,6 +100,7 @@ schema_create_table_sentences = f"""--sql
                     {SENT_IDX} INTEGER,
                     {TXT} TEXT,
                     {WORD_COUNT} INTEGER,
+{TOKEN_COUNT} INTEGER,
                     {ALPHA_COUNT} INTEGER,
                     PRIMARY KEY ({DOC_ID}, {SENT_IDX}),
                     FOREIGN KEY ({DOC_ID}) REFERENCES {TABLE_DOCS} ({DOC_ID})
@@ -124,7 +127,6 @@ schema_create_table_ne = f"""--sql
                     FOREIGN KEY ({ERROR_ID}) REFERENCES {TABLE_NE_ERROR} ({ERROR_ID})
                 );
                 """
-
 
 
 schema_create_table_ne_lookup = f"""--sql
