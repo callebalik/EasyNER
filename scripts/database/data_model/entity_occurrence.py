@@ -1,5 +1,6 @@
 # entity_occurrence_module.py
 import csv
+import json
 import sqlite3
 import time
 
