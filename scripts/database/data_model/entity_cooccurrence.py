@@ -2,21 +2,12 @@
 import sqlite3
 from .schema import *
 import logging
-
-
-class BaseComponent:
-    """ Common base class for all components with shared logger and database connection. """
-    def init_deps(self, db_system):
-        self.logger = db_system.logger
-        self.cursor = db_system.cursor
-        self.conn =  db_system.conn
-        self.conn_params_dict = db_system.conn_params_dict
-        self.parent = db_system
-        return self
+from ..db_main import BaseComponent, EasyNerDBHandler
 
 class SchemaManager(BaseComponent):
-    def __init__(self, parent):
-        super().init_deps(parent)
+    def __init__(self, db_handler: EasyNerDBHandler):
+        # Use proper initialization with db_handler
+        super().__init__(db_handler)
 
         self.stmt_table_entity_cooccurrences = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_COOCCURRENCES} (
@@ -244,7 +235,7 @@ class SchemaManager(BaseComponent):
         self.conn.commit()
         self.logger.info("Views created successfully.")
 
-class Analysis:
+class Analysis(BaseComponent):
     """
     Main analysis engine for co-occurrence analysis.
     Assumes that the tables and views have been set up.
@@ -255,15 +246,9 @@ class Analysis:
     3.
 
     """
-    def __init__(self):
-        self.logger = None
-        self.cursor = None
-        self.conn = None
-        self.conn_params_dict = None
-
     def record_entity_cooccurrences_multithreaded(
         self, level: str = "document", batch_size=20000, num_reader_threads=32
-    ) -> None:
+    ) -> bool:
         """
         Counts entity co-occurrences using ReaderWriterPair.
         NOT idempotent, will add new co-occurrences to the database.
@@ -281,6 +266,7 @@ class Analysis:
         This ensures document atomicity across batches
         and allows for parallel processing of entity co-occurrences.
         """
+        try:
         if level not in ["document", "sentence"]:
             raise ValueError("Level must be either 'document' or 'sentence'")
 
@@ -323,9 +309,8 @@ class Analysis:
                         p.e2_id
                         {", (SELECT ABS(e1." + {NE_SENT_IDX} + " - e2." + {NE_SENT_IDX} + ") FROM doc_entities e1 JOIN doc_entities e2 ON e1.id = p.e1_id AND e2.id = p.e2_id) AS sentence_distance" if level == "sentence" else ""}
                     FROM distinct_pairs p
-
-
                 """
+
 
         try:
             # For query plan logging, provide sample values
@@ -334,8 +319,6 @@ class Analysis:
         except Exception as e:
             self.logger.error(f"Error creating reader query: {e}")
             raise
-
-
 
         def cooccurrence_process_function(batch, conn_params):
             """Processes a batch of entity co-occurrence data."""
@@ -385,7 +368,7 @@ class Analysis:
             total_rows=total_count,  # Use the accurate count
             process_title=f"Co-occurrence counting at {level} level",
         )
-
+            try:
         self.logger.info(
             f"Starting ReaderWriterPair to count entity co-occurrences at {level} level."
         )
@@ -393,6 +376,16 @@ class Analysis:
         self.logger.info(
             f"ReaderWriterPair process finished for {level} level co-occurrence counting."
         )
+
+                return True
+
+            except Exception as e:
+                self.logger.error(f"Error counting entity co-occurrences: {e}")
+                raise
+
+        except Exception as e:
+            self.logger.error(f"Error counting entity co-occurrences: {e}")
+            return False
 
     def count_entity_cooccurrences_multithreaded(self, level: str = "document", batch_size=5000, num_reader_threads=32) -> None:
         """
@@ -412,36 +405,17 @@ class EntityCooccurrence:
     Main entrypoint class for Entity Co-occurrence functionality.
     Handles integration of schema management, analysis, statistics, and testing.
     """
-    def __init__(self, db_system_instance):
-        self.db_system = db_system_instance
+    def __init__(self, db_system_instance: EasyNerDBHandler):
+        # Store direct reference to database handler
+        self._db = db_system_instance
 
-        self.schema_manager = SchemaManager(self)
-        self.analysis = Analysis(self)
-        self.statistics = Statistics(self)
-        self.tests = Tests(self, self.statistics)
+        # Create component instances with proper initialization
+        self.schema_manager = SchemaManager(db_system_instance)
+        self.analysis = Analysis(db_system_instance)
+        self.statistics = Statistics(db_system_instance)
 
-    @property
-    def conn(self): # Good - Always refers to the current connection
-        return self.db_system.conn
-
-    @property
-    def logger(self):
-        return self.db_system.logger
-
-    @property
-    def cursor(self):
-        return self.db_system.cursor
-
-    @property
-    def conn_params_dict(self):
-        return self.db_system.conn_params_dict
-
-    def setup(self):
-        """
-        Initialize the co-occurrence system by setting up tables and views
-        """
-        self.schema_manager.setup_tables()
-        self.schema_manager.setup_views()
+        # Tests component requires both db_handler and statistics component
+        self.tests = Tests(db_system_instance, self.statistics)
         
     def record_entity_cooccurrences_multithreaded(self, *args, **kwargs):
         """
