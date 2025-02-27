@@ -23,7 +23,6 @@ TABLE_COOCCURRENCES = "CO"
 TABLE_CO_AGGR = TABLE_COOCCURRENCES + "_" + AGGREGATED_SUFFIX
 
 
-
 # ----------------------
 # Columns
 # ----------------------
@@ -60,7 +59,7 @@ FQ_DOCUMENT_LEVEL = "FQ_DOCUMENT_LEVEL"
 FQ_SENTENCE_LEVEL = "FQ_SENTENCE_LEVEL"
 UNIQ_DOCS = "UNIQ_DOCS"
 PMI = "PMI"
-BACKLINK_FOR_CO_OCCURRENCES = "BACKLINK_FOR_CO_OCCURRENCES" # Extra column, since the primary key is a composite key
+BACKLINK_FOR_CO_OCCURRENCES = "BACKLINK_FOR_CO_OCCURRENCES"  # Extra column, since the primary key is a composite key
 
 VIEW_PREFIX = "v_"
 VIEW_NE = "VIEW_NE"
@@ -151,7 +150,7 @@ schema_create_table_ne_aggregated = f"""--sql
                 );
                 """
 
-schema_create_table_ne_class = f"""--sql
+ne_class_schema = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_NE_CLASS} (
                     {CLASS_ID} INTEGER PRIMARY KEY,
                     {NE_CLASS} TEXT,
@@ -159,7 +158,7 @@ schema_create_table_ne_class = f"""--sql
                 );
                 """
 
-schema_create_table_ne_error = f"""--sql
+ne_error_schema = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_NE_ERROR} (
                     {ERROR_ID} VARCHAR(20) PRIMARY KEY,
                     {ERROR_DESC} TEXT,
@@ -185,7 +184,7 @@ class View:
         cursor.execute(f"CREATE VIEW IF NOT EXISTS {self.name} AS {self.stmt};")
 
     def __str__(self) -> str:
-        return self.stmt
+        return self.name
 
     def drop(self, cursor):
         """Drop the view."""
@@ -342,5 +341,3 @@ class Index:
 
 
 IDX_NE_ERROR_ID_NOT_NULL = Index(TABLE_NE, [ERROR_ID], where=f"{ERROR_ID} IS NOT NULL")
-
-
