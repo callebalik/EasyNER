@@ -2029,6 +2029,500 @@ class Preprocessor(BaseComponent):
 class Analysis(BaseComponent):
     def __init__(self, parent):
         super().init_deps(parent)
+class Aggregator(BaseComponent):
+    def __init__(self, parent):
+        super().init_deps(parent)
+
+    def aggrvegate_named_entities(self, overwrite: bool = False) -> dict:
+        """
+        Idempotent aggregation of TABLE_NE on distinct (TXT_NORM, CLASS_ID) combinations.
+
+        Populates TABLE_NE_AGGR table with aggregated entity data:
+            - TXT_NORM: Normalized entity text
+            - CLASS_ID: Entity class ID
+            - FQ: Frequency of the entity across corpus
+            - UNIQ_DOCS: Number of unique documents containing the entity
+
+        Updates TABLE_NE.NE_NORM_ID with corresponding aggregated entity IDs.
+
+        Args:
+        overwrite (bool): If True, overwrites existing aggregations.
+                        If False, preserves existing aggregations (default).
+
+        Returns:
+            dict: Results of the aggregation process or None if failed
+        """
+        self.logger.info("Starting named entity aggregation process...")
+        start_time = time.time()
+
+        try:
+            # Start transaction for atomicity
+            self.cursor.execute("BEGIN TRANSACTION")
+
+
+            # Step 1: Prepare and validate input data
+            stats_dir = self._analyze_entities_for_aggregation()
+            entity_count = stats_dir['valid_entities']
+            if entity_count == 0:
+                self.logger.warning("No valid entities found for aggregation. Skipping process.")
+                return None
+
+            # Step 2: Perform entity aggregation
+            if stats_dir['unique_combinations'] == 0:
+                self.logger.info("No unique combinations found. Skipping aggregation.")
+                return None
+            if stats_dir['unique_combinations'] == stats_dir['existing_aggregations']:
+                self.logger.info("All unique combinations are already aggregated. Skipping aggregation.")
+            else:
+                rows_aggregated = self._perform_entity_aggregation()
+
+            # Step 3: Update entity references
+            rows_updated = self._update_ne_norm_id_references_in_batches()
+
+            # Step 4: Create supporting indexes
+            self._create_aggregation_indexes()
+
+            # Step 5: Validate results
+            validation_result = self._validate_entity_aggregation()
+
+            if validation_result["success"]:
+                # Commit all changes
+                self.conn.commit()
+                elapsed_time = time.time() - start_time
+                self.logger.info(f"Entity aggregation completed successfully in {elapsed_time:.2f} seconds")
+                return {
+                    "entities_processed": entity_count,
+                    "unique_aggregations": rows_aggregated,
+                    "entities_updated": rows_updated,
+                    "validation": validation_result,
+                    "processing_time": elapsed_time
+                }
+            else:
+                self.logger.error(f"Entity aggregation validation failed: {validation_result['message']}")
+                self.conn.rollback()
+                return None
+
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            error_msg = f"SQLite error during entity aggregation: {e}"
+            self.logger.error(error_msg)
+            raise sqlite3.Error(error_msg) from e
+        except KeyboardInterrupt:
+            self.conn.rollback()
+            self.logger.warning("User interrupted. Rolling back changes.")
+            raise
+        except Exception as e:
+            self.conn.rollback()
+            error_msg = f"Error during entity aggregation: {e}"
+            self.logger.error(error_msg)
+            raise
+
+    def _analyze_entities_for_aggregation(self):
+        """
+        Analyzes entity data to determine aggregation scope and creates
+        necessary indexes for efficient processing.
+
+        Returns:
+            dict: Statistics about the entities to be processed
+        """
+        import os
+        import json
+        import time
+        import hashlib
+        from pathlib import Path
+
+        # Create necessary indexes for efficient aggregation
+        # self.logger.info("Creating supporting indexes for aggregation...")
+        # index_txt_class = Index(TABLE_NE, [TXT_NORM, CLASS_ID], logger=self.logger)
+        # index_txt_class.create_if_not_exists(self.cursor, analyze=True)
+
+        stats_query = f"""--sql
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN {ERROR_ID} IS NULL AND {NE_OVERLAP} = 0 AND {TXT_NORM} IS NOT NULL THEN 1 END) as valid,
+                COUNT(CASE WHEN {NE_NORM_ID} IS NOT NULL THEN 1 END) as referenced
+            FROM {TABLE_NE}
+        """
+
+        # Count unique combinations using GROUP BY (more efficient than string concatenation)
+        unique_combos_query = f"""--sql
+            SELECT COUNT(*)
+            FROM (
+                SELECT 1
+                FROM {TABLE_NE}
+                WHERE {TXT_NORM} IS NOT NULL
+                GROUP BY {CLASS_ID}, {TXT_NORM}
+            )
+        """
+        try:
+            self.logger.info("Analyzing entity data...")
+            stats = self.cursor.execute(stats_query).fetchone()
+            unique_combinations = self.cursor.execute(unique_combos_query).fetchone()[0]
+            aggr_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}").fetchone()[0] # Get existing aggregation count
+
+            stats_dict = {
+                "total_entities": stats[0],
+                "valid_entities": stats[1],
+                "unique_combinations": unique_combinations,
+                "already_referenced": stats[2],
+                "existing_aggregations": aggr_count
+            }
+
+            # # Save stats to cache
+            # try:
+            #     with open(os.path.join(cache_dir, 'entity_aggregation_stats.json'), 'w') as f:
+            #         json.dump(stats_dict, f)
+
+
+            self.logger.info(
+                f"Found {stats_dict['valid_entities']:,} valid entities out of {stats_dict['total_entities']:,} total "
+                f"with {stats_dict['unique_combinations']:,} unique combinations "
+                f"({stats_dict['existing_aggregations']:,} existing aggregations)"
+            )
+
+            return stats_dict
+        except Exception as e:
+            self.logger.error(f"Error analyzing entity data: {e}")
+            raise
+        except KeyboardInterrupt:
+            self.logger.warning("User interrupted. Exiting.")
+            raise
+
+    def _perform_entity_aggregation(self, overwrite: bool = False):
+        """
+        Performs entity aggregation by directly inserting into the aggregation table.
+
+        Args:
+            overwrite (bool): If True, overwrites existing aggregations.
+                            If False, preserves existing aggregations.
+
+        Returns:
+            dict: Results of the aggregation operation
+        """
+
+        self.logger.info(f"Performing entity aggregation (overwrite={overwrite})...")
+        start = time.time()
+
+        # Choose appropriate insert method based on overwrite flag
+        insert_method = "INSERT OR REPLACE" if overwrite else "INSERT OR IGNORE"
+
+        # Perform aggregation and insert in a single step
+        aggregation_query = f"""
+            {insert_method} INTO {TABLE_NE_AGGR} ({CLASS_ID}, {TXT_NORM}, {FQ}, {UNIQ_DOCS})
+            SELECT
+                {CLASS_ID},
+                {TXT_NORM},
+                COUNT(*) as {FQ},
+                COUNT(DISTINCT {DOC_ID}) as {UNIQ_DOCS}
+            FROM {TABLE_NE}
+            WHERE {ERROR_ID} IS NULL
+            AND {NE_OVERLAP} = 0
+            AND {TXT_NORM} IS NOT NULL
+            GROUP BY {CLASS_ID}, {TXT_NORM}
+        """
+
+        self.cursor.execute(aggregation_query)
+        self.conn.commit()
+
+        # Get number of rows in the aggregation table
+        rows_aggregated = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}").fetchone()[0]
+
+        duration = time.time() - start
+        self.logger.info(
+            f"Entity aggregation (overwrite: {overwrite}) completed in {duration:.2f} seconds:"
+            )
+
+        return {
+            "aggregated_rows": rows_aggregated,
+            "processing_time": duration
+        }
+
+    def _update_ne_norm_id_references_in_batches(self, overwrite: bool = False) -> dict:
+        """
+        Updates entity references in batches to handle very large datasets efficiently.
+
+        Args:
+            NOT IMPLEMENTED overwrite (bool): If True, updates all references.
+            If False, updates only records with no existing reference.
+
+        Returns:
+            dict: Results of the reference update operation
+        """
+        import time
+        import os
+        import signal
+        from contextlib import contextmanager
+
+        batch_size = int(os.environ.get('EASYNER_BATCH_SIZE', '200000'))
+        self.logger.info(f"Updating entity references with batch size {batch_size} (overwrite={overwrite})...")
+
+        start_time = time.time()
+
+        total_count_query = f"""--sql
+            SELECT COUNT(*)
+            FROM {TABLE_NE}
+            WHERE {TXT_NORM} IS NOT NULL
+        """
+
+        if not overwrite: # Only update entities without a reference
+            total_count_query += f" AND {NE_NORM_ID} IS NULL"
+
+        total_to_update = self.cursor.execute(total_count_query).fetchone()[0]
+
+        if total_to_update == 0:
+            self.logger.info("No entity references need updating")
+            return {"total_updated": 0, "processing_time": time.time() - start_time}
+
+        self.logger.info(f"Found {total_to_update:,} entity references to update")
+
+        # Setup interrupt handling
+        interrupted = False
+        error_occurred = False
+        error_message = None
+        checkpoint_file = os.path.join(os.environ.get('EASYNER_CHECKPOINT_DIR', '.'),'ne_reference_checkpoint.json')
+
+        @contextmanager
+        def interrupt_handler():
+            original_handler = signal.getsignal(signal.SIGINT)
+
+            def handler(signum, frame):
+                nonlocal interrupted
+                interrupted = True
+                self.logger.warning("Interrupt received, completing current batch before stopping...")
+
+            try:
+                signal.signal(signal.SIGINT, handler)
+                yield
+            except Exception as e:
+                nonlocal error_occurred, error_message
+                error_occurred = True
+                error_message = str(e)
+                self.logger.error(f"Error during entity reference update: {e}")
+
+                # Create checkpoint for recovery
+                try:
+                    with open(checkpoint_file, 'w') as f:
+                        json.dump({
+                            'processed_count': total_updated,
+                            'timestamp': time.time(),
+                            'error': str(e)
+                        }, f)
+                except Exception as checkpoint_error:
+                    self.logger.error(f"Failed to create checkpoint file: {checkpoint_error}")
+
+                raise  # Re-raise the exception
+            finally:
+                signal.signal(signal.SIGINT, original_handler)
+
+        # ---- Main update loop ----
+        # Loop update until no more entities to update, this should happen at the same time total_to_update == total_updated
+
+        total_updated = 0
+        batch_count = 0
+
+        # Get the first batch of IDs that need updating
+        where_clause = f"{TXT_NORM} IS NOT NULL"
+        if not overwrite:
+            where_clause += f" AND {NE_NORM_ID} IS NULL"
+
+        # Use direct update with a limited subquery for better performance
+        update_query = f"""--sql
+            WITH batch AS (
+                SELECT {NE_PRIMARY_ID}
+                FROM {TABLE_NE}
+                WHERE {where_clause}
+                LIMIT {batch_size}
+            )
+            UPDATE {TABLE_NE}
+            SET {NE_NORM_ID} = (
+                SELECT agg.{NE_NORM_ID}
+                FROM {TABLE_NE_AGGR} agg
+                WHERE agg.{CLASS_ID} = {TABLE_NE}.{CLASS_ID}
+                AND agg.{TXT_NORM} = {TABLE_NE}.{TXT_NORM}
+            )
+            WHERE {NE_PRIMARY_ID} IN (SELECT {NE_PRIMARY_ID} FROM batch)
+            AND {where_clause}
+            """
+        # Essential indexes for fast lookup
+        index_norm_id_txt_norm = Index(TABLE_NE, [NE_NORM_ID, TXT_NORM], logger=self.logger)
+        index_norm_id_txt_norm.create_if_not_exists(self.cursor, analyze=True)
+
+        self.log_query_plan(update_query)
+
+        try:
+            with interrupt_handler():
+                while total_updated < total_to_update and not interrupted:
+                    batch_count += 1
+                    batch_start_time = time.time()
+
+                    # --- Execute the UPDATE query with CTE ---
+                    self.logger.debug(f"Executing CTE update_query for batch {batch_count}")
+                    previous_changes = self.conn.total_changes
+                    self.cursor.execute(update_query) # Execute the update query
+                    batch_updated = self.conn.total_changes - previous_changes
+
+                    total_updated += batch_updated
+
+                    if batch_updated != batch_size:
+                        self.logger.warning(f"Batch {batch_count}: Only {batch_updated} out of {batch_size} entities updated")
+
+                    if batch_updated == 0:
+                        self.logger.warning("No entities updated in batch, skipping commit")
+                        continue
+
+                    # Commit every 10 batches to avoid large transactions and large rollbacks
+                    if batch_count % 10 == 0:
+                        self.conn.commit()
+                        self.logger.info(f"Committed updates after batch {batch_count}")
+
+                    # Log progress periodically
+                    if batch_count % 10 == 0:
+                        progress = (total_updated / total_to_update) * 100 if total_to_update > 0 else 100
+                        elapsed = time.time() - start_time
+                        rate = total_updated / elapsed if elapsed > 0 else 0
+                        eta = (total_to_update - total_updated) / rate if rate > 0 else 0
+
+                        self.logger.info(
+                            f"Progress: {progress:.1f}% - Updated {total_updated:,}/{total_to_update:,} references "
+                            f"(Batch {batch_count}, {int(rate)} rows/sec, ETA: {eta/60:.1f} min)"
+                        )
+
+            # Final commit if not interrupted or error
+            if not interrupted and not error_occurred:
+                self.conn.commit()
+
+        except Exception:
+            # Exception already logged in interrupt_handler
+            # Just rollback if we haven't committed yet
+            self.conn.rollback()
+            # Don't re-raise, we'll return error info in result dict
+
+        duration = time.time() - start_time
+
+        # Clean up checkpoint file if not interrupted
+        if not interrupted and os.path.exists(checkpoint_file):
+            os.remove(checkpoint_file)
+
+        self.logger.info(f"Reference update completed: {total_updated:,} references updated in {duration:.2f} seconds")
+
+        # Verify that all entities were properly updated
+        remaining_query = f"""--sql
+            SELECT COUNT(*) FROM {TABLE_NE}
+            WHERE {ERROR_ID} IS NULL
+            AND {NE_OVERLAP} = 0
+            AND {TXT_NORM} IS NOT NULL
+            AND {NE_NORM_ID} IS NULL
+        """
+        remaining = self.cursor.execute(remaining_query).fetchone()[0]
+
+        if remaining > 0:
+            self.logger.warning(f"{remaining:,} entities still missing NE_NORM_ID after update")
+
+        return {
+            "total_updated": total_updated,
+            "total_to_update": total_to_update,
+            "batches_processed": batch_count,
+            "interrupted": interrupted,
+            "error_occurred": error_occurred,
+            "error_message": error_message,
+            "processing_time": duration,
+            "remaining": remaining if 'remaining' in locals() else 0,
+        }
+
+    def _create_aggregation_indexes(self):
+        """
+        Creates indexes to optimize queries on aggregated entity data.
+        """
+        self.logger.info("Creating supporting indexes...")
+
+        # Index on NE_NORM_ID for faster reference lookups not untill after populating, to avoid index overhead
+        index_norm_id = Index(TABLE_NE, [NE_NORM_ID], logger=self.logger)
+        index_norm_id.create_if_not_exists(self.cursor, analyze=True)
+
+        # Index on frequency for common sorting operations
+        index_fq = Index(TABLE_NE_AGGR, [FQ], logger=self.logger)
+        index_fq.create_if_not_exists(self.cursor, analyze=True)
+
+        # Index on unique documents for sorting and lookups
+        index_uniq_docs = Index(TABLE_NE_AGGR, [UNIQ_DOCS], logger=self.logger)
+        index_uniq_docs.create_if_not_exists(self.cursor, analyze=True)
+
+    def _validate_entity_aggregation(self):
+        """
+        Validates entity aggregation results by checking:
+        1. All valid entities have a NE_NORM_ID
+        2. Sample validation of aggregation counts
+
+        Returns:
+            dict: Validation results with success flag and details
+        """
+        self.logger.info("Validating entity aggregation results...")
+        validation_result = {"success": True, "checks": {}}
+
+        try:
+            # Check 1: All valid entities should have a NE_NORM_ID
+            missing_norm_query = f"""
+                SELECT COUNT(*) FROM {TABLE_NE}
+                WHERE {ERROR_ID} IS NULL
+                AND {NE_OVERLAP} = 0
+                AND {TXT_NORM} IS NOT NULL
+                AND {NE_NORM_ID} IS NULL
+            """
+            missing_norm_count = self.cursor.execute(missing_norm_query).fetchone()[0]
+            validation_result["checks"]["missing_norm_ids"] = missing_norm_count
+
+            if missing_norm_count > 0:
+                validation_result["success"] = False
+                validation_result["message"] = f"{missing_norm_count} entities missing NE_NORM_ID"
+                self.logger.error(f"Validation failed: {validation_result['message']}")
+                return validation_result
+
+            # Check 2: Verify sample of frequency counts (for performance with large datasets)
+            aggregation_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}").fetchone()[0]
+            sample_size = min(10000, max(1000, int(aggregation_count * 0.01)))  # Sample 1% or at least 1000, max 10000
+
+            self.logger.info(f"Validating counts using {sample_size} sample aggregations...")
+
+            # Check frequency counts
+            sample_query = f"""--sql
+                SELECT COUNT(*) FROM (
+                    SELECT
+                        agg.{NE_NORM_ID},
+                        agg.{FQ} as expected_count,
+                        COUNT(ne.{NE_PRIMARY_ID}) as actual_count
+                    FROM (
+                        SELECT * FROM {TABLE_NE_AGGR}
+                        ORDER BY RANDOM()
+                        LIMIT ?
+                    ) agg
+                    JOIN {TABLE_NE} ne ON
+                        ne.{NE_NORM_ID} = agg.{NE_NORM_ID}
+                    WHERE ne.{ERROR_ID} IS NULL
+                    AND ne.{NE_OVERLAP} = 0
+                    GROUP BY agg.{NE_NORM_ID}
+                    HAVING expected_count != actual_count
+                )
+            """
+            mismatches = self.cursor.execute(sample_query, (sample_size,)).fetchone()[0]
+            validation_result["checks"]["frequency_mismatches"] = mismatches
+            validation_result["checks"]["sample_size"] = sample_size
+
+            if mismatches > 0:
+                validation_result["success"] = False
+                validation_result["message"] = f"{mismatches}/{sample_size} sampled aggregations have count mismatches"
+                self.logger.error(f"Validation failed: {validation_result['message']}")
+                return validation_result
+
+            # All checks passed
+            validation_result["message"] = "All validation checks passed"
+            self.logger.info("Entity aggregation validation successful")
+            return validation_result
+
+        except Exception as e:
+            validation_result["success"] = False
+            validation_result["message"] = f"Validation error: {str(e)}"
+            self.logger.error(f"Error during aggregation validation: {str(e)}")
+            return validation_result
 class Statistics(BaseComponent):
     def __init__(self, parent):
         super().init_deps(parent)
