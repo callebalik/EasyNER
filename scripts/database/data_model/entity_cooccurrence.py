@@ -1,13 +1,22 @@
 # entity_cooccurrence_module.py
 import sqlite3
 from .schema import *
+import logging
 
-class SchemaManager:
-    def __init__(self):
-        self.logger = None
-        self.cursor = None
-        self.conn = None
-        self.conn_params_dict = None
+
+class BaseComponent:
+    """ Common base class for all components with shared logger and database connection. """
+    def init_deps(self, db_system):
+        self.logger = db_system.logger
+        self.cursor = db_system.cursor
+        self.conn =  db_system.conn
+        self.conn_params_dict = db_system.conn_params_dict
+        self.parent = db_system
+        return self
+
+class SchemaManager(BaseComponent):
+    def __init__(self, parent):
+        super().init_deps(parent)
 
         self.stmt_table_entity_cooccurrences = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_COOCCURRENCES} (
@@ -397,54 +406,55 @@ class Analysis:
         Aggregates entity co-occurrences.
         Accessed via db_system.entity_cooccurrence.co_aggregate_old()
         """
-        db_manager = self.db_system.db_manager
-        logger = self.db_system.core_logger
-        base_executor = BaseExecutor(db_manager, logger)
+class EntityCooccurrence:
+    """
+    Main entrypoint class for Entity Co-occurrence functionality.
+    Handles integration of schema management, analysis, statistics, and testing.
+    """
+    def __init__(self, db_system_instance):
+        self.db_system = db_system_instance
 
-        def operation(conn):
-            cursor = conn.cursor()
-            logger.info("Starting cooccurrence aggregation...")
-            # ... (rest of the original operation logic - same as before) ...
-            query = f"""
-                CREATE TEMPORARY TABLE tmp_cooccurrences AS
-                WITH normalized_pairs AS (
-                    SELECT
-                        CASE WHEN eo1.summary_id <= eo2.summary_id
-                               THEN eo1.summary_id
-                               ELSE eo2.summary_id END AS e1_id_normalized,
-                        CASE WHEN eo1.summary_id <= eo2.summary_id
-                               THEN eo2.summary_id
-                               ELSE eo1.summary_id END AS e2_id_normalized,
-                        eo1.document_id,
-                        CASE WHEN eo1.sentence_index = eo2.sentence_index THEN 1 ELSE 0 END as same_sentenc
-                        FROM entity_cooccurrences eo1
-                        JOIN entity_occurrences eo2 ON eo1.cooccurrence_id = eo2.cooccurrence_id AND eo1.id < eo2.id
-                        LEFT JOIN entity_occurrences_summary eos1 ON eo1.summary_id = eos1.id
-                        LEFT JOIN entity_occurrences_summary eos2 ON eo2.summary_id = eos2.id
-                    WHERE eos1.error_code IS NULL AND eos2.error_code IS NULL
+        self.schema_manager = SchemaManager(self)
+        self.analysis = Analysis(self)
+        self.statistics = Statistics(self)
+        self.tests = Tests(self, self.statistics)
 
-                )
-                SELECT
-                    e1_id_normalized,
-                    e2_id_normalized,
-                    COUNT(*) as cooccurrence_count,
-                    SUM(same_sentenc) as same_sentence_count,
-                    COUNT(DISTINCT document_id) as document_count
-                FROM normalized_pairs
-                GROUP BY e1_id_normalized, e2_id_normalized
-                """
-            cursor.execute(query)
-            insert_query = """
-                INSERT INTO entity_cooccurrences_aggregated (e1_id_normalized, e2_id_normalized, cooccurrence_count, same_sentence_count, document_count)
-                SELECT e1_id_normalized, e2_id_normalized, cooccurrence_count, same_sentence_count, document_count
-                FROM tmp_cooccurrences
-                ON CONFLICT (e1_id_normalized, e2_id_normalized) DO UPDATE SET
-                    cooccurrence_count = cooccurrence_count + excluded.cooccurrence_count,
-                    same_sentence_count = same_sentence_count + excluded.same_sentence_count,
-                    document_count = document_count + excluded.document_count;
-                """
-            cursor.execute(insert_query)
-            logger.info("Co-occurrence aggregation complete.")
-            return None
+    @property
+    def conn(self): # Good - Always refers to the current connection
+        return self.db_system.conn
 
-        base_executor.execute_operation(operation)
+    @property
+    def logger(self):
+        return self.db_system.logger
+
+    @property
+    def cursor(self):
+        return self.db_system.cursor
+
+    @property
+    def conn_params_dict(self):
+        return self.db_system.conn_params_dict
+
+    def setup(self):
+        """
+        Initialize the co-occurrence system by setting up tables and views
+        """
+        self.schema_manager.setup_tables()
+        self.schema_manager.setup_views()
+        
+    def record_entity_cooccurrences_multithreaded(self, *args, **kwargs):
+        """
+        Delegate to analysis component.
+        """
+        if self.analysis.record_entity_cooccurrences_multithreaded(*args, **kwargs):
+            self.tests.has_self_references()
+            self.tests.has_duplicates()
+
+    def update_unique_document_counts(self):
+        """
+        Delegate to analysis component
+        """
+        return self.analysis.update_unique_document_counts()
+
+
+
