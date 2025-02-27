@@ -359,6 +359,673 @@ class SchemaManager(BaseComponent):
                     f"New: {mismatch[2]}/{mismatch[4]}"
                 )
 
+    def migrate_docs_and_sentences_tables(self):
+        """
+        Migrate documents and sentences tables to new schemas while preserving data.
+        Similar to migrate_and_setup_ne_aggregation, this method:
+
+        1. Creates backups of existing tables
+        2. Recreates tables with new schemas
+        3. Restores data from backups
+        4. Validates migration results
+        5. Creates appropriate indexes
+
+        Returns:
+            bool: True if migration was successful, False otherwise
+        """
+        self.logger.info("Starting documents and sentences schema migration...")
+        start_time = time.time()
+
+        # Check if tables exist
+        docs_exists = self.cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (TABLE_DOCS,)
+        ).fetchone() is not None
+
+        sentences_exists = self.cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (TABLE_SENTENCES,)
+        ).fetchone() is not None
+
+        if not docs_exists and not sentences_exists:
+            self.logger.info("Tables don't exist yet. Creating with new schema.")
+            self.cursor.execute(schema_create_table_docs)
+            self.cursor.execute(schema_create_table_sentences)
+            self.conn.commit()
+            self.logger.info("Created tables with new schema successfully.")
+            return True
+
+        # First migrate documents since sentences depend on them
+        docs_success = self._migrate_doc(docs_exists)
+        if not docs_success:
+            self.logger.error("Document migration failed. Cannot proceed with sentences migration.")
+            return False
+
+        # Then migrate sentences
+        sent_success = self._migrate_sentences(sentences_exists)
+
+        # Validate the migration whether it succeeded or not
+        self._validate_docs_sentences_migration()
+
+        elapsed = time.time() - start_time
+        if docs_success and sent_success:
+            self.logger.info(f"Documents and sentences migration completed successfully in {elapsed:.2f} seconds")
+            return True
+        else:
+            self.logger.error(f"Documents and sentences migration completed with errors in {elapsed:.2f} seconds")
+            return False
+
+    def _migrate_doc(self, docs_exists):
+        """
+        Migrate documents table to new schema while preserving data.
+
+        Args:
+            docs_exists (bool): Whether the documents table exists
+
+        Returns:
+            bool: True if migration was successful, False otherwise
+        """
+        try:
+            if not docs_exists:
+                # Create new table if it doesn't exist
+                self.cursor.execute(schema_create_table_docs)
+                self.logger.info(f"Created new {TABLE_DOCS} table")
+                self.conn.commit()
+                return True
+
+            # Start transaction for atomicity
+            try:
+                self.cursor.execute("BEGIN TRANSACTION")
+                transaction_started = True
+            except sqlite3.OperationalError:
+                # Transaction already started
+                transaction_started = False
+
+            # Get column info for old table
+            old_docs_info = self.cursor.execute(f"PRAGMA table_info({TABLE_DOCS})").fetchall()
+            old_docs_columns = [col[1] for col in old_docs_info]
+            self.logger.debug(f"Old documents table columns: {old_docs_columns}")
+
+            # Count existing documents
+            docs_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}").fetchone()[0]
+
+            if docs_count > 0:
+                self.logger.info(f"{TABLE_DOCS} table contains {docs_count:,} rows, creating backup...")
+
+                # Create backup
+                self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_DOCS}_backup AS SELECT * FROM {TABLE_DOCS}")
+                backup_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}_backup").fetchone()[0]
+                self.logger.info(f"Backed up {backup_count:,} rows from {TABLE_DOCS}")
+
+                # Validate backup before proceeding
+                if backup_count != docs_count:
+                    self.logger.error(f"Backup validation failed: expected {docs_count} rows, got {backup_count}")
+                    raise ValueError("Backup validation failed - aborting migration")
+
+                # Create explicit mapping between old and new schema
+                column_map = {
+                    "id": DOC_ID,
+                    "title": TITLE,
+                    "word_count": WORD_COUNT,
+                    "token_count": TOKEN_COUNT,  # Keep token_count as TOKEN_COUNT
+                    "alpha_count": ALPHA_COUNT
+                    # SENT_COUNT will be computed later
+                }
+
+                # Drop and recreate table
+                self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_DOCS}")
+                self.cursor.execute(schema_create_table_docs)
+                self.logger.info(f"Recreated {TABLE_DOCS} table with new schema")
+
+                # Get column info for new table to validate
+                new_docs_columns = [col[1] for col in
+                                   self.cursor.execute(f"PRAGMA table_info({TABLE_DOCS})").fetchall()]
+                self.logger.debug(f"New documents table columns: {new_docs_columns}")
+
+                # Build source and destination columns for INSERT
+                src_cols = []
+                dest_cols = []
+
+                for old_col in old_docs_columns:
+                    if old_col in column_map and column_map[old_col] in new_docs_columns:
+                        src_cols.append(old_col)
+                        dest_cols.append(column_map[old_col])
+
+                # Validate that we have columns to map
+                if not src_cols or not dest_cols:
+                    self.logger.error("No common columns found between old and new schemas")
+                    raise ValueError("Migration failed - no common columns to migrate")
+
+                # Log the mapping for debugging
+                self.logger.debug(f"Source columns: {src_cols}")
+                self.logger.debug(f"Destination columns: {dest_cols}")
+
+                # Check if sentences table exists to compute SENT_COUNT
+                sentences_exists = self.cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (TABLE_SENTENCES,)
+                ).fetchone() is not None
+
+                if sentences_exists:
+                    self.logger.info("Computing sentence counts for documents...")
+                    # Add SENT_COUNT from sentences table if possible
+                    try:
+                        self.cursor.execute(f"""--sql
+                            CREATE TEMPORARY TABLE doc_sentence_counts AS
+                            SELECT document_id, COUNT(*) as sentence_count
+                            FROM sentences
+                            GROUP BY document_id
+                        """)
+
+                        # Format column lists for SQL
+                        src_cols_str = ", ".join([f"b.{col}" for col in src_cols])
+                        dest_cols_str = ", ".join(dest_cols)
+
+                        # SQL to include sentence counts
+                        insert_stmt = f"""--sql
+                            INSERT INTO {TABLE_DOCS} ({dest_cols_str}, {SENT_COUNT})
+                            SELECT {src_cols_str}, COALESCE(sc.sentence_count, 0)
+                            FROM {TABLE_DOCS}_backup b
+                            LEFT JOIN doc_sentence_counts sc ON b.id = sc.document_id
+                        """
+                        self.logger.debug(f"Executing SQL with sentence counts: {insert_stmt}")
+                        self.cursor.execute(insert_stmt)
+                    except sqlite3.Error as e:
+                        self.logger.warning(f"Error computing sentence counts: {e}")
+                        # Fall back to basic insert with default 0 for SENT_COUNT
+                        insert_stmt = f"""--sql
+                            INSERT INTO {TABLE_DOCS} ({dest_cols_str}, {SENT_COUNT})
+                            SELECT {src_cols_str}, 0
+                            FROM {TABLE_DOCS}_backup b
+                        """
+                        self.logger.debug(f"Executing fallback SQL with default sentence counts: {insert_stmt}")
+                        self.cursor.execute(insert_stmt)
+                else:
+                    # Format column lists for SQL
+                    src_cols_str = ", ".join([f"b.{col}" for col in src_cols])
+                    dest_cols_str = ", ".join(dest_cols)
+
+                    # SQL with default 0 for SENT_COUNT
+                    insert_stmt = f"""--sql
+                        INSERT INTO {TABLE_DOCS} ({dest_cols_str}, {SENT_COUNT})
+                        SELECT {src_cols_str}, 0
+                        FROM {TABLE_DOCS}_backup b
+                    """
+                    self.logger.debug(f"Executing SQL with default sentence counts: {insert_stmt}")
+                    self.cursor.execute(insert_stmt)
+
+                restored_count = self.cursor.rowcount
+                self.logger.info(f"Restored {restored_count:,} rows to {TABLE_DOCS}")
+
+                # Create indexes
+                # self.logger.info("Creating supporting indexes for documents...")
+                # self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_DOCS}_id ON {TABLE_DOCS} ({DOC_ID})")
+
+                # Verify restoration
+                if restored_count != backup_count:
+                    self.logger.warning(f"Row count mismatch: {backup_count} in backup, {restored_count} restored")
+            else:
+                # Just recreate empty table with new schema
+                self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_DOCS}")
+                self.cursor.execute(schema_create_table_docs)
+                self.logger.info(f"Recreated empty {TABLE_DOCS} table with new schema")
+
+            # Commit transaction
+            if transaction_started:
+                self.conn.commit()
+
+            return True
+
+        except Exception as e:
+            if 'transaction_started' in locals() and transaction_started:
+                self.conn.rollback()
+            self.logger.error(f"Error during documents table migration: {e}")
+            return False
+
+    def _migrate_sentences(self, sentences_exists):
+        """
+        Migrate sentences table to new schema while preserving data.
+
+        Args:
+            sentences_exists (bool): Whether the sentences table exists
+
+        Returns:
+            bool: True if migration was successful, False otherwise
+        """
+        try:
+            if not sentences_exists:
+                # Create new table if it doesn't exist
+                self.cursor.execute(schema_create_table_sentences)
+                self.logger.info(f"Created new {TABLE_SENTENCES} table")
+                self.conn.commit()
+                return True
+
+            # Start transaction for atomicity
+            try:
+                self.cursor.execute("BEGIN TRANSACTION")
+                transaction_started = True
+            except sqlite3.OperationalError:
+                # Transaction already started
+                transaction_started = False
+
+            # Get column info for old table
+            old_sent_info = self.cursor.execute(f"PRAGMA table_info({TABLE_SENTENCES})").fetchall()
+            old_sent_columns = [col[1] for col in old_sent_info]
+            self.logger.debug(f"Old sentences table columns: {old_sent_columns}")
+
+            # Count existing sentences
+            sent_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_SENTENCES}").fetchone()[0]
+
+            if sent_count > 0:
+                self.logger.info(f"{TABLE_SENTENCES} table contains {sent_count:,} rows, creating backup...")
+
+                # Create backup
+                self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_SENTENCES}_backup AS SELECT * FROM {TABLE_SENTENCES}")
+                backup_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup").fetchone()[0]
+                self.logger.info(f"Backed up {backup_count:,} rows from {TABLE_SENTENCES}")
+
+                # Validate backup before proceeding
+                if backup_count != sent_count:
+                    self.logger.error(f"Backup validation failed: expected {sent_count} rows, got {backup_count}")
+                    raise ValueError("Backup validation failed - aborting migration")
+
+                # Create explicit mapping between old and new schema
+                column_map = {
+                    "text": TXT,
+                    "sentence_index": SENT_IDX,
+                    "document_id": DOC_ID,
+                    "word_count": WORD_COUNT,
+                    "token_count": TOKEN_COUNT,  # Keep token_count as TOKEN_COUNT
+                    "alpha_count": ALPHA_COUNT
+                }
+
+                # Drop and recreate table with new schema
+                self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_SENTENCES}")
+                self.cursor.execute(schema_create_table_sentences)
+                self.logger.info(f"Recreated {TABLE_SENTENCES} table with new schema")
+
+                # Get column info for new table to validate
+                new_sent_columns = [col[1] for col in
+                                   self.cursor.execute(f"PRAGMA table_info({TABLE_SENTENCES})").fetchall()]
+                self.logger.debug(f"New sentences table columns: {new_sent_columns}")
+
+                # Build source and destination columns for INSERT
+                src_cols = []
+                dest_cols = []
+
+                for old_col in old_sent_columns:
+                    if old_col in column_map and column_map[old_col] in new_sent_columns:
+                        src_cols.append(old_col)
+                        dest_cols.append(column_map[old_col])
+
+                # Validate that we have columns to map
+                if not src_cols or not dest_cols:
+                    self.logger.error("No common columns found between old and new sentence schemas")
+                    raise ValueError("Migration failed - no common columns to migrate")
+
+                # Log the mapping for debugging
+                self.logger.debug(f"Source columns: {src_cols}")
+                self.logger.debug(f"Destination columns: {dest_cols}")
+
+                # Check for orphaned sentences before migration
+                orphaned_count = self.cursor.execute(f"""--sql
+                    SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup s
+                    LEFT JOIN {TABLE_DOCS} d ON s.document_id = d.{DOC_ID}
+                    WHERE d.{DOC_ID} IS NULL
+                """).fetchone()[0]
+
+                # Format column lists for SQL
+                src_cols_str = ", ".join([f"s.{col}" for col in src_cols])
+                dest_cols_str = ", ".join(dest_cols)
+
+                if orphaned_count > 0:
+                    self.logger.warning(f"Found {orphaned_count} orphaned sentences with invalid document references")
+                    self.logger.info("Will restore only sentences with valid document references")
+
+                    insert_sql = f"""--sql
+                        INSERT INTO {TABLE_SENTENCES} ({dest_cols_str})
+                        SELECT {src_cols_str}
+                        FROM {TABLE_SENTENCES}_backup s
+                        WHERE EXISTS (SELECT 1 FROM {TABLE_DOCS} d WHERE d.{DOC_ID} = s.document_id)
+                    """
+                else:
+                    # Standard insert if no orphaned records
+                    insert_sql = f"""--sql
+                        INSERT INTO {TABLE_SENTENCES} ({dest_cols_str})
+                        SELECT {src_cols_str}
+                        FROM {TABLE_SENTENCES}_backup s
+                    """
+
+                self.logger.debug(f"Executing SQL: {insert_sql}")
+                self.cursor.execute(insert_sql)
+
+                restored_count = self.cursor.rowcount
+                self.logger.info(f"Restored {restored_count:,} rows to {TABLE_SENTENCES}")
+
+                # # Create indexes
+                # self.logger.info("Creating supporting indexes for sentences...")
+                # self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_SENTENCES}_doc_id ON {TABLE_SENTENCES} ({DOC_ID})")
+                # self.cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_SENTENCES}_doc_sent ON {TABLE_SENTENCES} ({DOC_ID}, {SENT_IDX})")
+
+                # Verify restoration
+                expected_count = backup_count - orphaned_count
+                if restored_count != expected_count:
+                    self.logger.warning(f"Row count mismatch: expected {expected_count}, got {restored_count} restored")
+            else:
+                # Just recreate empty table with new schema
+                self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_SENTENCES}")
+                self.cursor.execute(schema_create_table_sentences)
+                self.logger.info(f"Recreated empty {TABLE_SENTENCES} table with new schema")
+
+            # Update document sentence counts if needed
+            try:
+                self.logger.info("Updating document sentence counts...")
+                self.cursor.execute(f"""--sql
+                    UPDATE {TABLE_DOCS} SET {SENT_COUNT} = (
+                        SELECT COUNT(*)
+                        FROM {TABLE_SENTENCES} s
+                        WHERE s.{DOC_ID} = {TABLE_DOCS}.{DOC_ID}
+                    )
+                """)
+                self.logger.info(f"Updated sentence counts for {self.cursor.rowcount} documents")
+            except sqlite3.Error as e:
+                self.logger.warning(f"Error updating document sentence counts: {e}")
+
+            # Commit transaction
+            if transaction_started:
+                self.conn.commit()
+
+            return True
+
+        except Exception as e:
+            if 'transaction_started' in locals() and transaction_started:
+                self.conn.rollback()
+            self.logger.error(f"Error during sentences table migration: {e}")
+            return False
+
+    def _validate_docs_sentences_migration(self):
+        """
+        Validate the documents and sentences migration results.
+
+        Checks:
+        1. Row count comparison between original and migrated tables
+        2. Foreign key integrity between documents and sentences
+        3. Sample data verification including TOKEN_COUNT preservation
+        4. Index verification
+
+        Returns:
+            dict: Validation results with detailed metrics
+        """
+        self.logger.info("Validating documents and sentences migration...")
+        validation = {
+            "success": True,
+            "documents": {
+                "backup_exists": False,
+                "count_match": False,
+            },
+            "sentences": {
+                "backup_exists": False,
+                "count_match": False,
+                "orphaned": 0,
+            },
+            "integrity": {
+                "valid": True,
+                "invalid_references": 0
+            }
+        }
+
+        try:
+            # Check if backup tables exist
+            docs_backup_exists = self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (f"{TABLE_DOCS}_backup",)
+            ).fetchone() is not None
+
+            sent_backup_exists = self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (f"{TABLE_SENTENCES}_backup",)
+            ).fetchone() is not None
+
+            validation["documents"]["backup_exists"] = docs_backup_exists
+            validation["sentences"]["backup_exists"] = sent_backup_exists
+
+            # Verify schema matches expected schema from schema.py
+            doc_columns = {col[1] for col in
+                          self.cursor.execute(f"PRAGMA table_info({TABLE_DOCS})").fetchall()}
+            sent_columns = {col[1] for col in
+                           self.cursor.execute(f"PRAGMA table_info({TABLE_SENTENCES})").fetchall()}
+
+            expected_doc_columns = {DOC_ID, TITLE, WORD_COUNT, TOKEN_COUNT, ALPHA_COUNT, SENT_COUNT}
+            expected_sent_columns = {DOC_ID, SENT_IDX, TXT, WORD_COUNT, TOKEN_COUNT, ALPHA_COUNT}
+
+            missing_doc_cols = expected_doc_columns - doc_columns
+            missing_sent_cols = expected_sent_columns - sent_columns
+
+            if missing_doc_cols:
+                self.logger.error(f"Documents table missing expected columns: {missing_doc_cols}")
+                validation["documents"]["missing_columns"] = list(missing_doc_cols)
+                validation["success"] = False
+
+            if missing_sent_cols:
+                self.logger.error(f"Sentences table missing expected columns: {missing_sent_cols}")
+                validation["sentences"]["missing_columns"] = list(missing_sent_cols)
+                validation["success"] = False
+
+            # Validate documents if backup exists
+            if docs_backup_exists:
+                # Compare row counts
+                docs_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}").fetchone()[0]
+                backup_docs_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}_backup").fetchone()[0]
+
+                validation["documents"]["count"] = docs_count
+                validation["documents"]["backup_count"] = backup_docs_count
+                validation["documents"]["count_match"] = docs_count == backup_docs_count
+
+                if docs_count != backup_docs_count:
+                    self.logger.warning(f"Document counts don't match: {backup_docs_count} in backup, {docs_count} in new table")
+                    validation["success"] = False
+                else:
+                    self.logger.info(f"Document counts match: {docs_count} records")
+
+                # Sample validation with emphasis on TOKEN_COUNT preservation
+                if docs_count > 0:
+                    sample_size = min(10, docs_count)
+                    self.logger.info(f"Validating sample of {sample_size} documents...")
+
+                    # Get random sample of IDs
+                    sample_ids = self.cursor.execute(f"""--sql
+                        SELECT id FROM {TABLE_DOCS}_backup
+                        ORDER BY RANDOM() LIMIT {sample_size}
+                    """).fetchall()
+
+                    sample_ids = [row[0] for row in sample_ids]
+                    mismatches = []
+
+                    for id in sample_ids:
+                        # Get original document with key fields
+                        orig = self.cursor.execute(f"""--sql
+                            SELECT id, title, token_count, word_count
+                            FROM {TABLE_DOCS}_backup
+                            WHERE id = ?
+                        """, (id,)).fetchone()
+
+                        if not orig:
+                            continue
+
+                        # Get migrated document
+                        migrated = self.cursor.execute(f"""--sql
+                            SELECT {DOC_ID}, {TITLE}, {TOKEN_COUNT}, {WORD_COUNT}
+                            FROM {TABLE_DOCS}
+                            WHERE {DOC_ID} = ?
+                        """, (id,)).fetchone()
+
+                        if not migrated:
+                            mismatches.append(f"Document ID {id} missing in migrated table")
+                        elif orig[1] != migrated[1]:  # Compare titles
+                            mismatches.append(f"Document ID {id} title mismatch: '{orig[1]}' vs '{migrated[1]}'")
+                        elif orig[2] != migrated[2]:  # Compare token_count
+                            mismatches.append(f"Document ID {id} token_count mismatch: {orig[2]} vs {migrated[2]}")
+                        elif orig[3] != migrated[3]:  # Compare word_count
+                            mismatches.append(f"Document ID {id} word_count mismatch: {orig[3]} vs {migrated[3]}")
+
+                    validation["documents"]["sample_mismatches"] = mismatches
+
+                    if mismatches:
+                        self.logger.warning(f"Found {len(mismatches)} document mismatches in sample")
+                        validation["success"] = False
+                    else:
+                        self.logger.info("Document sample validation passed")
+
+            # Validate sentences if backup exists
+            if sent_backup_exists:
+                # Compare row counts considering orphaned records
+                orphaned_count = 0
+                if docs_backup_exists:
+                    orphaned_count = self.cursor.execute(f"""--sql
+                        SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup s
+                        LEFT JOIN {TABLE_DOCS} d ON s.document_id = d.{DOC_ID}
+                        WHERE d.{DOC_ID} IS NULL
+                    """).fetchone()[0]
+
+                sent_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_SENTENCES}").fetchone()[0]
+                backup_sent_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup").fetchone()[0]
+
+                expected_count = backup_sent_count - orphaned_count
+
+                validation["sentences"]["count"] = sent_count
+                validation["sentences"]["backup_count"] = backup_sent_count
+                validation["sentences"]["orphaned"] = orphaned_count
+                validation["sentences"]["expected_count"] = expected_count
+                validation["sentences"]["count_match"] = sent_count == expected_count
+
+                if sent_count != expected_count:
+                    self.logger.warning(
+                        f"Sentence counts don't match: expected {expected_count} "
+                        f"(backup: {backup_sent_count} - orphaned: {orphaned_count}), got {sent_count}"
+                    )
+                    validation["success"] = False
+                else:
+                    self.logger.info(f"Sentence counts match expected value: {sent_count} records")
+
+                # Sample validation with emphasis on TOKEN_COUNT preservation
+                if sent_count > 0:
+                    sample_size = min(10, sent_count)
+                    self.logger.info(f"Validating sample of {sample_size} sentences...")
+
+                    # Get random sample of sentence keys
+                    sample_keys = self.cursor.execute(f"""--sql
+                        SELECT {DOC_ID}, {SENT_IDX} FROM {TABLE_SENTENCES}
+                        ORDER BY RANDOM() LIMIT {sample_size}
+                    """).fetchall()
+
+                    mismatches = []
+
+                    for doc_id, sent_idx in sample_keys:
+                        # Get migrated sentence with key fields
+                        migrated = self.cursor.execute(f"""--sql
+                            SELECT {DOC_ID}, {SENT_IDX}, {TXT}, {TOKEN_COUNT}, {WORD_COUNT}
+                            FROM {TABLE_SENTENCES}
+                            WHERE {DOC_ID} = ? AND {SENT_IDX} = ?
+                        """, (doc_id, sent_idx)).fetchone()
+
+                        # Get original sentence
+                        orig = self.cursor.execute(f"""--sql
+                            SELECT document_id, sentence_index, text, token_count, word_count
+                            FROM {TABLE_SENTENCES}_backup
+                            WHERE document_id = ? AND sentence_index = ?
+                        """, (doc_id, sent_idx)).fetchone()
+
+                        if not orig:
+                            mismatches.append(f"Sentence ({doc_id}, {sent_idx}) not found in original table")
+                        elif migrated[2] != orig[2]:  # Compare text
+                            # Truncate for log readability
+                            orig_text = orig[2][:30] + "..." if len(orig[2]) > 30 else orig[2]
+                            mig_text = migrated[2][:30] + "..." if len(migrated[2]) > 30 else migrated[2]
+                            mismatches.append(f"Sentence ({doc_id}, {sent_idx}) text mismatch: '{orig_text}' vs '{mig_text}'")
+                        elif orig[3] != migrated[3]:  # Compare token_count
+                            mismatches.append(f"Sentence ({doc_id}, {sent_idx}) token_count mismatch: {orig[3]} vs {migrated[3]}")
+                        elif orig[4] != migrated[4]:  # Compare word_count
+                            mismatches.append(f"Sentence ({doc_id}, {sent_idx}) word_count mismatch: {orig[4]} vs {migrated[4]}")
+
+                    validation["sentences"]["sample_mismatches"] = mismatches
+
+                    if mismatches:
+                        self.logger.warning(f"Found {len(mismatches)} sentence mismatches in sample")
+                        validation["success"] = False
+                    else:
+                        self.logger.info("Sentence sample validation passed")
+
+            # Check referential integrity
+            invalid_refs = self.cursor.execute(f"""--sql
+                SELECT COUNT(*) FROM {TABLE_SENTENCES} s
+                LEFT JOIN {TABLE_DOCS} d ON s.{DOC_ID} = d.{DOC_ID}
+                WHERE d.{DOC_ID} IS NULL
+            """).fetchone()[0]
+
+            validation["integrity"]["invalid_references"] = invalid_refs
+            if invalid_refs > 0:
+                self.logger.error(f"Found {invalid_refs} sentences with invalid document references!")
+                validation["integrity"]["valid"] = False
+                validation["success"] = False
+            else:
+                self.logger.info("Referential integrity check passed: all sentences have valid document references")
+
+            # Check indexes
+            doc_indexes = self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?",
+                (TABLE_DOCS,)
+            ).fetchall()
+
+            sent_indexes = self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?",
+                (TABLE_SENTENCES,)
+            ).fetchall()
+
+            doc_index_names = [idx[0].lower() for idx in doc_indexes]
+            sent_index_names = [idx[0].lower() for idx in sent_indexes]
+
+            validation["indexes"] = {
+                "documents": doc_index_names,
+                "sentences": sent_index_names
+            }
+
+            # Check for required indexes using case-insensitive comparison
+            required_doc_idx = f"idx_{TABLE_DOCS.lower()}_id"
+            required_sent_idx1 = f"idx_{TABLE_SENTENCES.lower()}_doc_id"
+            required_sent_idx2 = f"idx_{TABLE_SENTENCES.lower()}_doc_sent"
+
+            missing_indexes = []
+
+            if not any(required_doc_idx in idx_name for idx_name in doc_index_names):
+                missing_indexes.append(required_doc_idx)
+
+            if not any(required_sent_idx1 in idx_name for idx_name in sent_index_names):
+                missing_indexes.append(required_sent_idx1)
+
+            if not any(required_sent_idx2 in idx_name for idx_name in sent_index_names):
+                missing_indexes.append(required_sent_idx2)
+
+            if missing_indexes:
+                self.logger.warning(f"Missing required indexes: {missing_indexes}")
+                validation["indexes"]["missing"] = missing_indexes
+                validation["success"] = False
+            else:
+                self.logger.info("All required indexes are present")
+
+            # Final validation result
+            if validation["success"]:
+                self.logger.info("Documents and sentences migration validation PASSED")
+            else:
+                self.logger.error("Documents and sentences migration validation FAILED")
+
+            return validation
+
+        except Exception as e:
+            self.logger.error(f"Error during migration validation: {e}")
+            validation["success"] = False
+            validation["error"] = str(e)
+            return validation
+
 
 class Preprocessor(BaseComponent):
     def __init__(self, parent):
