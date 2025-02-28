@@ -477,6 +477,50 @@ class ReaderWriterPair:
             profiling_reader_enabled (bool, optional): Enable profiling for Reader. Defaults to False.
             profiling_writer_enabled (bool, optional): Enable profiling for Writer. Defaults to False.
         """
+
+        # Validate process_function
+        if not callable(process_function):
+            raise TypeError("process_function must be callable")
+
+        # Validate write_function
+        if not callable(write_function):
+            raise TypeError("write_function must be callable")
+
+        # Validate function signatures using test calls
+        try:
+            # Test process_function with empty batch
+            test_batch = []
+            result = process_function(test_batch, conn_params)
+            if not isinstance(result, list):
+                raise TypeError("process_function must return a list")
+        except Exception as e:
+            raise TypeError(
+                f"Invalid process_function signature. Expected: "
+                f"Function(List[Any], Dict[str, Any]) -> List[Any]. Error: {str(e)}"
+            )
+
+        # Create test objects for write_function validation
+        test_conn = sqlite3.connect(":memory:")
+        test_cursor = test_conn.cursor()
+        test_logger = logger or self._setup_logger()
+
+        try:
+            # Test write_function with empty batch
+            result = write_function([], test_cursor, test_conn)
+            # if not isinstance(result, bool):
+                # raise TypeError("write_function must return a boolean")
+        except sqlite3.Error as e:
+            test_conn.close()
+            raise TypeError(
+                f"Invalid write function. Sqlite Error: {str(e)}")
+        except Exception as e:
+            test_conn.close()
+            raise TypeError(
+                f"Invalid write_function signature. Expected: "
+                f"Function(List[Any], sqlite3.Cursor, sqlite3.Connection) -> bool. Error: {str(e)}"
+            )
+        finally:
+            test_conn.close()
         self.reader_query = reader_query
         # Check for ORDER BY clause
         if "ORDER BY" not in reader_query.upper():
