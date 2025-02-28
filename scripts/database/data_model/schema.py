@@ -1,5 +1,5 @@
 import logging
-
+import sqlite3
 
 TABLE_DOCS = "documents"
 TABLE_SENTENCES = "sentences"
@@ -47,7 +47,7 @@ NE_LOOKUP_ID = "NE_LOOKUP_ID"  # Named entity lookup ID column name
 DOC_COUNT = "DOC_COUNT"  # Document count column name
 SENT_DIST = "SENT_DISTANCE"  # Sentence distance column name
 
-AGGR_ID = "AGGR_ID"  # Aggregated ID column name
+CO_AGGR_ID = "CO_AGGR_ID"  # Aggregated ID column name
 E1_ID = "E1_ID"
 E2_ID = "E2_ID"
 E1_NORM_ID = "E1_NORM_ID"
@@ -65,7 +65,7 @@ VIEW_PREFIX = "v_"
 VIEW_NE = "VIEW_NE"
 VIEW_NE_RAW = "VIEW_NE_RAW"
 
-VIEW_NE_COMP = VIEW_PREFIX + TABLE_NE + "_COMPILED"
+
 VIEW_NE_STATS = VIEW_PREFIX + TABLE_NE + "_STATS"
 VIEW_COOCCURRENCES = VIEW_PREFIX + TABLE_COOCCURRENCES
 VIEW_COOCCURRENCES_AGGREGATED = VIEW_PREFIX + TABLE_CO_AGGR
@@ -272,6 +272,29 @@ VIEW_NE_PRESENTATION = View(
             """,
 )
 
+VIEW_NE_COMP = View(
+    name=TABLE_NE,
+    suffix="COMPILED",
+    select_stmt=f"""--sql
+            SELECT
+                    ne.{NE_PRIMARY_ID},
+                    ne.{TXT},
+                    ne.{TXT_NORM},
+                    nec.{NE_CLASS},
+                    ne.{ERROR_ID},
+                    ne.{NE_OVERLAP},
+                    ne.{DOC_ID},
+                    doc.{TITLE},
+                    ne.{SENT_IDX},
+                    ne.{SPAN_START},
+                    ne.{SPAN_END}
+                FROM
+                    {TABLE_NE} ne
+                JOIN {TABLE_NE_CLASS} nec ON ne.{CLASS_ID} = nec.{CLASS_ID}
+                JOIN {TABLE_DOCS} doc ON ne.{DOC_ID} = doc.{DOC_ID}
+            """,
+)
+
 VIEW_NE_VALIDATION_NORMALIZATION = View(
     name=TABLE_NE,
     suffix="VALIDATION_NORMALIZATION",
@@ -294,6 +317,23 @@ VIEW_NE_VALIDATION_NORMALIZATION = View(
             """,
 )
 
+VIEW_DIS_PNM_PRESENTATION = View(
+    name=TABLE_DIS_PNM,
+    suffix="PRESENTATION",
+    select_stmt=f"""--sql
+            SELECT
+                    dis.{TXT} as dis,
+                    pnm.{TXT} as pnm,
+                    dis_pnm.{SENT_DIST},
+                    doc.{TITLE} as document_title,
+                    doc.{DOC_ID}
+                FROM
+                    {TABLE_DIS_PNM} dis_pnm
+                JOIN {TABLE_NE} dis ON dis_pnm.{E1_ID} = dis.{NE_PRIMARY_ID}
+                JOIN {TABLE_NE} pnm ON dis_pnm.{E2_ID} = pnm.{NE_PRIMARY_ID}
+                JOIN documents doc ON dis.{DOC_ID} = doc.{DOC_ID} -- Join on document ID, only needs one of the entities
+            """,
+)
 
 # ----------------------
 # Indexes (ind + TABLE +)
