@@ -2052,7 +2052,7 @@ class Analysis(BaseComponent):
             return False
 
 class Aggregator(BaseComponent):
-    def aggrvegate_named_entities(self, overwrite: bool = False) -> dict:
+    def aggregate_named_entities(self, overwrite: bool = False) -> dict:
         """
         Idempotent aggregation of TABLE_NE on distinct (TXT_NORM, CLASS_ID) combinations.
 
