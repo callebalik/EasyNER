@@ -22,6 +22,7 @@
             <a href="/table/{{ table.name }}" class="action-button">Browse</a>
             <button onclick="calculateRowCount('{{ table.name }}')" class="action-button">Count Rows</button>
             <span class="rowcount" id="rowcount-{{ table.name }}"></span>
+            <button onclick="deleteTable('{{ table.name }}')" class="action-button warning">Delete</button>
         </div>
 
         <div class="table-schema">
@@ -83,22 +84,37 @@ function calculateRowCount(tableName) {
 }
 
 function deleteTable(tableName) {
-    if (confirm(`Are you sure you want to delete the table "${tableName}"? This action cannot be undone.`)) {
-        fetch(`/table/${tableName}/delete`, {
-            method: 'POST'
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById(tableName).remove();
-            } else {
-                alert(`Error: ${data.error}`);
-            }
-        })
-        .catch(error => {
-            alert('Error deleting table. Please try again.');
-        });
+    if (!confirm(`Are you sure you want to delete the table "${tableName}"? This action cannot be undone.`)) {
+        return;
     }
+
+    const tableCard = document.getElementById(tableName);
+    if (!tableCard) return;
+
+    fetch(`/table/${tableName}/delete`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => {
+                throw new Error(data.error || `Failed to delete table: ${response.statusText}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Show success message
+        alert(`Table "${tableName}" deleted successfully. Rows affected: ${data.rows_affected}`);
+        // Remove the table card from the DOM
+        tableCard.remove();
+    })
+    .catch(error => {
+        // Show error message
+        alert(error.message || 'Error deleting table. Please try again.');
+    });
 }
 
 function toggleTableContent(header) {

@@ -47,21 +47,7 @@
     .table-actions {
         margin: 15px 0;
 
-        .action-button {
-            background: $primary-color;
-            color: white;
-            border: none;
-            padding: $base-padding 15px;
-            border-radius: $border-radius;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            margin-right: 10px;
 
-            &:hover {
-                background: $primary-dark;
-            }
-        }
 
         .rowcount {
             color: $text-light;
@@ -184,21 +170,7 @@
     .view-actions {
         margin: $base-margin 0;
 
-        .action-button {
-            background: $primary-color;
-            color: white;
-            border: none;
-            padding: $base-padding 15px;
-            border-radius: $border-radius;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            margin-right: 10px;
 
-            &:hover {
-                background: $primary-dark;
-            }
-        }
 
         .delete-button {
             background: $error-color;

@@ -1411,41 +1411,145 @@ def explain_query():
 
 @app.route("/table/<table_name>/delete", methods=["POST"])
 def delete_table(table_name):
+    db = None
     try:
         db = get_db()
+        app.logger.info(f"Attempting to delete table: {table_name}")
+        cursor = db.cursor
+
+        # Start transaction
+        cursor.execute("BEGIN")
+
         # Check if it's actually a table first
-        table_check = db.execute(
-            "SELECT type FROM sqlite_master WHERE type='table' AND name=?", [table_name]
-        )
+        table_check = cursor.execute(
+            "SELECT type, sql FROM sqlite_master WHERE type='table' AND name=?", [table_name]
+        ).fetchall()
+
         if not table_check:
+            app.logger.warning(f"Attempted to delete non-existent table: {table_name}")
+            cursor.execute("ROLLBACK")
             return jsonify({"error": "Table not found"}), 404
 
-        # Additional safety check - prevent deletion of system tables
+        table_info = table_check[0]
+
+        # Additional safety checks
         if table_name.startswith('sqlite_'):
+            app.logger.warning(f"Attempted to delete system table: {table_name}")
+            cursor.execute("ROLLBACK")
             return jsonify({"error": "Cannot delete system tables"}), 403
 
+        # Check for dependent views
+        dependent_views = cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='view' AND sql LIKE ?",
+            [f'%{table_name}%']
+        ).fetchall()
+
+        if dependent_views:
+            view_names = [view[0] for view in dependent_views]
+            app.logger.warning(f"Cannot delete table {table_name} due to dependent views: {view_names}")
+            cursor.execute("ROLLBACK")
+            return jsonify({
+                "error": f"Cannot delete table due to dependent views: {', '.join(view_names)}"
+            }), 409
+
+        # Save table schema for logging
+        table_schema = table_info[1]
+
+        # Get row count before deletion
+        count_result = cursor.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+        row_count = count_result[0] if count_result else 0
+
+        # Execute deletion
+        cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+        # Commit transaction
+        cursor.execute("COMMIT")
+
+        # Log successful deletion
+        app.logger.info(
+            f"Successfully deleted table {table_name}. "
+            f"Rows deleted: {row_count}. Schema was: {table_schema}"
+        )
+
+        return jsonify({
+            "message": "Table deleted successfully",
+            "rows_affected": row_count
+        }), 200
 
     except Exception as e:
         app.logger.error(f"Error deleting table {table_name}: {str(e)}", exc_info=True)
+        # Only try to rollback if we have a cursor and transaction is active
+        if db is not None and db.cursor is not None:
+            try:
+                db.cursor.execute("ROLLBACK")
+            except Exception as rollback_error:
+                app.logger.error(f"Error during rollback: {rollback_error}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/view/<view_name>/delete", methods=["POST"])
 def delete_view(view_name):
+    db = None
     try:
         db = get_db()
+        app.logger.info(f"Attempting to delete view: {view_name}")
+        cursor = db.cursor
+
+        # Start transaction
+        cursor.execute("BEGIN")
+
         # Check if it's actually a view first
-        view_check = db.execute(
-            "SELECT type FROM sqlite_master WHERE type='view' AND name=?", [view_name]
-        )
+        view_check = cursor.execute(
+            "SELECT type, sql FROM sqlite_master WHERE type='view' AND name=?", [view_name]
+        ).fetchall()
+
         if not view_check:
+            app.logger.warning(f"Attempted to delete non-existent view: {view_name}")
+            cursor.execute("ROLLBACK")
             return jsonify({"error": "View not found"}), 404
 
+        view_info = view_check[0]
+        # Save view definition for logging
+        view_definition = view_info[1]
+
+        # Check for dependent views
+        dependent_views = cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='view' AND sql LIKE ? AND name != ?",
+            [f'%{view_name}%', view_name]
+        ).fetchall()
+
+        if dependent_views:
+            view_names = [view[0] for view in dependent_views]
+            app.logger.warning(f"Cannot delete view {view_name} due to dependent views: {view_names}")
+            cursor.execute("ROLLBACK")
+            return jsonify({
+                "error": f"Cannot delete view due to dependent views: {', '.join(view_names)}"
+            }), 409
+
+        # Execute deletion
+        cursor.execute(f"DROP VIEW IF EXISTS {view_name}")
+
+        # Commit transaction
+        cursor.execute("COMMIT")
+
+        # Log successful deletion
+        app.logger.info(
+            f"Successfully deleted view {view_name}. "
+            f"View definition was: {view_definition}"
+        )
+
+        return jsonify({
+            "message": "View deleted successfully"
         }), 200
 
     except Exception as e:
         app.logger.error(f"Error deleting view {view_name}: {str(e)}", exc_info=True)
+        # Only try to rollback if we have a cursor and transaction is active
+        if db is not None and db.cursor is not None:
+            try:
+                db.cursor.execute("ROLLBACK")
+            except Exception as rollback_error:
+                app.logger.error(f"Error during rollback: {rollback_error}")
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/execute-query", methods=["POST"])
 def execute_query():
