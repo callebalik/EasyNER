@@ -232,6 +232,205 @@ class Analysis(BaseComponent):
             self.logger.error(f"Error counting entity co-occurrences: {e}")
             return False
 
+    def record_dis_pnm(self, batch_size=500000, num_reader_threads=32, writer_chunking=200, max_queue_size=1000) -> bool:
+        """
+        Record all disease-phenomena (DIS-PNM) co-occurrences within documents into TABLE_DIS_PNM.
+        Uses multithreaded processing with batched document approach.
+        Should be highly filtered reads, so use large batch size for number of documents processed at a time.
+
+        Args:
+            - batch_size (int): Number of documents to process in each batch
+            - num_reader_threads (int): Number of reader threads to use, preferably multiple of 2 and as many as the system can handle since the logic is offloaded to the readers and database
+            - writer_chunking (int): Number of batches to write in a single transaction, to reduce overhead. Default is 10 = 10 * batch_size rows per transaction
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+
+        # Get the class ids for DIS and PNM
+        dis_class_id = self.db.data_exchanger.get_named_entity_class_id("DIS")
+        pnm_class_id = self.db.data_exchanger.get_named_entity_class_id("PNM")
+
+        self.logger.info("Starting DIS-PNM co-occurrence extraction...")
+        # Verify table exists and is accessible
+        try:
+            self.cursor.execute(f"SELECT 1 FROM {TABLE_DIS_PNM} LIMIT 1")
+            self.logger.info(f"Table {TABLE_DIS_PNM} is accessible")
+        except sqlite3.OperationalError:
+            self.logger.warning(f"Table {TABLE_DIS_PNM} not accessible")
+
+        # Composite index for disease entities filtering (NE_CLASS_ID=1)
+        idx_ne_disease = Index(TABLE_NE, [CLASS_ID, DOC_ID, NE_NORM_ID],
+                            where=f"{CLASS_ID}=1 AND {NE_NORM_ID} IS NOT NULL",
+                            logger=self.logger)
+
+
+        # Composite index for protein/molecule entities filtering (NE_CLASS_ID=2)
+        idx_ne_pnm = Index(TABLE_NE, [CLASS_ID, DOC_ID, NE_NORM_ID],
+                        where=f"{CLASS_ID}=2 AND {NE_NORM_ID} IS NOT NULL",
+                        logger=self.logger)
+
+        # Index for joining dis_entities and pnm_entities on DOC_ID
+        idx_ne_doc_id = Index(TABLE_NE, [DOC_ID], logger=self.logger)
+
+        any_index_created = False
+        for idx in [idx_ne_disease, idx_ne_pnm, idx_ne_doc_id]:
+            if idx.create_if_not_exists(self.cursor):
+                any_index_created = True
+
+        if any_index_created:
+            self.conn.commit()
+            self.cursor.execute("ANALYZE")
+
+        # Create view for DIS-PNM co-occurrences
+        VIEW_DIS_PNM_PRESENTATION.refresh(self.cursor)
+
+        try:
+
+            def reader_query_fn():
+                return f"""--sql
+                    WITH document_batch AS (
+                        SELECT {DOC_ID} AS {DOC_ID}
+                        FROM {TABLE_DOCS}
+                        ORDER BY {DOC_ID} -- primary key ordering, ensures batch atomicity
+                        LIMIT :limit OFFSET :offset
+                    ),
+                    dis_entities AS (
+                        SELECT
+                            {NE_PRIMARY_ID},
+                            {DOC_ID} ,
+                            {SENT_IDX}
+                        FROM {TABLE_NE} ne
+                        WHERE ne.{DOC_ID} IN (SELECT {DOC_ID} FROM document_batch)
+                            AND ne.{CLASS_ID} = {dis_class_id}
+                            AND ne.{NE_NORM_ID} IS NOT NULL -- Ensure only properly normalized entities are retrieved
+                    ),
+                    pnm_entities AS (
+                        SELECT
+                            {NE_PRIMARY_ID},
+                            {DOC_ID},
+                            {SENT_IDX},
+                            {CLASS_ID}
+                        FROM {TABLE_NE} ne
+                        WHERE ne.{DOC_ID} IN (SELECT {DOC_ID} FROM document_batch)
+                            AND ne.{CLASS_ID} = {pnm_class_id}
+                            AND ne.{NE_NORM_ID} IS NOT NULL -- Ensure only properly normalized entities are retrieved
+                    ),
+                    distinct_pairs AS ( -- Get distinct pairs of DIS-PNM entities within the same document for the document batch
+                        SELECT DISTINCT
+                            dis.{NE_PRIMARY_ID} AS dis_id,
+                            pnm.{NE_PRIMARY_ID} AS pnm_id
+                        FROM dis_entities dis
+                        JOIN pnm_entities pnm ON
+                            dis.{DOC_ID} = pnm.{DOC_ID}
+                        WHERE NOT EXISTS (
+                            SELECT 1
+                            FROM {TABLE_DIS_PNM} dp
+                            WHERE dp.e1_id = dis.{NE_PRIMARY_ID} AND dp.e2_id = pnm.{NE_PRIMARY_ID} -- Do not include existing co-occurrences
+                        )
+                    )
+                    SELECT
+                        dis_id,
+                        pnm_id
+                    FROM distinct_pairs
+                """
+
+            try:
+                # For query plan logging
+                self.log_query_plan(reader_query_fn().replace(':limit', '1000').replace(':offset', '100'))
+            except Exception as e:
+                self.logger.error(f"Error creating reader query: {e}")
+                raise
+
+            def process_function(batch, conn_params):
+                """Pass through the batch - processing done in SQL"""
+                return batch
+
+
+            writer_sql = f"""--sql
+                    INSERT INTO {TABLE_DIS_PNM} ({E1_ID}, {E2_ID})
+                    VALUES (?, ?)
+                """
+            def write_function(batch, cursor, conn):
+                """Write DIS-PNM co-occurrences to database"""
+                cursor.executemany(writer_sql, batch) # Commits are handled by the ReaderWriterPair
+
+            # Get total document count - Filtering out already processed documents is done in the reader query. We process all documents, even if some might have been processed before.
+            # Not the most efficient, but ensures that all documents are processed for now.
+
+            total_count = self.db.statistics.document_count
+            self.logger.info(f"Total documents to process for DIS-PNM co-occurrences: {total_count:,}")
+
+            # Create and run the reader-writer pair
+            rw_pair = ReaderWriterPair(
+                conn_params=self.conn_params_dict,
+                reader_query=reader_query_fn(),
+                batch_size=batch_size,
+                process_function=process_function,
+                write_function=write_function,
+                num_reader_threads=num_reader_threads,
+                logger=self.logger,
+                max_queue_size=max_queue_size,
+                profiling_writer_enabled=False,
+                profiling_reader_enabled=False,
+                writer_batch_chunking=writer_chunking,
+                total_rows=total_count,
+                process_title="DIS-PNM co-occurrence extraction"
+            )
+
+            self.logger.info("Starting ReaderWriterPair for DIS-PNM co-occurrence extraction")
+            rw_pair.run()
+            self.logger.info("DIS-PNM co-occurrence extraction completed successfully")
+
+            # Count and log results
+            count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DIS_PNM}").fetchone()[0]
+            self.logger.info(f"Total DIS-PNM co-occurrences recorded: {count:,}")
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error recording DIS-PNM co-occurrences: {e}")
+            return False
+
+    def _validate_dis_pnm_integrity(self):
+        """
+        Validates the integrity of DIS-PNM co-occurrences.
+
+        Returns:
+            bool: True if validation passes, False otherwise
+        """
+        self.logger.info("Validating DIS-PNM co-occurrence integrity...")
+
+        try:
+            # Check for duplicate pairs
+            duplicate_count = self.cursor.execute(f"""--sql
+                SELECT COUNT(*) FROM (
+                    SELECT {E1_ID}, {E2_ID}, COUNT(*) as cnt
+                    FROM {TABLE_DIS_PNM}
+                    GROUP BY {E1_ID}, {E2_ID}
+                    HAVING cnt > 1
+                )
+            """).fetchone()[0]
+
+            if duplicate_count > 0:
+                self.logger.error(f"Found {duplicate_count} duplicate DIS-PNM co-occurrences!")
+
+            # Check for missing entity references
+            invalid_refs = self.cursor.execute(f"""--sql
+                SELECT COUNT(*) FROM {TABLE_DIS_PNM} dp
+                LEFT JOIN {TABLE_NE} ne1 ON dp.{E1_ID} = ne1.{NE_PRIMARY_ID}
+                LEFT JOIN {TABLE_NE} ne2 ON dp.{E2_ID} = ne2.{NE_PRIMARY_ID}
+                WHERE ne1.{NE_PRIMARY_ID} IS NULL OR ne2.{NE_PRIMARY_ID} IS NULL
+            """).fetchone()[0]
+
+            if invalid_refs > 0:
+                self.logger.error(f"Found {invalid_refs} DIS-PNM co-occurrences with invalid entity references!")
+
+            return duplicate_count == 0 and invalid_refs == 0
+
+        except Exception as e:
+            self.logger.error(f"Error during DIS-PNM validation: {e}")
+            return False
     def count_entity_cooccurrences_multithreaded(self, level: str = "document", batch_size=5000, num_reader_threads=32) -> None:
         """
         Counts entity co-occurrences using ReaderWriterPair.
