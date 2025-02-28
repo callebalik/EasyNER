@@ -177,28 +177,36 @@ class View:
 
     def __init__(self, name: str, select_stmt: str, suffix: str = None):
         self.name = "v_" + name + ("_" + suffix if suffix else "")
-        self.stmt = select_stmt
+        self.stmt = select_stmt.replace("--sql", "").strip()
 
-    def create_if_not_exists(self, cursor):
+    def create_if_not_exists(self, cursor: sqlite3.Cursor) -> bool:
         """Execute the CREATE VIEW IF NOT EXISTS statement for this view."""
         cursor.execute(f"CREATE VIEW IF NOT EXISTS {self.name} AS {self.stmt};")
+        if self.validate(cursor):
+            return True
+        else:
+            self.drop(cursor)
+            raise Exception(f"View validation of {self.name} failed. Dropping view.")
+
+    def validate(self, cursor: sqlite3.Cursor) -> bool:
+        """Validate the view by executing the SELECT statement."""
+        cursor.execute(f"SELECT * FROM {self.name} LIMIT 1;")
+        return bool(cursor.fetchall())
 
     def __str__(self) -> str:
         return self.name
 
-    def drop(self, cursor):
-        """Drop the view."""
+    def drop(self, cursor: sqlite3.Cursor):
+        """Drop the view if it exists."""
         cursor.execute(f"DROP VIEW IF EXISTS {self.name};")
 
-    def refresh(self, cursor):
+    def refresh(self, cursor: sqlite3.Cursor):
         """Refresh the view by dropping and recreating it."""
         try:
             self.drop(cursor)
             self.create_if_not_exists(cursor)
         except Exception as e:
             print(f"Failed to refresh view {self.name}: {e}")
-
-
 
     def __repr__(self) -> str:
         return self.name
