@@ -50,7 +50,7 @@ class VisualizationManager:
             recursive=True  # Changed to True to watch subdirectories
         )
         self.observer.start()
-        app.logger.info("Started visualization file monitoring")
+        app.logger.debug("Started visualization file monitoring")
 
     def invalidate_cache(self, visualization_name):
         """Invalidate the cache for a specific visualization"""
@@ -58,7 +58,7 @@ class VisualizationManager:
             if visualization_name in self.caches:
                 self.caches[visualization_name] = None
                 self.last_modified[visualization_name] = 0
-                self.app.logger.info(f"{visualization_name} visualization cache invalidated")
+                self.app.logger.debug(f"{visualization_name} visualization cache invalidated")
 
     def get_cached_visualization(self, visualization_name, db, generator_func):
         """Get cached visualization or generate new one if needed"""

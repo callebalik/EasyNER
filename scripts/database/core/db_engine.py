@@ -12,6 +12,8 @@ import cProfile
 import pstats
 
 from scripts.database.db_main import EasyNerDBHandler
+from scripts.utils.log_formatter import TableFormatter
+from scripts.utils.logging_mixins import TableLoggingMixin
 
 
 def run_with_profiling(func, prof_filename):
@@ -89,10 +91,76 @@ class Reader:
         self.progress_queue = progress_queue  # Store progress_queue
         self.total_count = total_rows  # Store total_count
         self.profiling_file = profiling_filename
+        from scripts.utils.log_formatter import TableFormatter
+        self.table_formatter = TableFormatter
+
+    def _log_batch_info(self, batch, processed_batch, offset, limit, reader_duration, total_processed_in_thread, batch_empty=False):
+        """
+        Log batch processing information in a formatted table.
+
+        Args:
+            batch: The database batch that was fetched
+            processed_batch: The processed batch data
+            offset: The offset used in the query
+            limit: The limit used in the query
+            reader_duration: The time taken to read the batch from the database
+            total_processed_in_thread: The total number of items processed in this thread
+            batch_empty: Whether the batch was empty
+        """
+        # Only continue if we have a logger
+        if not self.logger:
+            return
+
+        # Calculate rows per second
+        rows_per_second = 0
+        if reader_duration > 0 and batch:
+            rows_per_second = len(batch) / reader_duration
+
+        # Prepare data for the table
+        data = {
+            'Batch size from DB': len(batch) if batch else 0,
+            'Reading time (s)': f"{reader_duration:.2f}",
+            'Rows/second': f"{rows_per_second:.2f}",
+            'Offset': offset,
+            'Limit': limit,
+            'Processed batch size': len(processed_batch) if processed_batch else 0,
+            'Total processed in thread': total_processed_in_thread,
+            'Queue size': self.data_queue.qsize() if self.data_queue else 0
+        }
+
+        try:
+            # Format as table
+            log_level = logging.WARNING if batch_empty else logging.DEBUG
+            table = self.table_formatter.format_table(data, title="Batch Processing Statistics")
+            self.logger.log(log_level, f"\n{table}")
+        except Exception as e:
+            # Fallback to standard logging if table formatting fails
+            log_message = (
+                f"Fetched batch size from DB: {len(batch) if batch else 0} in {reader_duration:.2f}s"
+                f" ({rows_per_second:.2f} rows/s)"
+                f"\nOffset: {offset}, Limit: {limit}"
+                f"\nProcessed batch size: {len(processed_batch) if processed_batch else 0}"
+                f"\nTotal processed in thread: {total_processed_in_thread}"
+                f"\nQueue size: {self.data_queue.qsize() if self.data_queue else 0}"
+            )
+            self.logger.log(log_level, log_message)
 
     def _read_and_process(self):
-        """... (Reader class _read_and_process method) ..."""
+        """Read and process batches of data from the database."""
         conn = None
+        thread_start_time = time.time()
+        thread_stats = {
+            'total_batches': 0,
+            'total_rows_fetched': 0,
+            'total_rows_processed': 0,
+            'empty_batches': 0,
+            'max_batch_size': 0,
+            'min_batch_size': float('inf'),
+            'total_fetch_time': 0,
+            'max_queue_size': 0,
+            'start_offset': None,
+            'last_offset': None
+        }
 
         try:
             conn = sqlite3.connect(**self.conn_params)
@@ -102,18 +170,22 @@ class Reader:
                 2  # Log queue size every N batches (adjust as needed)
             )
             batch_counter = 0
+            batch_empty = False
             queue_check_interval = 30  # Check queue size every X seconds when queue is full (adjust as needed)
+            consecutive_empty_batches = 0
+            max_consecutive_empty = 3
+            last_max_pk = 0  # Track the last maximum primary key we've seen
 
             while True:
                 if self.stop_event and self.stop_event.is_set():
-                    self.logger.info("Reader thread: Stop event set. Exiting read loop.")
+                    self.logger.debug("Reader thread: Stop event set. Exiting read loop.")
                     break
 
                 # Check if total_count has been reached BEFORE fetching.
                 if self.total_count is not None and self.shared_processed_count is not None and self.lock is not None:
                     with self.lock:
                         if self.shared_processed_count.value >= self.total_count:
-                            self.logger.info(
+                            self.logger.debug(
                                 f"Reader thread: total processed ({self.shared_processed_count.value}) >= total_count ({self.total_count}). Exiting read loop."
                             )
                             break
@@ -131,23 +203,39 @@ class Reader:
                 offset = batch_desc["offset"]
                 limit = batch_desc["limit"]
 
+                # Track offsets for statistics
+                if thread_stats['start_offset'] is None:
+                    thread_stats['start_offset'] = offset
+                thread_stats['last_offset'] = offset
+
                 params = {"offset": offset, "limit": limit} # Parameters for query
-                self.logger.debug(f"Executing query with params: {params}")
+
+                reader_start = time.time()
                 cursor.execute(self.query, params)
                 batch = cursor.fetchmany(limit) # Redundant limit as execute already limits the query, but safety net
+                reader_duration = time.time() - reader_start
 
-                self.logger.debug(f"Reader thread: Fetched batch size from DB: {len(batch)}")
+                # Update thread statistics
+                thread_stats['total_batches'] += 1
+                thread_stats['total_fetch_time'] += reader_duration
+                current_queue_size = self.data_queue.qsize() if self.data_queue else 0
+                thread_stats['max_queue_size'] = max(thread_stats['max_queue_size'], current_queue_size)
 
-
-                if not batch:
-                    self.logger.warning(f"Reader thread: Unexpectedly got empty batch from cursor at offset {offset} from batch queue.") # Unepected as each batch should have data, unless query is incorrect and we've checked for total processed before fetching.
-                    self.batch_queue.task_done() # Signal task done even if batch is unexpectedly empty
+                batch_empty = len(batch) == 0
+                if batch_empty:
+                    thread_stats['empty_batches'] += 1
+                    self.batch_queue.task_done() # Signal task done even if batch was unexpectedly empty
+                    # Use table formatter to log empty batch
+                    self._log_batch_info(batch, [], offset, limit, reader_duration,
+                                       total_processed_in_thread, batch_empty=True)
                     continue # Skip processing and get next batch from queue (or exit if queue is empty)
 
+                # Update row statistics
+                thread_stats['total_rows_fetched'] += len(batch)
+                thread_stats['max_batch_size'] = max(thread_stats['max_batch_size'], len(batch))
+                thread_stats['min_batch_size'] = min(thread_stats['min_batch_size'], len(batch))
+
                 processed_batch = self.process_function(batch, self.conn_params)
-
-                self.logger.debug(f"Reader thread: Processed batch size: {len(processed_batch)}") # NEW LOG - PROCESSED BATCH SIZE
-
 
                 if processed_batch:  # Only put into queue if there is processed data
                     # while (
@@ -161,30 +249,26 @@ class Reader:
                     #     )  # Pause reader thread to let writer catch up
                     #     # (Optionally) You could add a timeout to this loop to prevent indefinite blocking in extreme cases
 
-                    self.logger.debug(f"Reader thread: Queueing batch of size: {len(processed_batch)} before put(). Queue size: {self.data_queue.qsize()}") # NEW LOG - BEFORE PUT
-
 
                     self.data_queue.put(
                         processed_batch
-                    )  # Put bastch into queue AFTER backpressure check
+                    )  # Put batch into queue AFTER backpressure check
                     total_processed_in_thread += len(
                         processed_batch
                     )  # Count processed items, not fetched
-
-                    self.logger.debug(f"Reader thread: Queued batch of size: {len(processed_batch)} after put(). Queue size: {self.data_queue.qsize()}") # NEW LOG - AFTER PUT
-
+                    thread_stats['total_rows_processed'] += len(processed_batch)
 
                     if (
                         self.progress_queue
                     ):  # Send progress update if progress_queue exists
                         self.progress_queue.put(len(processed_batch))
 
+
                 batch_counter += 1
-                if batch_counter % log_queue_size_interval == 0:
-                    queue_size = self.data_queue.qsize()
-                    self.logger.debug(
-                        f"READ PROCESSED BATCH (lenght {len(processed_batch)}) - Queue size: {queue_size} (total processed in thread: {total_processed_in_thread})"
-                    )
+                if batch_counter % log_queue_size_interval == 0 or batch_empty:
+                    # Use table formatter to log batch information
+                    self._log_batch_info(batch, processed_batch, offset, limit, reader_duration,
+                                       total_processed_in_thread, batch_empty)
 
                 if (
                     self.total_count is not None
@@ -193,7 +277,7 @@ class Reader:
                 ):
                     with self.lock:
                         if self.shared_processed_count.value >= self.total_count:
-                            self.logger.info(
+                            self.logger.debug(
                                 f"Reader thread: total processed ({self.shared_processed_count.value}) >= total_count ({self.total_count}). Exiting read loop."
                             )
                             break
@@ -201,18 +285,70 @@ class Reader:
                             self.shared_processed_count.value += len(processed_batch)
 
         except sqlite3.Error as e:
-            # Shoudl we rollback here?
+            # Should we rollback here?
             self.logger.error(f"Database error in Reader thread: {e}")
         except Exception as e:
             self.logger.error(f"Error in Reader thread process: {e}")
         finally:
+            thread_duration = time.time() - thread_start_time
+
+            # Handle edge case where no batches were processed
+            if thread_stats['min_batch_size'] == float('inf'):
+                thread_stats['min_batch_size'] = 0
+
+            # Add final statistics
+            thread_stats['total_processed'] = total_processed_in_thread
+            thread_stats['thread_duration'] = thread_duration
+
+            # Calculate rates and averages
+            if thread_duration > 0:
+                thread_stats['rows_per_second'] = total_processed_in_thread / thread_duration
+                if thread_stats['total_batches'] > 0:
+                    thread_stats['avg_batch_size'] = thread_stats['total_rows_fetched'] / thread_stats['total_batches']
+                    thread_stats['avg_batch_time'] = thread_stats['total_fetch_time'] / thread_stats['total_batches']
+
+            # Log summary table
+            self._log_thread_completion_summary(thread_stats)
+
             if conn:
                 conn.close()
+
+            # Use debug level for routine completion messages
             self.logger.debug("Reader thread finished.")
-            self.data_queue.put(
-                None
-            )  # Ensure sentinel value is ALWAYS added to queue at the end
+            self.data_queue.put(None)  # Ensure sentinel value is ALWAYS added to queue at the end
             self.logger.debug("Reader thread: added sentinel value to queue.")
+
+    def _log_thread_completion_summary(self, stats):
+        """
+        Log a formatted table with thread completion statistics.
+
+        Args:
+            stats (dict): Dictionary containing thread statistics
+        """
+        try:
+            # Format data for better readability
+            summary_data = {
+                'Total batches processed': stats['total_batches'],
+                'Total rows fetched': stats['total_rows_fetched'],
+                'Total rows processed': stats['total_rows_processed'],
+                'Thread duration (s)': f"{stats['thread_duration']:.2f}",
+                'Processing rate (rows/s)': f"{stats.get('rows_per_second', 0):.2f}",
+                'Empty batches': stats['empty_batches'],
+                'Avg batch size': f"{stats.get('avg_batch_size', 0):.1f}",
+                'Min/Max batch size': f"{stats['min_batch_size']}/{stats['max_batch_size']}",
+                'Avg batch fetch time (s)': f"{stats.get('avg_batch_time', 0):.3f}",
+                'Max queue size': stats['max_queue_size'],
+                'Offset range': f"{stats['start_offset']} - {stats['last_offset']}"
+            }
+
+            table = self.table_formatter.format_table(summary_data, title="Reader Thread Completion Summary")
+            self.logger.info(f"\n{table}")
+        except Exception as e:
+            # Fallback to standard logging if table formatting fails
+            self.logger.info(
+                f"Reader thread completed with: {stats['total_batches']} batches, "
+                f"{stats['total_rows_processed']} rows processed in {stats['thread_duration']:.2f} seconds"
+            )
 
     def run(self, num_threads=1):  # `num_threads` is now OPTIONAL with default 1
         """
@@ -230,9 +366,6 @@ class Reader:
         """
 
         if self.profiling_file:
-            self.logger.debug(
-                f"START: READ + PROCESS (profiling -> '{self.profiling_file}')"
-            )
             run_with_profiling(
                 lambda: self._run_internal(num_threads), self.profiling_file
             )  # Use lambda to call internal run with args
@@ -251,13 +384,9 @@ class Reader:
             single-threaded (intended for ReaderWriterPair).
         """
         if num_threads <= 1:  # Single-threaded execution (for ReaderWriterPair usage)
-            self.logger.debug(
-                "START: READ + PROCESS"
-            )
             self._read_and_process()
-            self.logger.info(
-                "FINISH: READ + PROCESS"
-            )
+            # Use debug level to avoid cluttering logs with completion messages
+            self.logger.debug("Reader thread completed")
         else:  # Multi-threaded execution (for standalone Reader usage)
             threads = []
             self.logger.info(
@@ -322,95 +451,165 @@ class Writer:
         self.profiling_filename = profiling_filename
         self.batch_chunking = batch_chunking  # Accumulte multiple batches before writing
         self.num_reader_threads = num_reader_threads  # Store number of reader threads
-
-
+        from scripts.utils.log_formatter import TableFormatter
+        self.table_formatter = TableFormatter
 
     def writer_process(self):
-        """... (Writer class writer_process method) ..."""
+        """Process data from the queue and write it to the database."""
         conn: sqlite3.Connection = None
+        thread_start_time = time.time()
+        write_stats = {
+            'total_batches': 0,
+            'total_rows_written': 0,
+            'accumulated_batches': 0,
+            'max_batch_size': 0,
+            'min_batch_size': float('inf'),
+            'total_write_time': 0,
+            'commit_count': 0,
+            'rollback_count': 0,
+            'chunk_threshold': self.batch_chunking,
+            'sentinel_count': 0
+        }
+
         try:
             conn = sqlite3.connect(**self.conn_params)
             cursor = conn.cursor()
 
             sentinel_count = 0  # Count of sentinels received
-            num_readers = (
-                self.num_reader_threads
-            )  # Get number of readers from the queue
+            num_readers = self.num_reader_threads
 
             while True:
                 if self.stop_event.is_set(): # Check stop event at the beginning of writer loop
                     self.logger.debug("Writer thread: Stop event detected, exiting writer loop.")
                     break
 
-                batch = (
-                    self.data_queue.get()
-                )  # Get batch from queue (same queue as Reader's)
-
-                self.logger.debug(f"Writer thread: Got batch from queue - size: {len(batch) if batch else 'Sentinel'}")
+                batch = self.data_queue.get()  # Get batch from queue (same queue as Reader's)
 
                 if batch is None:  # Sentinel value received
                     self.data_queue.task_done()  # Signal task completion for sentinel
                     sentinel_count += 1
+                    write_stats['sentinel_count'] += 1
 
                     if sentinel_count == num_readers:  # All readers have finished
-                        self.logger.debug(
-                            f"Writer thread received all {num_readers} sentinels. Exiting writer process."
-                        )
+                        # Use debug level since we'll log a nice table summary at INFO level
+                        self.logger.debug(f"Writer thread received all {num_readers} sentinels. Exiting writer process.")
                         break
                     else:
-                        self.logger.debug(
-                            f"Writer thread received a sentinel. Total sentinels: {sentinel_count} (of {num_readers})"
-                        )
+                        # Use debug level to avoid cluttering logs
+                        self.logger.debug(f"Writer thread received a sentinel. Total sentinels: {sentinel_count} (of {num_readers})")
                         continue  # Skip processing sentinel
+
+                # Log batch fetch at debug level to reduce noise
+                self.logger.debug(f"Writer thread: Got batch from queue - size: {len(batch) if batch else 'Sentinel'}")
 
                 # ENABLE THIS BATCH CHUNKING CODE
                 if self.batch_chunking > 1:
                     accumulated_size = len(batch)
+                    accumulated_batches = 1
                     for _ in range(self.batch_chunking - 1):
                         if self.data_queue.empty():
                             break
                         next_batch = self.data_queue.get()
                         if next_batch is None:
                             sentinel_count += 1
+                            write_stats['sentinel_count'] += 1
                             self.data_queue.task_done()
                             break
                         accumulated_size += len(next_batch)
+                        accumulated_batches += 1
                         batch.extend(next_batch)
-                        self.data_queue.task_done()
                         self.logger.debug(f"Writer thread: Accumulated batch size now {accumulated_size}")
+                        self.data_queue.task_done()
 
+                    write_stats['accumulated_batches'] += accumulated_batches
+
+                # Update batch statistics
+                write_stats['total_batches'] += 1
+                batch_size = len(batch)
+                write_stats['max_batch_size'] = max(write_stats['max_batch_size'], batch_size)
+                if batch_size > 0:  # Only update min_batch_size for non-empty batches
+                    write_stats['min_batch_size'] = min(write_stats['min_batch_size'], batch_size)
+
+                # Perform the write operation with timing
+                write_start = time.time()
                 try:
                     self.write_function(batch, cursor, conn)  # Call the write function
-                    self.written_count += len(batch)
+                    self.written_count += batch_size
+                    write_stats['total_rows_written'] += batch_size
                     conn.commit()  # Commit transaction after each successful write
-                    self.logger.debug(
-                        f"Writer thread wrote a batch of {len(batch)} items (total written so far: {self.written_count})"
-                    )
+                    write_stats['commit_count'] += 1
+                    # Use debug level to avoid cluttering logs
+                    self.logger.debug(f"Writer thread wrote a batch of {batch_size} items (total written so far: {self.written_count})")
                 except Exception as write_e:
                     conn.rollback()  # Rollback transaction in case of write error
-                    self.logger.error(
-                        f"Error in write_function: {write_e}. Transaction rolled back for current batch."
-                    )
-                    # Consider more sophisticated error handling here - e.g., retry mechanism, error queue
+                    write_stats['rollback_count'] += 1
+                    self.logger.error(f"Error in write_function: {write_e}. Transaction rolled back for current batch.")
                 finally:
+                    write_duration = time.time() - write_start
+                    write_stats['total_write_time'] += write_duration
                     self.data_queue.task_done()  # Signal task completion for the batch
 
-            self.logger.info(
-                f"Writer thread finished processing and wrote a total of {self.written_count} items."
-            )
+            thread_duration = time.time() - thread_start_time
+            # Handle edge case where no batches were processed
+            if write_stats['min_batch_size'] == float('inf'):
+                write_stats['min_batch_size'] = 0
+
+            # Add final statistics
+            write_stats['thread_duration'] = thread_duration
+
+            # Calculate rates and averages
+            if thread_duration > 0:
+                write_stats['rows_per_second'] = write_stats['total_rows_written'] / thread_duration
+                if write_stats['total_batches'] > 0:
+                    write_stats['avg_batch_size'] = write_stats['total_rows_written'] / write_stats['total_batches']
+                    write_stats['avg_write_time'] = write_stats['total_write_time'] / write_stats['total_batches']
+
+            # Log summary table
+            self._log_thread_completion_summary(write_stats)
 
         except sqlite3.Error as e:
             if conn:
                 conn.rollback()
-            self.logger.error(
-                f"Database error in Writer thread: {e}. Transaction rolled back."
-            )
+                write_stats['rollback_count'] += 1
+            self.logger.error(f"Database error in Writer thread: {e}. Transaction rolled back.")
         except Exception as e:
             self.logger.error(f"Error in Writer thread: {e}")
         finally:
             if conn:
                 conn.close()
             self.logger.debug("Writer thread finished.")
+
+    def _log_thread_completion_summary(self, stats):
+        """
+        Log a formatted table with writer thread completion statistics.
+
+        Args:
+            stats (dict): Dictionary containing thread statistics
+        """
+        try:
+            # Format data for better readability
+            summary_data = {
+                'Total batches written': stats['total_batches'],
+                'Total rows written': stats['total_rows_written'],
+                'Thread duration (s)': f"{stats['thread_duration']:.2f}",
+                'Writing rate (rows/s)': f"{stats.get('rows_per_second', 0):.2f}",
+                'Batches accumulated': stats['accumulated_batches'],
+                'Chunking threshold': stats['chunk_threshold'],
+                'Avg batch size': f"{stats.get('avg_batch_size', 0):.1f}",
+                'Min/Max batch size': f"{stats['min_batch_size']}/{stats['max_batch_size']}",
+                'Avg write time (s)': f"{stats.get('avg_write_time', 0):.3f}",
+                'Commits/Rollbacks': f"{stats['commit_count']}/{stats['rollback_count']}",
+                'Sentinels received': stats['sentinel_count']
+            }
+
+            table = self.table_formatter.format_table(summary_data, title="Writer Thread Completion Summary")
+            self.logger.info(f"\n{table}")
+        except Exception as e:
+            # Fallback to standard logging if table formatting fails
+            self.logger.info(
+                f"Writer thread completed with: {stats['total_batches']} batches, "
+                f"{stats['total_rows_written']} rows written in {stats['thread_duration']:.2f} seconds"
+            )
 
     def run(self):
         """
@@ -440,7 +639,7 @@ class Writer:
         self.logger.info("Writer thread finished.")
 
 
-class ReaderWriterPair:
+class ReaderWriterPair(TableLoggingMixin):
     """
     Manages a Reader and Writer pair, creating and connecting their data queue internally.
     """
@@ -521,6 +720,9 @@ class ReaderWriterPair:
             )
         finally:
             test_conn.close()
+
+        # Validate reader_query
+
         self.reader_query = reader_query
         # Check for ORDER BY clause
         if "ORDER BY" not in reader_query.upper():
@@ -635,16 +837,40 @@ class ReaderWriterPair:
 
 
     def _populate_batch_queue(self):
+        """
+        Populates the batch queue with batch descriptors.
+        For primary key-based pagination, this initializes with the lowest primary key
+        and then each reader increments based on the max key it has seen.
+        """
         if self.total_rows is None:
             raise ValueError("total_rows must be provided for chunking.")
 
-        num_batches = (self.total_rows + self.batch_size - 1) // self.batch_size # Calculate number of batches
-        self.logger.info(f"Populating batch queue with {num_batches} batches based on total_rows: {self.total_rows}.")
-        for i in range(num_batches):
-            offset = i * self.batch_size
-            limit = self.batch_size
-            self.batch_queue.put({'offset': offset, 'limit': limit})
-        self.logger.info("Batch queue population complete.")
+        if getattr(self, 'pk_based_pagination', False):
+            # When using primary key-based pagination:
+            # 1. Put a single task with offset=0 to start
+            # 2. Readers will increment the primary key themselves based on what they read
+            self.logger.info(f"Initializing batch queue with primary key-based pagination")
+
+            # Put a single task to start the process with the first available primary key
+            self.batch_queue.put({'offset': 0, 'limit': self.batch_size})
+
+            # Then pre-populate a number of batch tasks with the same parameters
+            # Each reader will dynamically update the offset based on the max primary key it sees
+            batch_count = min(200, self.total_rows // self.batch_size + 1)
+            for _ in range(batch_count):
+                self.batch_queue.put({'offset': 0, 'limit': self.batch_size})
+
+            self.logger.info(f"Added {batch_count+1} initial tasks for PK-based pagination")
+        else:
+            # Traditional offset/limit based pagination
+            num_batches = (self.total_rows + self.batch_size - 1) // self.batch_size
+
+            for i in range(num_batches):
+                offset = i * self.batch_size
+                limit = self.batch_size
+                self.batch_queue.put({'offset': offset, 'limit': limit})
+
+            return num_batches
 
 
     def _progress_aggregation_process(self):  # Aggregation thread function
@@ -747,28 +973,38 @@ class ReaderWriterPair:
 
         try:
             # 1. FIRST: Set up and start all threads
-            self._populate_batch_queue()
+            num_of_batches = self._populate_batch_queue()
 
             # Start aggregation thread first
-            self.logger.info("Starting progress aggregation thread")
             aggregation_thread = threading.Thread(
                 target=self._progress_aggregation_process, daemon=True
             )
             aggregation_thread.start()
 
             # Start reader threads
-            self.logger.info(f"ReaderWriterPair: Starting {self.num_reader_threads} reader threads")
+            started_reader_threads = 0
             for _ in range(self.num_reader_threads):
-                thread = threading.Thread(target=self.reader.run)
-                thread.daemon = True
-                reader_threads.append(thread)
-                thread.start()
+                try:
+                    thread = threading.Thread(target=self.reader.run)
+                    thread.daemon = True
+                    reader_threads.append(thread)
+                    thread.start()
+                    started_reader_threads += 1
+                except Exception as e:
+                    self.logger.error(f"Error starting reader thread: {e}")
 
             # Start writer thread
-            self.logger.info("Starting writer thread")
-            writer_thread = threading.Thread(target=self.writer.run)
-            writer_thread.daemon = True
-            writer_thread.start()
+            writer_thread_started = False
+            try:
+                writer_thread = threading.Thread(target=self.writer.run)
+                writer_thread.daemon = True
+                writer_thread.start()
+                writer_thread_started = True
+            except Exception as e:
+                self.logger.error(f"Error starting writer thread: {e}")
+
+            # Log job info
+            self._log_configuration_as_table(num_of_batches, started_reader_threads, writer_thread_started)
 
             # 2. SECOND: Monitor overall processing progress
             while True:
@@ -854,8 +1090,10 @@ class ReaderWriterPair:
                     # Wait for threads to join (with timeout)
                     for thread in reader_threads:
                         thread.join(timeout)
-                    writer_thread.join(timeout)
-                    aggregation_thread.join(timeout)
+                    if writer_thread:
+                        writer_thread.join(timeout)
+                    if aggregation_thread:
+                        aggregation_thread.join(timeout)
                 except Exception as e_join_threads:
                     self.logger.error(f"Error joining threads during keyboard interrupt: {e_join_threads}")
                 finally:
@@ -872,3 +1110,55 @@ class ReaderWriterPair:
                 q.task_done()
         except queue.Empty:
             pass
+
+    def _log_configuration_as_table(self, num_of_batches, started_reader_threads, writer_thread_started):
+        """
+        Log configuration information as a formatted table.
+
+        Args:
+            num_of_batches: Number of batches calculated
+            started_reader_threads: Number of reader threads successfully started
+            writer_thread_started: Whether writer thread was started successfully
+        """
+        config_data = {
+            'Total rows': self.total_rows,
+            'Batch size': self.batch_size,
+            'Number of batches': num_of_batches,
+            'Writer batch chunking': self.writer_batch_chunking,
+            'Max queue size': self.data_queue.maxsize,
+            'Reader profiling': self.profiling_reader_enabled,
+            'Writer profiling': self.profiling_writer_enabled,
+            'Reader threads': f"{started_reader_threads}/{self.num_reader_threads}",
+            'Writer thread': writer_thread_started
+        }
+
+        # Use the TableLoggingMixin's log_table method
+        self.log_table(config_data, title="ReaderWriterPair Processing Configuration")
+
+class WriteFunction:
+    """
+    Class to define the write function for the Writer.
+    """
+
+    @staticmethod
+    def write_batch(batch, cursor, conn, logger):
+        """
+        Write function to insert a batch of data into a database.
+
+        Args:
+            batch (List[Tuple]): List of tuples to insert.
+            cursor (sqlite3.Cursor): Database cursor.
+            conn (sqlite3.Connection): Database connection.
+            logger (logging.Logger): Logger instance.
+
+        Returns:
+            bool: True if write was successful, False otherwise.
+        """
+        try:
+            cursor.executemany(
+                "INSERT INTO test_table (id, name) VALUES (?, ?)", batch
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error writing batch: {e}")
+            return False

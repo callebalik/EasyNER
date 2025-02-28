@@ -12,6 +12,7 @@ import pstats
 
 from ..logger import BaseLogger  # Assuming BaseLogger is in core.core_classes
 from ..db_manager import DatabaseManager  # Import DatabaseManager
+from scripts.utils.log_formatter import TableFormatter  # Import TableFormatter
 
 
 def run_with_profiling(func, prof_filename):
@@ -517,6 +518,46 @@ class ReaderWriterPair:
         except sqlite3.Error as e:
             print(f"SQLite error: {e}")
             return None
+
+    def _log_configuration_as_table(self, num_of_batches, started_reader_threads, writer_thread_started):
+        """
+        Log configuration information as a formatted table.
+
+        Args:
+            num_of_batches: Number of batches calculated
+            started_reader_threads: Number of reader threads successfully started
+            writer_thread_started: Whether writer thread was started successfully
+        """
+        config_data = {
+            'Total rows': self.total_count,
+            'Batch size': self.batch_size,
+            'Number of batches': num_of_batches,
+            'Writer batch chunking': self.writer_batch_chunking,
+            'Max queue size': self.data_queue.maxsize,
+            'Reader profiling': self.profiling_reader_enabled,
+            'Writer profiling': self.profiling_writer_enabled,
+            'Reader threads': f"{started_reader_threads}/{self.num_reader_threads}",
+            'Writer thread': writer_thread_started
+        }
+
+        try:
+            table_str = TableFormatter.format_table(
+                config_data,
+                title="ReaderWriterPair Processing Configuration"
+            )
+            self.logger.info(f"\n{table_str}")
+        except ImportError:
+            # Fallback to standard logging if TableFormatter is not available
+            self.logger.info(
+                f"ReaderWriterPair: Processing {self.total_count} rows"
+                f"\nBatch size: {self.batch_size}."
+                f"\nNumber of batches: {num_of_batches}."
+                f"\nWriter batch chunking: {self.writer_batch_chunking}."
+                f"\nMax queue size: {self.data_queue.maxsize}."
+                f"\nProfiling enabled: Reader={self.profiling_reader_enabled}, Writer={self.profiling_writer_enabled}."
+                f" Reader threads: Started {started_reader_threads}/{self.num_reader_threads}."
+                f"\nWriting thread: {writer_thread_started}"
+            )
 
     def run(self):
         """

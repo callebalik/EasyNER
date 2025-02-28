@@ -7,10 +7,37 @@ import plotly.graph_objects as go
 import importlib  # Added this import
 from .statistics.sankey_diagram import create_disease_phenomena_sankey
 from .statistics.visualization_manager import VisualizationManager
+import logging
+from logging.handlers import RotatingFileHandler
+from .data_model.schema import *
+from .core.core_methods import *
+
+
+def setup_logging(app):
+    """Configure logging for the application"""
+    # Create logs directory if it doesn't exist
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Set up file handler
+    log_file = os.path.join(log_dir, 'server.log')
+    print(f"Logging to: {log_file}")
+    file_handler = RotatingFileHandler(log_file, maxBytes=1024 * 1024, backupCount=10)
+    file_handler.setFormatter(logging.Formatter(
+        '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
+    ))
+    file_handler.setLevel(logging.INFO)
+
+    # Add handler to app logger
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.INFO)
+
+    app.logger.info('Logging setup completed')
 
 # Set template directory to current directory/templates
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 app = Flask(__name__, template_folder=template_dir)
+setup_logging(app)
 
 # Initialize single database connection
 visualization_manager = VisualizationManager(app)
@@ -116,16 +143,16 @@ def align_with_schema():
                     try:
                         db.execute(statement)
                     except Exception as e:
-                        db.logger.warning(f"Error applying index: {e}")
+                        app.logger.warning(f"Error applying index: {e}")
                         continue
-        db.logger.info("Database indexes applied successfully")
+        app.logger.info("Database indexes applied successfully")
 
     except Exception as e:
-        db.logger.error(f"Error initializing database: {e}")
+        app.logger.error(f"Error initializing database: {e}")
         raise
 
 
-    db.logger.info("Flask application initialized")
+    app.logger.info("Flask application initialized")
     return db
 
 
@@ -135,7 +162,7 @@ def get_available_entities(db):
             "SELECT id, named_entity FROM named_entities ORDER BY named_entity"
         )
     except Exception as e:
-        db.logger.error(f"Error fetching entities: {e}")
+        app.logger.error(f"Error fetching entities: {e}")
         return []
 
 
@@ -166,7 +193,7 @@ def home():
 
         return render_template("home.html", tables=tables_info, stats=stats)
     except Exception as e:
-        db.logger.error(f"Error loading home page: {e}")
+        app.logger.error(f"Error loading home page: {e}")
         return (
             render_template("error.html", message="Error loading database information"),
             500,
@@ -212,7 +239,7 @@ def health_check():
             200,
         )
     except Exception as e:
-        db.logger.error(f"Health check failed: {e}")
+        app.logger.error(f"Health check failed: {e}")
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
 @app.route("/documents")
@@ -398,7 +425,7 @@ def entity_cooccurrences_table():
             }
         )
     except Exception as e:
-        db.logger.error(f"Error loading entity co-occurrences table: {e}")
+        app.logger.error(f"Error loading entity co-occurrences table: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -436,7 +463,7 @@ def entity_cooccurrences_summary_table():
             }
         )
     except Exception as e:
-        db.logger.error(f"Error loading entity co-occurrences summary table: {e}")
+        app.logger.error(f"Error loading entity co-occurrences summary table: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -504,7 +531,7 @@ def raw_cooccurrences_table():
             }
         )
     except Exception as e:
-        db.logger.error(f"Error loading entity co-occurrences table: {e}")
+        app.logger.error(f"Error loading entity co-occurrences table: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -542,7 +569,7 @@ def summary_cooccurrences_table():
             }
         )
     except Exception as e:
-        db.logger.error(f"Error loading entity co-occurrences summary table: {e}")
+        app.logger.error(f"Error loading entity co-occurrences summary table: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -574,7 +601,7 @@ def entity_cooccurrences_plot_data():
             }
         )
     except Exception as e:
-        db.logger.error(f"Error loading entity co-occurrences plot data: {e}")
+        app.logger.error(f"Error loading entity co-occurrences plot data: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -606,7 +633,7 @@ def entity_cooccurrences_summary_plot_data():
             }
         )
     except Exception as e:
-        db.logger.error(f"Error loading entity co-occurrences summary plot data: {e}")
+        app.logger.error(f"Error loading entity co-occurrences summary plot data: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -783,7 +810,7 @@ def debug_entity_cooccurrences_summary():
             }
         )
     except Exception as e:
-        db.logger.error(f"Debug endpoint error: {e}")
+        app.logger.error(f"Debug endpoint error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -814,7 +841,7 @@ def get_view_sample(view_name):
 
         return jsonify({"sample": sample_data})
     except Exception as e:
-        db.logger.error(f"Error fetching sample for view {view_name}: {e}")
+        app.logger.error(f"Error fetching sample for view {view_name}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -923,7 +950,7 @@ def get_tables_json():
 
         return jsonify(tables_info), 200
     except Exception as e:
-        db.logger.error(f"Error getting table information: {e}")
+        app.logger.error(f"Error getting table information: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -985,13 +1012,14 @@ def show_tables():
 
 
 @app.route("/table/<table_name>/rowcount")
+
 def get_table_rowcount(table_name):
     try:
         db = get_db()
         count = db.execute(f"SELECT COUNT(*) FROM {table_name}")[0][0]
         return jsonify({"row_count": count})
     except Exception as e:
-        db.logger.error(f"Error getting row count for {table_name}: {e}")
+        app.logger.error(f"Error getting row count for {table_name}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1027,7 +1055,7 @@ def view_table(table_name):
             has_more=has_more,
         )
     except Exception as e:
-        db.logger.error(f"Error loading table {table_name}: {e}")
+        app.logger.error(f"Error loading table {table_name}: {e}")
         return (
             render_template("error.html", message=f"Error loading table {table_name}"),
             500,
@@ -1076,13 +1104,13 @@ def display_table(table_name):
         if sort_by in columns:
             sql += f" ORDER BY {sort_by} {sort_order.upper()}"
         else:
-            db.logger.warning(f"Invalid sort column: {sort_by}")
+            app.logger.warning(f"Invalid sort column: {sort_by}")
             if columns:
                 fallback_column = columns[0]
                 sql += f" ORDER BY {fallback_column} {sort_order.upper()}"
             else:
                 # No columns available, so just skip sorting
-                db.logger.warning("No columns found for sorting.")
+                app.logger.warning("No columns found for sorting.")
 
         # Add pagination
         sql += " LIMIT ? OFFSET ?"
@@ -1108,7 +1136,7 @@ def display_table(table_name):
             "column_search_queries": column_search_queries,  # Pass search queries to the template
         }
     except Exception as e:
-        db.logger.error(f"Error displaying table {table_name}: {e}")
+        app.logger.error(f"Error displaying table {table_name}: {e}")
         return {"error": str(e)}
 
 
@@ -1273,7 +1301,7 @@ def show_indexes():
             indexed_columns_by_table=indexed_columns_by_table,
         )  # Pass indexed columns to the template
     except Exception as e:
-        db.logger.error(f"Error loading indexes: {e}")
+        app.logger.error(f"Error loading indexes: {e}")
         return render_template("error.html", message="Error loading indexes"), 500
 
 
@@ -1397,10 +1425,9 @@ def delete_table(table_name):
         if table_name.startswith('sqlite_'):
             return jsonify({"error": "Cannot delete system tables"}), 403
 
-        db.execute(f"DROP TABLE IF EXISTS {table_name}")
-        return jsonify({"message": "Table deleted successfully"}), 200
+
     except Exception as e:
-        db.logger.error(f"Error deleting table {table_name}: {e}")
+        app.logger.error(f"Error deleting table {table_name}: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 @app.route("/view/<view_name>/delete", methods=["POST"])
@@ -1414,10 +1441,10 @@ def delete_view(view_name):
         if not view_check:
             return jsonify({"error": "View not found"}), 404
 
-        db.execute(f"DROP VIEW IF EXISTS {view_name}")
-        return jsonify({"message": "View deleted successfully"}), 200
+        }), 200
+
     except Exception as e:
-        db.logger.error(f"Error deleting view {view_name}: {e}")
+        app.logger.error(f"Error deleting view {view_name}: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
@@ -1451,7 +1478,7 @@ def execute_query():
             "truncated": len(rows) == 1000
         })
     except Exception as e:
-        db.logger.error(f"Query execution error: {e}")
+        app.logger.error(f"Query execution error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1546,7 +1573,7 @@ if __name__ == "__main__":
         try:
             # Initialize database before running the server
             db = get_db()
-            db.logger.info("Starting Flask server...")
+            app.logger.info("Starting Flask server...")
 
             app.run(
                 host="127.0.0.1",
@@ -1557,5 +1584,5 @@ if __name__ == "__main__":
             )
         except Exception as e:
             if "db" in locals():
-                db.logger.error(f"Server error: {e}")
+                app.logger.error(f"Server error: {e}")
             raise

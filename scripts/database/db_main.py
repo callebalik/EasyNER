@@ -1,9 +1,11 @@
 import functools
 import os
+import signal
 import sys
 import logging
 import json
 import sqlite3
+import time
 from typing import Optional
 
 def db_error_handler(method):
@@ -30,28 +32,20 @@ class EasyNerDBHandler:
 
         """
 
-        # Set up minimal logger for initialization
-        self.logger = logging.getLogger("EasyNerDB")
-        self.logger.setLevel(logging.DEBUG)
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setLevel(logging.INFO)
-            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-
+        # Load config and setup paths first
         self.config = self._load_config(config_path)
-        self.db_path = self._setup_path(db_path=db_path)
+        self.db_path, self.path_source = self._setup_path(db_path=db_path)
         self.name = os.path.basename(self.db_path)
 
         # Now set up the full logging system with proper file paths
+        # Can't use @db_error_handler before logging is set up
         self._setup_logging()
 
         # Connect to the database
         self.conn = sqlite3.connect(self.db_path)
         self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
-        self.cursor.row_factory = sqlite3.Row # Return rows as dictionaries for easy access
-        self.logger.debug(f"Connected to database {self.db_path} and created cursor")
+        self.cursor.row_factory = sqlite3.Row  # Return rows as dictionaries for easy access
+
 
         # Ensure cache table exists
         self._init_cache()
@@ -61,9 +55,46 @@ class EasyNerDBHandler:
 
         # Initialize components
         self._initialize_components()
-        self.logger.info("Database connection initialized")
 
-      # Support for context manager protocol
+        # Log and print connection info
+        try:
+            from scripts.utils.log_formatter import TableFormatter
+
+            log_config = {
+                'Database': self.name,
+                'Path': self.db_path,
+                'Path source': self.path_source,
+                'Main log (INFO)': self.log_file,
+                'Error log (ERRORS only)': self.error_log_file,
+                'Debug log (FULL DEBUG)': self.debug_log_file,
+                'Row-factory': self.cursor.row_factory,
+                'Journal Mode': self._get_pragma_value("journal_mode"),
+                'Busy Timeout': self._get_pragma_value("busy_timeout"),
+                'Synchronous': self._get_pragma_value("synchronous"),
+                'Foreign keys': self._get_pragma_value("foreign_keys"),
+                'Journal size limit': self._get_pragma_value("journal_size_limit"),
+                'Max parameter count': self._get_pragma_value("max_variable_number"),
+                'Environment settings': self.cache_manager.get_global("environment_settings"),
+                'Mapped I/O (> 1 -> True)': self._get_pragma_value("mmap_size"),
+            }
+
+            table = TableFormatter.format_table(log_config, title="Database connection initialized")
+            self.logger.info(f"\n{table}")
+            print(table)
+        except ImportError:
+            # Fallback to standard logging if TableFormatter is not available
+            self.logger.info(
+                f"Logging system initialized - DB: {self.name}"
+                f"\n Main log - (INFO): {self.log_file}"
+                f"\n Path: {self.db_path}"
+                f"\n Path source: {self.path_source}"
+                f"\n Error log - (ONLY ERRORS) - Resets: {self.error_log_file}"
+                f"\n Debug log - (FULL DEBUG LOG): {self.debug_log_file}"
+            )
+
+
+
+    # Support for context manager protocol
     def __enter__(self):
         """
         Context manager entry point - provides direct access to database operations.
@@ -104,7 +135,6 @@ class EasyNerDBHandler:
         # Don't suppress exceptions
         return False
 
-    @db_error_handler
     def _setup_path(self, db_path: Optional[str]) -> None:
         # Database path selection with clear precedence:
         # 1. DB_PATH environment variable
@@ -112,21 +142,22 @@ class EasyNerDBHandler:
         # 3. Explicitly provided db_path parameter
         # 4. Path from config file
 
+        path_source = None
         env_db_path = os.getenv("DB_PATH")
         resolved_path = None
         if env_db_path:
             resolved_path = env_db_path
-            self.logger.info(f"Using database path from environment variable: {env_db_path}")
+            path_source = "DB_PATH environment variable"
         elif self.config.get("develop", False):
             pwd = os.path.dirname(os.path.abspath(__file__))
             resolved_path = os.path.join(pwd, "development.db")
-            self.logger.info("Setting up in development mode, ignoring database path provided")
+            path_source = "development mode default path"
         elif db_path is not None:
             resolved_path = db_path
-            self.logger.info(f"Using database path provided: {db_path}")
+            path_source = "explicitly provided path"
         else:
             resolved_path = self.config.get("db_path")
-            self.logger.info(f"Using database path from config: {resolved_path}")
+            path_source = "config file"
 
         # Ensure the path is absolute and resolved
         if not resolved_path:
@@ -135,20 +166,24 @@ class EasyNerDBHandler:
         if not os.path.isabs(resolved_path):
             raise ValueError("Database path must be absolute")
 
-        self.logger.info(f"Resolved database path: {resolved_path}")
-
-        return resolved_path
+        return resolved_path, path_source
 
     @db_error_handler
     def _init_cache(self):
-        """Initialize the cache table if it doesn't exist"""
+        """Initialize the cache table and set up the global cache manager singleton"""
         try:
-            # Try to use CacheManager if available
+            # Import here to avoid circular imports
             from .core.cache_manager import CacheManager
-            self.cache_manager = CacheManager(self)
-            self.logger.debug("Cache initialized using CacheManager")
-        except ImportError:
-            raise ImportError("CacheManager not available; cannot initialize cache")
+            from .core.cache_singleton import set_cache_manager_connection
+
+            # Create a local instance for this db_handler
+            self.cache_manager = CacheManager(db_handler=self)
+
+            # Also initialize the global singleton cache manager
+            set_cache_manager_connection(self.conn, self.cursor, self.logger)
+
+        except ImportError as e:
+            self.logger.warning(f"Failed to initialize cache system: {e}")
 
     @db_error_handler
     def _load_environment_settings(self):
@@ -196,7 +231,6 @@ class EasyNerDBHandler:
             # Import component modules
             from .db_data_exchanger import DBDataExchanger
             from .db_data_cleaner import DBDataCleaner
-            from .analysis.db_analysis import DBAnalysis
             from .db_statistics import DBStatistics
             from .data_model.entity_occurrence import EntityOccurrence
             from .data_model.entity_cooccurrence import EntityCooccurrence
@@ -209,10 +243,6 @@ class EasyNerDBHandler:
                 self.conn, self.cursor, self.logger, self.data_exchanger, config=self.config
             )
 
-            self.analysis = DBAnalysis(
-                self.conn, self.cursor, self.logger, self.data_exchanger,
-                self._log_query_plan, self.execute_with_log, self.conn_params_dict
-            )
 
             self.statistics = DBStatistics(
                 self.conn, self.cursor, self.logger, self.data_exchanger
@@ -286,51 +316,73 @@ class EasyNerDBHandler:
 
     def _setup_logging(self):
         """Configure logging to save to db.log in the database directory."""
-
         self.logger = logging.getLogger("EasyNerDB")
-        # Set the logger level to DEBUG to capture all messages
-        self.logger.setLevel(logging.DEBUG)
-        if not self.logger.handlers:
-            log_file = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "logs/" + self.name + ".log"
-            )
-            error_log_file = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "logs/db_error.log"
-            )
 
-            # Ensure the logs directory exists
-            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        # Clear temporary console handlers - Fixed: Added parentheses to removeHandler method call
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
 
-            # Create file handler for logging
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
+
+        # Get absolute path of the database file parent directory
+        db_parent_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # Ensure the logs directory exists and is writable
+        log_dir = os.path.join(db_parent_dir, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+
+        # Verify if the directory was actually created
+        if not os.path.exists(log_dir):
+            raise IOError(f"Failed to create log directory: {log_dir}")
+
+        # Verify write permissions with verbose error
+        if not os.access(log_dir, os.W_OK):
+            self.logger.error(f"No write permission for log directory: {log_dir}")
+            print(f"ERROR: No write permission for log directory: {log_dir}")
+            raise PermissionError(f"No write permission for log directory: {log_dir}")
+
+        # Store log file paths as instance variables
+        self.log_file = os.path.join(log_dir, self.name + ".log")
+        self.error_log_file = os.path.join(log_dir, self.name + ".err")
+        self.debug_log_file = os.path.join(log_dir, self.name + ".debug.log")
+
+        # Create file handler for logging
+        try:
+            log_file_handler = logging.FileHandler(self.log_file)
+            log_file_handler.setLevel(logging.INFO)
             file_formatter = logging.Formatter(
                 "%(asctime)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
-            file_handler.setFormatter(file_formatter)
+            log_file_handler.setFormatter(file_formatter)
 
             # Create console handler for logging
             console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.INFO)
+            console_handler.setLevel(logging.getLevelName(os.getenv("LOGGING_LEVEL_CONSOLE", "ERROR")))
             console_formatter = logging.Formatter(
                 "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             console_handler.setFormatter(console_formatter)
 
             # Create separate error file handler for logging errors
-            error_file_handler = logging.FileHandler(error_log_file)
+            error_file_handler = logging.FileHandler(self.error_log_file)
             error_file_handler.setLevel(logging.ERROR)
             error_file_formatter = logging.Formatter(
                 "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             error_file_handler.setFormatter(error_file_formatter)
 
-            # Add handlers to the logger
-            self.logger.addHandler(file_handler)
+            debug_file_handler = logging.FileHandler(self.debug_log_file)
+            debug_file_handler.setLevel(logging.DEBUG)
+            debug_file_handler.setFormatter(file_formatter)
+
+            self.logger.addHandler(log_file_handler)
             self.logger.addHandler(console_handler)
             self.logger.addHandler(error_file_handler)
+            self.logger.addHandler(debug_file_handler)
 
-            self.logger.info(f"Logging initialized. Log file: {log_file}")
+        except Exception as e:
+            print(f"ERROR: Failed to set up logging handlers: {e}")
+            raise
 
     def __del__(self):
         """
@@ -742,6 +794,32 @@ class EasyNerDBHandler:
         conn.close()
         print(f"Database created at {db_path} using schema from {schema_path}")
 
+    def _get_pragma_value(self, pragma_name):
+        """
+        Safely retrieve a PRAGMA value from SQLite with proper error handling.
+
+        Args:
+            pragma_name (str): The name of the pragma to retrieve (without the 'PRAGMA' keyword)
+
+        Returns:
+            The pragma value, or a default/placeholder if the pragma is not available
+        """
+
+        try:
+            # Execute the PRAGMA query without modifying any settings
+            result = self.execute(f"PRAGMA {pragma_name};")
+            if result and len(result) > 0 and len(result[0]) > 0:
+                return result[0][0]
+            return "Not available"  # Return a placeholder if result is empty or malformed
+
+        except sqlite3.Error as e:
+            self.logger.warning(f"SQLite error getting pragma {pragma_name}: {str(e)}")
+            return f"Not available (SQLite error: {str(e)[:30]})"
+
+        except Exception as e:
+            self.logger.debug(f"Error getting pragma {pragma_name}: {str(e)}")
+            return "Not available"  # Return a placeholder on error
+
 class BaseComponent:
     """Common base class for all components with shared logger and database connection."""
     def __init__(self, db_handler: EasyNerDBHandler):
@@ -762,3 +840,4 @@ class BaseComponent:
         pass
 
     # Remove init_deps as it's redundant with proper inheritance
+
