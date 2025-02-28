@@ -307,7 +307,7 @@ def list_documents():
             selected_entities=selected_entities,
         )
     except Exception as e:
-        db.logger.error(f"Error loading documents page: {e}")
+        app.logger.error(f"Error loading documents page: {e}")
         return render_template("error.html", message="Error loading documents"), 500
 
 
@@ -333,7 +333,7 @@ def get_named_entity_types():
             }
         )
     except Exception as e:
-        db.logger.error(f"Error fetching named entity types: {e}")
+        app.logger.error(f"Error fetching named entity types: {e}")
         return jsonify({"error": str(e)}), 500
 
 
