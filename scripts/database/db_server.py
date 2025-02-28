@@ -3,8 +3,6 @@ from .db_main import EasyNerDBHandler
 from .data_model import entities
 import os
 import sass
-import plotly.graph_objects as go
-import importlib  # Added this import
 from .statistics.sankey_diagram import create_disease_phenomena_sankey
 from .statistics.visualization_manager import VisualizationManager
 import logging
@@ -159,7 +157,7 @@ def align_with_schema():
 def get_available_entities(db):
     try:
         return db.execute(
-            "SELECT id, named_entity FROM named_entities ORDER BY named_entity"
+            f"SELECT {CLASS_ID}, {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}"
         )
     except Exception as e:
         app.logger.error(f"Error fetching entities: {e}")
@@ -183,12 +181,13 @@ def home():
 
         # Get database statistics
         stats = {
+            "db_name": db.name,
             "db_size": _format_size(db.statistics.size),
             "source_size": _format_size(db.statistics.total_source_size),
             "compression_ratio": f"{db.statistics.compression_ratio:.2f}",
             "document_count": db.statistics.document_count,
             "sentence_count": db.statistics.sentence_count,
-            "named_entity_count": db.statistics.named_entity_count,
+            "named_entity_count": db.statistics.named_entity_classes_count,
         }
 
         return render_template("home.html", tables=tables_info, stats=stats)
@@ -257,16 +256,16 @@ def list_documents():
         conditions = []
 
         if query:
-            conditions.append("d.title LIKE ?")
+            conditions.append(f"d.{TITLE} LIKE ?")
             params.append(f"%{query}%")
 
         if doc_id:
-            conditions.append("d.id = ?")
+            conditions.append(f"d.{DOC_ID} = ?")
             params.append(doc_id)
 
         # Base query
-        sql = """
-            SELECT DISTINCT d.id, d.title, d.word_count
+        sql = f"""--sql
+            SELECT DISTINCT d.{DOC_ID}, d.{TITLE}, d.{WORD_COUNT}
             FROM documents d
         """
 
@@ -275,9 +274,9 @@ def list_documents():
             for entity_id in selected_entities:
                 sql_condition = f"""
                 EXISTS (
-                    SELECT 1 FROM entity_occurrences eo{entity_id}
-                    JOIN named_entities ne{entity_id} ON eo{entity_id}.entity_id = ne{entity_id}.id
-                    WHERE eo{entity_id}.document_id = d.id AND ne{entity_id}.id = ?
+                    SELECT 1 FROM {TABLE_NE} eo{entity_id}
+                    JOIN {TABLE_NE_CLASS} ne{entity_id} ON eo{entity_id}.{CLASS_ID} = ne{entity_id}.{CLASS_ID}
+                    WHERE eo{entity_id}.{DOC_ID} = d.{DOC_ID} AND ne{entity_id}.{DOC_ID} = ?
                 )"""
                 conditions.append(sql_condition)
                 params.append(entity_id)
@@ -285,7 +284,7 @@ def list_documents():
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
 
-        sql += " ORDER BY d.id LIMIT ? OFFSET ?"
+        sql += f" ORDER BY d.{DOC_ID} LIMIT ? OFFSET ?"
         params.extend([per_page + 1, offset])
 
         documents = db.execute(sql, params)
@@ -313,8 +312,8 @@ def list_documents():
 
 
 @app.route("/named-entities")
-def list_named_entities():
-    result = display_table("named_entities")
+def list_named_entity_classes():
+    result = display_table(TABLE_NE)
     if "error" in result:
         return render_template("error.html", message=result["error"]), 500
     return render_template("named_entities.html", **result)
@@ -324,12 +323,12 @@ def list_named_entities():
 def get_named_entity_types():
     try:
         db = get_db()
-        sql = "SELECT id, named_entity FROM named_entities ORDER BY named_entity"
+        sql = f"SELECT {CLASS_ID}, {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}"
         types = db.execute(sql)
         return jsonify(
             {
                 "types": [
-                    dict(zip(["id", "named_entity"], type_row)) for type_row in types
+                    dict(zip(["id", "class_name"], type_row)) for type_row in types
                 ]
             }
         )
@@ -340,7 +339,7 @@ def get_named_entity_types():
 
 @app.route("/entity-occurrences")
 def list_entity_occurrences():
-    result = display_table({VIEW_NE_PRESENTATION.name})
+    result = display_table(VIEW_NE_PRESENTATION)
     if "error" in result:
         return render_template("error.html", message=result["error"]), 500
     return render_template(
@@ -379,7 +378,7 @@ def entity_cooccurrences_table():
         per_page = int(request.args.get("per_page", 30))
         offset = (page - 1) * per_page
 
-        query = """
+        query = f"""--sql
             SELECT
                 ec.id,
                 ec.e1_id,

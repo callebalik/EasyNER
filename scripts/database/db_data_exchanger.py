@@ -15,13 +15,20 @@ class DBDataExchanger:
         self.cursor = cursor
         self.logger = logger
 
+        # Setup necessary views
+        self._setup_necessary_views()
+
+    def _setup_necessary_views(self):
+        VIEW_NE_COMP.create_if_not_exists(cursor=self.cursor)
+        VIEW_NE_COMP.refresh(cursor=self.cursor)
+
     def _safe_count(self, table_name: str) -> int:
         """Get count with zero-value protection"""
         self.cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
         result = self.cursor.fetchone()[0]
         return result if result > 0 else 1
 
-    def bulk_insert(self, insert_query, data):
+    def bulk_insert(self, insert_query: str, data: List[tuple]):
         """
         Inserts many rows into the database in a single transaction.
 
@@ -56,12 +63,21 @@ class DBDataExchanger:
 
     def get_document(self, doc_id: int) -> Document:
         with self.conn:
-            self.conn.row_factory = (
-                sqlite3.Row
-            )  # Configure the connection to return sqlite3.Row objects
+            self.conn.row_factory = sqlite3.Row  # Configure the connection to return sqlite3.Row objects
             try:
                 cursor = self.conn.cursor()
-                cursor.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
+                # Use proper field mapping for Document class
+                cursor.execute(f"""--sql
+                    SELECT
+                        {DOC_ID} as id,
+                        {TITLE} as title,
+                        {WORD_COUNT} as word_count,
+                        {TOKEN_COUNT} as token_count,
+                        {ALPHA_COUNT} as alpha_count
+                    FROM {TABLE_DOCS}
+                    WHERE {DOC_ID} = ?
+                """, (doc_id,))
+
                 document_row = cursor.fetchone()
                 document_dict = self._row_to_dict(document_row)
                 if not document_dict:
@@ -77,7 +93,19 @@ class DBDataExchanger:
     def get_sentences(self, doc_id: int) -> List[Sentence]:
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT * FROM sentences WHERE document_id = ?", (doc_id,))
+            # Use proper field mapping for Sentence class
+            cursor.execute(f"""--sql
+                SELECT
+                    {TXT} as txt,
+                    {SENT_IDX} as sentence_index,
+                    {DOC_ID} as doc_id,
+                    {WORD_COUNT} as word_count,
+                    {TOKEN_COUNT} as token_count,
+                    {ALPHA_COUNT} as alpha_count
+                FROM {TABLE_SENTENCES}
+                WHERE {DOC_ID} = ?
+            """, (doc_id,))
+
             sentences = cursor.fetchall()
             sentence_objects = []
             for sentence_row in sentences:
@@ -95,22 +123,20 @@ class DBDataExchanger:
             cursor = self.conn.cursor()
             stmt = f"""--sql
             SELECT
-                NE_ID as id,
-                TXT as txt,
-                NE_CLASS as ne_class,
-                TXT_NORM as txt_norm,
-                DOC_TITLE as doc_title,
-                DOC_ID as doc_id,
-                SENT_IDX as sent_idx,
-                SPAN_START as span_start,
-                SPAN_END as span_end
+                {NE_PRIMARY_ID} as id,
+                {TXT} as txt,
+                {NE_CLASS} as ne_class,
+                {TXT_NORM} as txt_norm,
+                {TITLE} as doc_title,
+                {DOC_ID} as doc_id,
+                {SENT_IDX} as sent_idx,
+                {SPAN_START} as span_start,
+                {SPAN_END} as span_end
             FROM {VIEW_NE_COMP}
-            WHERE DOC_ID = ? AND SENT_IDX = ?
+            WHERE {DOC_ID} = ? AND {SENT_IDX} = ?
             """
 
-            cursor.execute(
-                stmt, (doc_id, sentence_index)
-            )
+            cursor.execute(stmt, (doc_id, sentence_index))
 
             entities = cursor.fetchall()
             return [NamedEntity(**self._row_to_dict(entity)) for entity in entities]
@@ -120,7 +146,7 @@ class DBDataExchanger:
             )
             return []
 
-    def get_named_entity_id(self, named_entity_class: str) -> int:
+    def get_named_entity_class_id(self, named_entity_class: str) -> int:
         try:
             self.cursor.execute(f"SELECT {CLASS_ID} FROM {TABLE_NE_CLASS} WHERE {NE_CLASS} = ?", (named_entity_class,))
 
@@ -133,8 +159,6 @@ class DBDataExchanger:
         except sqlite3.Error as e:
             self.logger.error(f"Error fetching named entity ID for {named_entity_class}: {e}")
             return None
-
-
 
     def search_entities(
         self,
@@ -156,10 +180,10 @@ class DBDataExchanger:
             sort_by: Column to sort by
             sort_order: Sort direction ('asc' or 'desc')
         """
-        query = """
-            SELECT eo.*, ne.named_entity
-            FROM entity_occurrences eo
-            JOIN named_entities ne ON ne.id = eo.entity_id
+        query = f"""--sql
+            SELECT eo.*, ne.{NE_CLASS}
+            FROM {TABLE_NE} eo
+            JOIN {TABLE_NE_CLASS} ne ON ne.{CLASS_ID} = eo.{CLASS_ID}
             WHERE 1=1
         """
         params = []
@@ -274,7 +298,7 @@ class DBDataExchanger:
                 params.append(f"%{entity2_search}%")
 
             # Get total count for pagination
-            count_sql = """
+            count_sql = """--sql
                 SELECT COUNT(*)
                 FROM entity_cooccurrences_summary ecs
                 JOIN entity_occurrences e1 ON ecs.e1_id_normalized = e1.id
@@ -303,7 +327,7 @@ class DBDataExchanger:
             }
 
             # Main query with joins to get entity texts
-            sql = """
+            sql = """--sql
                 SELECT
                     ecs.id,
                     ecs.e1_id_normalized,

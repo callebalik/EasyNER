@@ -1,36 +1,34 @@
-import logging
+"""Database module initialization."""
 
-"""
-Database module initialization
-"""
-from .db_main import EasyNerDBHandler
-from .db_statistics import DBStatistics
-from .db_data_exchanger import DBDataExchanger
-
-__all__ = [
-    'EasyNerDBHandler',
-    'DBStatistics',
-    'DBDataExchanger'
-]
-
+# Core imports first
 from .core.db_manager import DatabaseManager
-from .core.core_classes import BaseLogger, BaseExecutor # Import BaseExecutor
+from .core.core_classes import BaseLogger, BaseExecutor
 from .core.threading_mp.threading_reader_writer import ReaderWriterPair
 from .core.threading_mp.parallel_executor import ParallelExecutor
 from .core.cleanup.cleanup_mangager import CleanupManager
-from .analysis.analyzer import DataAnalyzer # Import analysis module components
-from .db_main import EasyNerDBHandler
-from .db_statistics import DBStatistics
-from .db_data_exchanger import DBDataExchanger
+from .core.cache_manager import CacheManager
 
-# Import the new module classes
+# Data model imports
 from .data_model.named_entity import NamedEntity
-from .data_model.entity_occurrence import EntityOccurence
-from .data_model.entity_cooccurrence import EntityCooccurence
+from .data_model.entity_occurrence import EntityOccurrence
+from .data_model.entity_cooccurrence import EntityCooccurrence
 from .data_model.docs import Docs
 from .data_model.sent import Sentence
 
+# Main components - order matters to avoid circular imports
+from .db_data_exchanger import DBDataExchanger
+from .db_main import EasyNerDBHandler
+from .analysis.analyzer import DataAnalyzer
+from .db_statistics import DBStatistics
 
+__all__ = [
+    'EasyNerDBHandler',
+    'DBStatistics', 
+    'DBDataExchanger',
+    'CacheManager'
+]
+
+import logging
 
 class DatabaseSystem:
     """Single entry point to the database module."""

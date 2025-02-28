@@ -3,11 +3,13 @@
 {% block content %}
     <h1>{{ table_name }} Table View</h1>
 
+    {% if generated_sql %}
     <p><b>SQL Query:</b> <code>{{ generated_sql }}</code></p>
+    {% endif %}
 
     <details>
         <summary>Explain Query Plan
-            <button id="copy-chatbot" title="Copy for Chatbot">
+            <button id="copy-chatbot" class="copy-chatbot" title="Copy for Chatbot">
                 <i class="fas fa-copy"></i>
             </button>
         </summary>
@@ -18,19 +20,19 @@
     <table id="table-view" class="data-table">
         <thead>
             <tr>
-                {% set has_title = 'title' in columns or 'document title' in columns or 'document id' in columns %}
+                {% set has_title = 'title' in columns or 'document_title' in columns or 'TITLE' in columns or 'document id' in columns %}
                 {% for column in columns %}
-                    {% if column != 'document_id' or not has_title %}
+                    {% if column != 'document_id' and column != 'DOC_ID' or not has_title %}
                     <th>
                         <a href="{{ url_for('table_view', table_name=table_name, sort_by=column, sort_order='asc' if sort_by == column and sort_order == 'desc' else 'desc') }}"
                            class="sort-header {% if sort_by == column %}sorted-{{ sort_order }}{% endif %}">
                             {{ column }}
                         </a>
-                        {% if column_types[column] == 'TEXT' %}
+                        {% if column_types and column in column_types and column_types[column] == 'TEXT' %}
                         <input type="text"
                                name="{{ column }}_search"
                                placeholder="Search {{ column }}..."
-                               value="{{ column_search_queries[column] }}">
+                               value="{{ column_search_queries[column] if column_search_queries and column in column_search_queries else '' }}">
                         {% endif %}
                     </th>
                     {% endif %}
@@ -40,13 +42,26 @@
         <tbody>
             {% for row in rows %}
             <tr>
-                {% set document_id_index = columns.index('document_id') if 'document_id' in columns else None %}
+                {% set document_id_index = columns.index('document_id') if 'document_id' in columns else (columns.index('DOC_ID') if 'DOC_ID' in columns else None) %}
                 {% for column in columns %}
-                    {% if column != 'document_id' or not has_title %}
+                    {% if column != 'document_id' and column != 'DOC_ID' or not has_title %}
                     <td>
-                        {% if column == 'document_title' or column == 'document title' or column == 'document id' %}
-                            {% set doc_id = row[document_id_index] if document_id_index is not none else row[0] %}
-                            <a href="{{ url_for('show_document', doc_id=doc_id) }}">{{ row[loop.index0] }}</a>
+                        {% if column in ['document_title', 'title', 'document id', 'TITLE'] %}
+                            {% if document_id_index is not none %}
+                                {% set doc_id_value = row[document_id_index] %}
+                                {% if doc_id_value is not none and doc_id_value|string is defined %}
+                                    {% set doc_id_str = doc_id_value|string %}
+                                    {% if doc_id_str.isdigit() %}
+                                        <a href="{{ url_for('show_document', doc_id=doc_id_str) }}">{{ row[loop.index0] }}</a>
+                                    {% else %}
+                                        {{ row[loop.index0] }}
+                                    {% endif %}
+                                {% else %}
+                                    {{ row[loop.index0] }}
+                                {% endif %}
+                            {% else %}
+                                {{ row[loop.index0] }}
+                            {% endif %}
                         {% else %}
                             {{ row[loop.index0] }}
                         {% endif %}
@@ -59,24 +74,13 @@
     </table>
     </form>
     {% if has_more %}
-    <a href="{{ url_for('table_view', table_name=table_name, page=page+1, sort_by=sort_by, sort_order=sort_order) }}{% for column in columns %}{% if column_types[column] == 'TEXT' %}&{{ column }}_search={{ column_search_queries[column] }}{% endif %}{% endfor %}">Load More</a>
+    <a href="{{ url_for('table_view', table_name=table_name, page=page+1, sort_by=sort_by, sort_order=sort_order) }}{% for column in columns %}{% if column_types and column in column_types and column_types[column] == 'TEXT' and column_search_queries and column in column_search_queries %}&{{ column }}_search={{ column_search_queries[column] }}{% endif %}{% endfor %}" class="load-more-button">Load More</a>
     {% endif %}
 {% endblock %}
 
 {% block head %}
 {{ super() }}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-<style>
-    #copy-chatbot {
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 1em;
-        margin-left: 0.5em;
-        vertical-align: middle;
-        padding: 0.25em;
-    }
-</style>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const searchForm = document.getElementById('search-form');
@@ -103,7 +107,11 @@
 
         document.querySelector('details').addEventListener('toggle', function() {
             if (this.open) {
+                {% if generated_sql %}
                 const query = "{{ generated_sql }}";
+                {% else %}
+                const query = "SELECT * FROM {{ table_name }} LIMIT 1000";
+                {% endif %}
                 let url = '/explain-query?query=' + encodeURIComponent(query);
 
                 // Add parameters to the URL
@@ -136,7 +144,11 @@
 
         document.getElementById('copy-chatbot').addEventListener('click', function(event) {
             event.stopPropagation(); // Prevent the details element from toggling
+            {% if generated_sql %}
             const query = "{{ generated_sql }}";
+            {% else %}
+            const query = "SELECT * FROM {{ table_name }} LIMIT 1000";
+            {% endif %}
             let url = '/explain-query?query=' + encodeURIComponent(query);
 
             // Add parameters to the URL

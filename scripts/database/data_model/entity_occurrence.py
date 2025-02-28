@@ -1332,7 +1332,7 @@ class Preprocessor(BaseComponent):
                         continue
 
                     # Directly convert entity_type to ID
-                    entity_id = self.data.get_named_entity_id(entity_type)
+                    entity_id = self.data.get_named_entity_class_id(entity_type)
                     if not entity_id:
                         self.logger.warning(f"Misslabeled NER: No entity ID found for type: {entity_type} (text for debug: {entity_text}")
                         continue
@@ -2551,7 +2551,7 @@ class Statistics(BaseComponent):
             stats = {
                 'total_entities': self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE}").fetchone()[0],
                 'unique_entities': self.cursor.execute(f"SELECT COUNT(DISTINCT {TXT_NORM}) FROM {TABLE_NE}").fetchone()[0],
-                'entities_with_errors': self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE} WHERE {COL_NE_ERROR_CODE} IS NOT NULL").fetchone()[0]
+                'entities_with_errors': self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE} WHERE {ERROR_ID} IS NOT NULL").fetchone()[0]
             }
             return stats
         except sqlite3.Error as e:

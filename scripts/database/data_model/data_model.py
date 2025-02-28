@@ -1,6 +1,6 @@
 from typing import List, Optional
 from dataclasses import dataclass
-
+from .      schema import *
 
 @dataclass
 class NamedEntity:
@@ -27,9 +27,9 @@ class NamedEntity:
 
 @dataclass
 class Sentence:
-    text: str
+    txt: str
     sentence_index: int
-    document_id: int
+    doc_id: int
     word_count: int
     token_count: int
     alpha_count: int
@@ -55,13 +55,13 @@ class Sentence:
                             "entity": entity,
                         }
                     )
-                elif entity.span_start >= len(self.text) or entity.span_end >= len(
-                    self.text
+                elif (
+                    entity.txt != self.txt[entity.span_start : entity.span_end]
                 ):
                     self.validation_errors.append(
                         {
                             "entity_id": entity.id,
-                            "error": "Span out of bounds",
+                            "error": f"Text mismatch: '{entity.txt}' vs '{self.txt[entity.span_start : entity.span_end]}'",
                             "entity": entity,
                         }
                     )
@@ -74,12 +74,12 @@ class Sentence:
                         }
                     )
                 elif (
-                    entity.txt != self.text[entity.span_start : entity.span_end]
+                    entity.txt != self.txt[entity.span_start : entity.span_end]
                 ):
                     self.validation_errors.append(
                         {
                             "entity_id": entity.id,
-                            "error": f"Text mismatch: '{entity.txt}' vs '{self.text[entity.span_start : entity.span_end]}'",
+                            "error": f"Text mismatch: '{entity.txt}' vs '{self.txt[entity.span_start : entity.span_end]}'",
                             "entity": entity,
                         }
                     )
@@ -107,9 +107,11 @@ class Document:
         print(f"Token Count: {self.token_count}")
         print(f"Alpha Count: {self.alpha_count}")
         for sentence in self.sentences:
-            print(f"\nSentence {sentence.sentence_index}: {sentence.text}")
+            print(f"\nSentence {sentence.sentence_index}: {sentence.txt}")
             for entity in sentence.entities:
                 print(f"  Entity: {entity.ne_class}")
+                if entity.validation_errors:
+                    print(f"    Validation Errors: {entity.validation_errors}")
 
     def to_html(self) -> str:
         has_errors = any(sentence.validation_errors for sentence in self.sentences)
@@ -145,7 +147,7 @@ class Document:
         return html
 
     def _highlight_entities(self, sentence: Sentence) -> str:
-        text = sentence.text
+        text = sentence.txt
         entities = sorted(sentence.entities, key=lambda e: e.span_start)
         offset = 0
         for entity in entities:
