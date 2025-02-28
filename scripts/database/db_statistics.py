@@ -1,4 +1,4 @@
-from turtle import pd
+import pandas as pd
 from pandas import DataFrame
 from matplotlib import pyplot as plt
 from .db_data_exchanger import DBDataExchanger
@@ -6,6 +6,11 @@ import logging
 import os
 import sqlite3
 import seaborn as sns
+from .data_model.schema import *
+
+# We use this decorator as an instance method of CacheManager
+# So we need to create a cache_manager instance to use its cached decorator
+from .core.cache_singleton import cached
 
 class DBStatistics:
 
@@ -23,6 +28,7 @@ class DBStatistics:
             os.path.dirname(__file__), "..", "..", "results"
         )
         self.data_exchanger = data_exchanger
+
 
     def _export_df_(self, results: DataFrame, filename, overwrite: bool=True):
         """
@@ -88,6 +94,7 @@ class DBStatistics:
             size_bytes /= 1024
 
     @property
+    @cached(prefix="stats.source_file_count")
     def info_compression(self):
         """
         Summary of the compression ratio of the database file compared to source files.
@@ -99,9 +106,11 @@ class DBStatistics:
         print(f"Compression ratio: {self.compression_ratio:.2f}")
 
     @property
+    @cached(ttl_seconds=3600, prefix="stats.document_count")
     def document_count(self):
         """
         Get the total number of documents in the database.
+        Uses cache if available to avoid expensive database query.
 
         :return: The number of documents.
         """
@@ -109,9 +118,11 @@ class DBStatistics:
         return self.cursor.fetchone()[0]
 
     @property
+    @cached(ttl_seconds=3600, prefix="stats.sentence_count")
     def sentence_count(self):
         """
         Get the total number of sentences in the database.
+        Uses cache if available to avoid expensive database query.
 
         :return: The number of sentences.
         """
@@ -119,29 +130,35 @@ class DBStatistics:
         return self.cursor.fetchone()[0]
 
     @property
-    def named_entity_count(self):
+    @cached(ttl_seconds=3600, prefix="stats.named_entity_classes")
+    def named_entity_classes_count(self):
         """
         Get the total number of named entities in the database.
+        Uses cache if available to avoid expensive database query.
 
-        :return: The number of named entities.
+        :return: The number of named entity classes.
         """
-        self.cursor.execute("SELECT COUNT(*) FROM named_entities;")
+        self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE_CLASS};")
         return self.cursor.fetchone()[0]
 
     @property
-    def get_entity_occurrence_count(self):
+    @cached(ttl_seconds=3600, prefix="stats.named_entities_count")
+    def named_entities_count(self):
         """
         Get the total number of entity occurrences in the database.
+        Uses cache if available to avoid expensive database query.
 
         :return: The number of entity occurrences.
         """
-        self.cursor.execute("SELECT COUNT(*) FROM entity_occurrences;")
+        self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE};")
         return self.cursor.fetchone()[0]
 
     @property
+    @cached(ttl_seconds=3600, prefix="stats.entity_cooccurrence_count")
     def get_entity_cooccurrence_count(self):
         """
         Get the total number of entity cooccurrences in the database.
+        Uses cache if available to avoid expensive database query.
 
         :return: The number of entity cooccurrences.
         """
@@ -215,7 +232,7 @@ class DBStatistics:
             rows: Optional number of rows to limit the result
         """
         valid_sort_columns = ["pmi", "fq_document_level", "fq_sentence_level"]
-        if sort_by not in valid_sort_columns:
+        if (sort_by not in valid_sort_columns):
             raise ValueError(f"sort_by must be one of {valid_sort_columns}")
 
         order_dir = "ASC" if ascending else "DESC"
@@ -266,7 +283,9 @@ class DBStatistics:
         error_df = self.results_entity_occurrence_errors()
         self._export_df_(error_df, "entity_occurrence_statistics.csv")
 
-    def get_processed_file_count(self):
+    @property
+    @cached(prefix="stats.processed_file_count")
+    def processed_file_count(self):
         """
         Get the total number of processed files in the database.
 
@@ -274,6 +293,7 @@ class DBStatistics:
         """
         self.cursor.execute("SELECT COUNT(*) FROM processed_files;")
         return self.cursor.fetchone()[0]
+
 
     def get_raw_cooccurrence_counts(self):
         """
@@ -378,15 +398,15 @@ class DBStatistics:
         """
         Get an overview of the tables in the database.
         """
-        doc_count = self.get_document_count()
-        sent_count = self.get_sentence_count()
-        eo_count = self.get_entity_occurrence_count
-        ec_count = self.get_entity_cooccurrence_count
-
         df = pd.DataFrame(
             {
                 "Table": ["documents", "sentences", "entity_occurrences", "entity_cooccurrences"],
-                "Count": [doc_count, sent_count, eo_count, ec_count],
+                "Count": [
+                    self.document_count,
+                    self.sentence_count,
+                    self.named_entities_count,
+                    self.get_entity_cooccurrence_count
+                ],
             }
         )
 
