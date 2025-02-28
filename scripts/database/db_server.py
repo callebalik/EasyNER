@@ -1069,6 +1069,8 @@ def display_table(table_name):
         sort_by = request.args.get("sort_by", "id")
         sort_order = request.args.get("sort_order", "asc")
         search_query = request.args.get("search_query", "")
+        # Default to False (show only OVERLAP = 0)
+        show_overlap = request.args.get("show_overlap", "false").lower() == "true"
 
         # Get column information dynamically
         db.cursor.execute(f"PRAGMA table_info({table_name})")
@@ -1077,23 +1079,81 @@ def display_table(table_name):
         column_types = {
             col[1]: col[2].upper() for col in columns_info
         }  # Store column types
+
+        # Get text columns for text search
         text_columns = [col[1] for col in columns_info if col[2].upper() == "TEXT"]
 
-        # Extract search queries for each column
+        # Include ID columns that should be searchable
+        searchable_id_columns = [col[1] for col in columns_info if col[1] in ['id', 'NE_NORM_ID', 'NE_PRIMARY_ID'] and col[2].upper() in ['INTEGER', 'INT']]
+
+        # Extract search queries for each searchable column
         column_search_queries = {
-            col: request.args.get(f"{col}_search", "") for col in text_columns
+            col: request.args.get(f"{col}_search", "") for col in text_columns + searchable_id_columns
         }
+
+        # Get NE_CLASS filters (can be multiple values)
+        selected_classes = request.args.getlist("NE_CLASS_filter")
+
+        # Get ERROR_ID filters (can be multiple values)
+        selected_errors = request.args.getlist("ERROR_ID_filter")
+
+        # Fetch available NE_CLASS values if the table has that column
+        ne_classes = None
+        if 'NE_CLASS' in columns:
+            try:
+                query_result = db.execute(f"SELECT {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}")
+                ne_classes = [row[0] for row in query_result if row[0]]
+            except Exception as ne_class_error:
+                app.logger.warning(f"Error fetching NE_CLASS values: {ne_class_error}")
+
+        # Fetch available ERROR_ID values if the table has that column
+        error_codes = None
+        if 'ERROR_ID' in columns:
+            try:
+                query_result = db.execute(f"SELECT {ERROR_ID}, {ERROR_DESC} FROM {TABLE_NE_ERROR} ORDER BY {ERROR_ID}")
+                error_codes = [(row[0], row[1]) for row in query_result if row[0]]
+            except Exception as error_code_error:
+                app.logger.warning(f"Error fetching ERROR_ID values: {error_code_error}")
 
         # Build the base SQL query
         sql = f"SELECT * FROM {table_name}"
         params = []
 
-        # Add search functionality for TEXT columns
+        # Add search functionality for columns
         search_conditions = []
+
+        # Process text columns (LIKE search)
         for col, query in column_search_queries.items():
-            if query:
+            if query and col in text_columns:
                 search_conditions.append(f"{col} LIKE ?")
                 params.append(f"%{query}%")
+            # Process ID columns (exact match)
+            elif query and col in searchable_id_columns:
+                try:
+                    id_value = int(query)
+                    search_conditions.append(f"{col} = ?")
+                    params.append(id_value)
+                except ValueError:
+                    search_conditions.append(f"{col} LIKE ?")
+                    params.append(f"%{query}%")
+                    app.logger.debug(f"Non-integer search value '{query}' for ID column {col}")
+
+        # Add NE_CLASS filter if present
+        if selected_classes and 'NE_CLASS' in columns:
+            placeholders = ','.join('?' for _ in selected_classes)
+            search_conditions.append(f"NE_CLASS IN ({placeholders})")
+            params.extend(selected_classes)
+            app.logger.debug(f"Applied NE_CLASS filter: {selected_classes}")
+
+        # Add ERROR_ID filter if present
+        if selected_errors and 'ERROR_ID' in columns:
+            placeholders = ','.join('?' for _ in selected_errors)
+            search_conditions.append(f"ERROR_ID IN ({placeholders})")
+            params.extend(selected_errors)
+
+        # Add OVERLAP filter if column exists and show_overlap is false
+        if 'OVERLAP' in columns and not show_overlap:
+            search_conditions.append("OVERLAP = 0")
 
         if search_conditions:
             sql += " WHERE " + " AND ".join(search_conditions)
@@ -1107,7 +1167,6 @@ def display_table(table_name):
                 fallback_column = columns[0]
                 sql += f" ORDER BY {fallback_column} {sort_order.upper()}"
             else:
-                # No columns available, so just skip sorting
                 app.logger.warning("No columns found for sorting.")
 
         # Add pagination
@@ -1116,6 +1175,7 @@ def display_table(table_name):
 
         # Store the generated SQL query
         generated_sql = sql
+        app.logger.debug(f"Generated SQL: {generated_sql} with params: {params}")
 
         # Execute the query
         db.cursor.execute(sql, params)
@@ -1130,13 +1190,20 @@ def display_table(table_name):
             "has_more": has_more,
             "sort_by": sort_by,
             "sort_order": sort_order,
-            "column_types": column_types,  # Pass column types to the template
-            "column_search_queries": column_search_queries,  # Pass search queries to the template
+            "column_types": column_types,
+            "column_search_queries": column_search_queries,
+            "ne_classes": ne_classes,
+            "selected_classes": selected_classes,
+            "error_codes": error_codes,
+            "selected_errors": selected_errors,
+            "generated_sql": generated_sql,
+            "searchable_id_columns": searchable_id_columns,
+            "show_overlap": show_overlap,  # Pass the filter state to template
+            "has_overlap_column": 'OVERLAP' in columns  # Tell template if OVERLAP exists
         }
     except Exception as e:
         app.logger.error(f"Error displaying table {table_name}: {e}")
         return {"error": str(e)}
-
 
 
 @app.route("/table/<table_name>")
@@ -1668,6 +1735,31 @@ def get_table_schema(table_name):
     except Exception as e:
         app.logger.error(f"Error getting schema for {table_name}: {e}")
         return jsonify({"error": f"Error retrieving schema: {str(e)}"}), 500
+
+
+@app.route("/dis-pnm-presentation")
+def dis_pnm_presentation():
+    """Display the DIS-PNM Presentation view."""
+    try:
+        result = display_table("v_DIS_PNM_PRESENTATION")
+        if "error" in result:
+            return render_template("error.html", message=result["error"]), 500
+        return render_template("table_view.html", table_name="v_DIS_PNM_PRESENTATION", **result)
+    except Exception as e:
+        app.logger.error(f"Error loading DIS-PNM Presentation: {e}")
+        return render_template("error.html", message="Error loading DIS-PNM Presentation"), 500
+
+@app.route("/ne-presentation")
+def ne_presentation():
+    """Display the NE Presentation view."""
+    try:
+        result = display_table("v_NE_PRESENTATION")
+        if "error" in result:
+            return render_template("error.html", message=result["error"]), 500
+        return render_template("table_view.html", table_name="v_NE_PRESENTATION", **result)
+    except Exception as e:
+        app.logger.error(f"Error loading NE Presentation: {e}")
+        return render_template("error.html", message="Error loading NE Presentation"), 500
 
 
 if __name__ == "__main__":

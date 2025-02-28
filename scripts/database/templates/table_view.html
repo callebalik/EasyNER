@@ -27,12 +27,79 @@
                         <a href="{{ url_for('table_view', table_name=table_name, sort_by=column, sort_order='asc' if sort_by == column and sort_order == 'desc' else 'desc') }}"
                            class="sort-header {% if sort_by == column %}sorted-{{ sort_order }}{% endif %}">
                             {{ column }}
+                            {% if column == 'OVERLAP' %}
+                            <input type="checkbox"
+                                   id="show_overlap"
+                                   name="show_overlap"
+                                   {% if show_overlap %}checked{% endif %}
+                                   onchange="updateOverlapFilter(this)">
+                            {% endif %}
                         </a>
-                        {% if column_types and column in column_types and column_types[column] == 'TEXT' %}
-                        <input type="text"
-                               name="{{ column }}_search"
-                               placeholder="Search {{ column }}..."
-                               value="{{ column_search_queries[column] if column_search_queries and column in column_search_queries else '' }}">
+                        {% if column == 'NE_CLASS' %}
+                            <div class="ne-class-filter">
+                                <div class="filter-toggle" onclick="toggleClassFilter(this)">Filter Classes <i class="fas fa-filter"></i></div>
+                                <div class="class-filter-dropdown">
+                                    <div class="filter-actions">
+                                        <a href="#" onclick="checkAllClasses(true); return false;">Select All</a> |
+                                        <a href="#" onclick="checkAllClasses(false); return false;">Clear All</a>
+                                    </div>
+                                    {% if ne_classes %}
+                                        {% for ne_class in ne_classes %}
+                                            <div class="class-checkbox">
+                                                <input type="checkbox"
+                                                       id="ne_class_{{ loop.index }}"
+                                                       name="NE_CLASS_filter"
+                                                       value="{{ ne_class }}"
+                                                       {% if selected_classes and ne_class in selected_classes %}checked{% endif %}>
+                                                <label for="ne_class_{{ loop.index }}">{{ ne_class }}</label>
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <p>No classes available</p>
+                                    {% endif %}
+                                    <div class="filter-button">
+                                        <button type="button" onclick="applyClassFilter()">Apply Filter</button>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif column == 'ERROR_ID' %}
+                            <div class="error-filter">
+                                <div class="filter-toggle" onclick="toggleErrorFilter(this)">Filter Errors <i class="fas fa-filter"></i></div>
+                                <div class="error-filter-dropdown">
+                                    <div class="filter-actions">
+                                        <a href="#" onclick="checkAllErrors(true); return false;">Select All</a> |
+                                        <a href="#" onclick="checkAllErrors(false); return false;">Clear All</a>
+                                    </div>
+                                    {% if error_codes %}
+                                        {% for error_code in error_codes %}
+                                            <div class="error-checkbox">
+                                                <input type="checkbox"
+                                                       id="error_{{ loop.index }}"
+                                                       name="ERROR_ID_filter"
+                                                       value="{{ error_code[0] }}"
+                                                       {% if selected_errors and error_code[0] in selected_errors %}checked{% endif %}>
+                                                <label for="error_{{ loop.index }}" title="{{ error_code[1] }}">{{ error_code[0] }}</label>
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <p>No error codes available</p>
+                                    {% endif %}
+                                    <div class="filter-button">
+                                        <button type="button" onclick="applyErrorFilter()">Apply Filter</button>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif column_types and column in column_types and column_types[column] == 'TEXT' %}
+                            <input type="text"
+                                   name="{{ column }}_search"
+                                   placeholder="Search {{ column }}..."
+                                   value="{{ column_search_queries[column] if column_search_queries and column in column_search_queries else '' }}">
+                        {% elif searchable_id_columns and column in searchable_id_columns %}
+                            <input type="text"
+                                   name="{{ column }}_search"
+                                   placeholder="ID search..."
+                                   class="id-search"
+                                   value="{{ column_search_queries[column] if column_search_queries and column in column_search_queries else '' }}">
                         {% endif %}
                     </th>
                     {% endif %}
@@ -74,13 +141,60 @@
     </table>
     </form>
     {% if has_more %}
-    <a href="{{ url_for('table_view', table_name=table_name, page=page+1, sort_by=sort_by, sort_order=sort_order) }}{% for column in columns %}{% if column_types and column in column_types and column_types[column] == 'TEXT' and column_search_queries and column in column_search_queries %}&{{ column }}_search={{ column_search_queries[column] }}{% endif %}{% endfor %}" class="load-more-button">Load More</a>
+    <a href="{{ url_for('table_view', table_name=table_name, page=page+1, sort_by=sort_by, sort_order=sort_order) }}{% for column in columns %}{% if column_types and column in column_types and column_types[column] == 'TEXT' and column_search_queries and column in column_search_queries %}&{{ column }}_search={{ column_search_queries[column] }}{% endif %}{% endfor %}{% for column in searchable_id_columns %}{% if column_search_queries and column in column_search_queries and column_search_queries[column] %}&{{ column }}_search={{ column_search_queries[column] }}{% endif %}{% endfor %}{% if selected_classes %}{% for class in selected_classes %}&NE_CLASS_filter={{ class }}{% endfor %}{% endif %}{% if selected_errors %}{% for error in selected_errors %}&ERROR_ID_filter={{ error }}{% endfor %}{% endif %}&show_overlap={{ show_overlap }}" class="load-more-button">Load More</a>
     {% endif %}
 {% endblock %}
 
 {% block head %}
 {{ super() }}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<style>
+    /* Additional error filter dropdown styling */
+    .error-filter {
+        position: relative;
+        margin-top: 5px;
+    }
+    .error-filter-dropdown {
+        display: none;
+        position: absolute;
+        background-color: white;
+        border: 1px solid #ddd;
+        padding: 10px;
+        z-index: 10;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        max-height: 300px;
+        overflow-y: auto;
+        width: 250px;
+    }
+    .filter-toggle {
+        cursor: pointer;
+        padding: 2px 5px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+        display: inline-block;
+        font-size: 0.8em;
+        background-color: #f8f8f8;
+    }
+    .filter-toggle:hover {
+        background-color: #e8e8e8;
+    }
+    .error-checkbox {
+        margin: 3px 0;
+    }
+    .filter-actions {
+        margin-bottom: 5px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid #eee;
+        font-size: 0.8em;
+    }
+    .filter-button {
+        margin-top: 10px;
+        text-align: right;
+    }
+    .error-checkbox label {
+        cursor: pointer;
+    }
+</style>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const searchForm = document.getElementById('search-form');
@@ -89,17 +203,10 @@
         searchInputs.forEach(input => {
             input.addEventListener('keydown', function(event) {
                 if (event.key === 'Enter') {
-                    // Prevent the default action to stop form from submitting
                     event.preventDefault();
-
-                    // Construct the URL with the search parameters
                     let url = new URL(window.location.href);
-
-                    // Add or update the search parameter for the current input
                     const paramName = this.name;
                     url.searchParams.set(paramName, this.value);
-
-                    // Redirect to the new URL
                     window.location.href = url.href;
                 }
             });
@@ -107,14 +214,9 @@
 
         document.querySelector('details').addEventListener('toggle', function() {
             if (this.open) {
-                {% if generated_sql %}
-                const query = "{{ generated_sql }}";
-                {% else %}
-                const query = "SELECT * FROM {{ table_name }} LIMIT 1000";
-                {% endif %}
+                let query = {% if generated_sql %}"{{ generated_sql }}"{% else %}"SELECT * FROM {{ table_name }} LIMIT 1000"{% endif %};
                 let url = '/explain-query?query=' + encodeURIComponent(query);
 
-                // Add parameters to the URL
                 {% for column in columns %}
                     {% if column_search_queries and column in column_search_queries %}
                         url += '&{{ column }}_search=' + encodeURIComponent("{{ column_search_queries[column] }}");
@@ -143,15 +245,10 @@
         });
 
         document.getElementById('copy-chatbot').addEventListener('click', function(event) {
-            event.stopPropagation(); // Prevent the details element from toggling
-            {% if generated_sql %}
-            const query = "{{ generated_sql }}";
-            {% else %}
-            const query = "SELECT * FROM {{ table_name }} LIMIT 1000";
-            {% endif %}
+            event.stopPropagation();
+            let query = {% if generated_sql %}"{{ generated_sql }}"{% else %}"SELECT * FROM {{ table_name }} LIMIT 1000"{% endif %};
             let url = '/explain-query?query=' + encodeURIComponent(query);
 
-            // Add parameters to the URL
             {% for column in columns %}
                 {% if column_search_queries and column in column_search_queries %}
                     url += '&{{ column }}_search=' + encodeURIComponent("{{ column_search_queries[column] }}");
@@ -177,5 +274,53 @@
                 });
         });
     });
+
+    function toggleClassFilter(element) {
+        const dropdown = element.nextElementSibling;
+        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function checkAllClasses(checked) {
+        document.querySelectorAll('input[name="NE_CLASS_filter"]').forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+    }
+
+    function applyClassFilter() {
+        let url = new URL(window.location.href);
+        url.searchParams.delete('NE_CLASS_filter');
+        const selectedClasses = document.querySelectorAll('input[name="NE_CLASS_filter"]:checked');
+        selectedClasses.forEach(checkbox => {
+            url.searchParams.append('NE_CLASS_filter', checkbox.value);
+        });
+        window.location.href = url.href;
+    }
+
+    function toggleErrorFilter(element) {
+        const dropdown = element.nextElementSibling;
+        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function checkAllErrors(checked) {
+        document.querySelectorAll('input[name="ERROR_ID_filter"]').forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+    }
+
+    function applyErrorFilter() {
+        let url = new URL(window.location.href);
+        url.searchParams.delete('ERROR_ID_filter');
+        const selectedErrors = document.querySelectorAll('input[name="ERROR_ID_filter"]:checked');
+        selectedErrors.forEach(checkbox => {
+            url.searchParams.append('ERROR_ID_filter', checkbox.value);
+        });
+        window.location.href = url.href;
+    }
+
+    function updateOverlapFilter(checkbox) {
+        let url = new URL(window.location.href);
+        url.searchParams.set('show_overlap', checkbox.checked);
+        window.location.href = url.href;
+    }
 </script>
 {% endblock %}

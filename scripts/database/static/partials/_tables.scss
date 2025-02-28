@@ -331,3 +331,239 @@
         }
     }
 }
+
+// Table view specific styles
+.ne-class-filter {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+
+    .filter-toggle {
+        cursor: pointer;
+        padding: $base-padding;
+        border: 1px solid $border-color;
+        border-radius: $border-radius;
+        background-color: $background-light;
+        margin-top: 5px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+
+        &:hover {
+            background-color: darken($background-light, 3%);
+        }
+    }
+
+    .class-filter-dropdown {
+        display: none;
+        position: absolute;
+        background-color: white;
+        min-width: 200px;
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid $border-color;
+        box-shadow: $card-shadow;
+        padding: 10px;
+        z-index: 1000;
+        margin-top: 2px;
+        border-radius: $border-radius;
+
+        .filter-actions {
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid $border-color;
+            font-size: $small-font-size;
+        }
+
+        .class-checkbox {
+            margin: 5px 0;
+            display: flex;
+            align-items: center;
+
+            label {
+                margin-left: 5px;
+                cursor: pointer;
+            }
+        }
+
+        .filter-button {
+            margin-top: 10px;
+            text-align: right;
+
+            button {
+                padding: 5px 10px;
+                background-color: $success-color;
+                color: white;
+                border: none;
+                border-radius: $border-radius;
+                cursor: pointer;
+
+                &:hover {
+                    background-color: darken($success-color, 5%);
+                }
+            }
+        }
+    }
+}
+
+// ID column search styling
+.id-search {
+    width: 80px !important;
+    background-color: $background-light;
+    border: 1px solid $border-color;
+    border-radius: $border-radius;
+    padding: 3px 5px;
+    font-size: $small-font-size;
+
+    &::placeholder {
+        font-style: italic;
+        color: $text-lighter;
+    }
+
+    &:focus {
+        border-color: $primary-color;
+        outline: none;
+        background-color: white;
+    }
+}
+
+// General table view styles
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+    background: white;
+
+    th, td {
+        padding: $base-padding;
+        text-align: left;
+        border: 1px solid $border-color;
+    }
+
+    th {
+        background-color: $background-light;
+        position: relative;
+
+        .sort-header {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            color: $text-color;
+            padding-right: 20px;
+            position: relative;
+
+            &:hover {
+                color: $primary-color;
+            }
+
+            input[type="checkbox"] {
+                cursor: pointer;
+                width: 14px;
+                height: 14px;
+                margin: 0 4px;
+
+                &:checked {
+                    accent-color: $primary-color;
+                }
+            }
+
+            .overlap-filter {
+                display: flex;
+                align-items: center;
+                margin-left: 8px;
+                font-size: 0.8em;
+                color: $text-light;
+                white-space: nowrap;
+
+                input[type="checkbox"] {
+                    cursor: pointer;
+                    width: 14px;
+                    height: 14px;
+                    margin: 0 4px;
+
+                    &:checked {
+                        accent-color: $primary-color;
+                    }
+                }
+
+                &:hover {
+                    color: $primary-color;
+                }
+            }
+
+            &.sorted-asc::after,
+            &.sorted-desc::after {
+                content: '';
+                position: absolute;
+                right: 5px;
+                top: 50%;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+            }
+
+            &.sorted-asc::after {
+                border-bottom: 4px solid $primary-color;
+                margin-top: -6px;
+            }
+
+            &.sorted-desc::after {
+                border-top: 4px solid $primary-color;
+                margin-top: -2px;
+            }
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 4px;
+            margin-top: 5px;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+            font-size: $small-font-size;
+
+            &:focus {
+                border-color: $primary-color;
+                outline: none;
+            }
+        }
+    }
+
+    tbody tr:nth-child(even) {
+        background-color: $background-lighter;
+    }
+
+    tbody tr:hover {
+        background-color: lighten($primary-color, 45%);
+    }
+}
+
+// Filter controls
+.filter-controls {
+    margin: 1rem 0;
+    padding: 10px;
+    background: $background-lighter;
+    border: 1px solid $border-color;
+    border-radius: $border-radius;
+
+    .overlap-filter {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: $text-color;
+        font-size: $base-font-size;
+        cursor: pointer;
+
+        input[type="checkbox"] {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+
+            &:checked {
+                accent-color: $primary-color;
+            }
+        }
+
+        &:hover {
+            color: $primary-color;
+        }
+    }
+}
