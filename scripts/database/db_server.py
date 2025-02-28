@@ -8,7 +8,6 @@ from .statistics.visualization_manager import VisualizationManager
 import logging
 from logging.handlers import RotatingFileHandler
 from .data_model.schema import *
-from .core.core_methods import *
 
 
 def setup_logging(app):
