@@ -6,7 +6,7 @@
 <div class="entities-container">
     <div class="filter-section">
         <h2>Filter Named Entities</h2>
-        <form method="GET" action="{{ url_for('list_named_entities') }}">
+        <form method="GET" action="{{ url_for('list_named_entity_classes') }}">
             <div class="form-group">
                 <input type="text" name="query" value="{{ query }}" placeholder="Search entity name...">
             </div>
@@ -45,10 +45,10 @@
         </table>
 
         {% if page > 1 %}
-        <a href="{{ url_for('list_named_entities', page=page-1, query=query, min_freq=min_freq) }}" class="pagination-link">Previous</a>
+        <a href="{{ url_for('list_named_entity_classes', page=page-1, query=query, min_freq=min_freq) }}" class="pagination-link">Previous</a>
         {% endif %}
         {% if has_more %}
-        <a href="{{ url_for('list_named_entities', page=page+1, query=query, min_freq=min_freq) }}" class="pagination-link">Next</a>
+        <a href="{{ url_for('list_named_entity_classes', page=page+1, query=query, min_freq=min_freq) }}" class="pagination-link">Next</a>
         {% endif %}
     </div>
 </div>

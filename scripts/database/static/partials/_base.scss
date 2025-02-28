@@ -1,28 +1,46 @@
-@import 'variables';
-
 /* Styling for base layout */
 body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 20px;
     line-height: 1.6;
-    font-size: 15px;
+    font-size: $base-font-size;
     display: block;
 }
+
 .container {
     max-width: 1200px;
     margin: 0 auto;
 }
+
 .nav {
     background: $primary-color;
     padding: 1rem;
     margin: -20px -20px 2rem -20px;
     color: white;
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 1rem;
-    align-items: flex-start;
+
+    .nav-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        max-width: 1200px;
+        margin: 0 auto;
+        min-height: 50px;
+    }
+
+    .nav-left {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        flex: 1;
+    }
+
+    .nav-right {
+        padding-left: 1rem;
+        display: flex;
+        align-items: center;
+        align-self: stretch;
+    }
 
     .nav-group {
         display: flex;
@@ -43,20 +61,39 @@ body {
 
         &:hover {
             background: rgba(255,255,255,0.1);
-            border-radius: 4px;
+            border-radius: $border-radius;
+        }
+    }
+
+    .query-button {
+        background: $accent-color;
+        color: white;
+        border: none;
+        padding: $base-padding 15px;
+        border-radius: $border-radius;
+        cursor: pointer;
+        font-size: 14px;
+        height: fit-content;
+        margin: auto 0;
+
+        &:hover {
+            background: $accent-dark;
         }
     }
 }
+
 .dashboard {
     max-width: 1200px;
     margin: 0 auto;
 }
+
 .table-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 1rem;
     margin: 1rem 0;
 }
+
 .table-card {
     border: 1px solid #ddd;
     border-radius: 4px;
@@ -64,40 +101,151 @@ body {
     background: white;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
+
 .table-card h3 {
     margin-top: 0;
     color: #2196f3;
     border-bottom: 1px solid #eee;
     padding-bottom: 0.5rem;
 }
+
 details summary {
     cursor: pointer;
     color: #666;
     margin: 1rem 0;
 }
+
 details ul {
     margin: 0;
     padding-left: 1.5rem;
     color: #666;
 }
-h1, h2 {
-    color: #333;
+
+h1, h2, h3, h4, h5, h6 {
+    color: $text-color;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
 }
+
+h1 {
+    font-size: 2em;
+    color: $primary-color;
+}
+
 h2 {
-    margin: 2rem 0 1rem;
+    font-size: 1.5em;
+    border-bottom: 1px solid $border-color;
+    padding-bottom: 0.3em;
+}
+
+// Modal styles
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+
+    .modal-content {
+        background-color: white;
+        margin: 5% auto;
+        padding: 20px;
+        border-radius: $border-radius;
+        width: 80%;
+        max-width: 1200px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+
+            h2 {
+                margin: 0;
+            }
+
+            .close {
+                color: $text-lighter;
+                font-size: 28px;
+                font-weight: bold;
+                cursor: pointer;
+
+                &:hover {
+                    color: $text-light;
+                }
+            }
+        }
+
+        #queryInput {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+            font-family: monospace;
+            resize: vertical;
+
+            &:focus {
+                border-color: $primary-color;
+                outline: none;
+            }
+        }
+
+        .query-result {
+            margin-top: 20px;
+            max-height: 50vh;
+            overflow-y: auto;
+
+            #queryMessage {
+                margin: 10px 0;
+                padding: 10px;
+                border-radius: $border-radius;
+
+                &.error {
+                    background-color: $error-light;
+                    color: $error-color;
+                    border: 1px solid $error-border;
+                }
+
+                &.success {
+                    background-color: $success-light;
+                    color: $success-color;
+                    border: 1px solid $success-border;
+                }
+            }
+        }
+    }
 }
 
 // Common components
-.button {
+.button, .action-button {
     background: $primary-color;
     color: white;
     border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
+    padding: $base-padding 1rem;
+    border-radius: $border-radius;
     cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
 
     &:hover {
-        background: darken($primary-color, 10%);
+        background: $primary-dark;
+    }
+
+    &.warning {
+        color: $warning-border-color;
+        background: $warning-color;
+        border: 1px solid $warning-border-color;
+
+        &:hover {
+            background: $warning-hover;
+        }
     }
 }
 
@@ -107,4 +255,121 @@ h2 {
 
 .grid {
     @extend %grid-layout;
+}
+
+// Filter sections styling
+.filter-section {
+    @extend %section-card;
+    background: $background-light;
+    margin-bottom: $base-margin;
+
+    h2 {
+        @extend %section-header;
+    }
+
+    .form-group {
+        margin-bottom: 1rem;
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: $text-light;
+        }
+
+        input, select {
+            padding: 0.5rem;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+            width: 100%;
+            max-width: 300px;
+
+            &:hover, &:focus {
+                border-color: $primary-color;
+                outline: none;
+            }
+        }
+    }
+}
+
+// Search box styling
+.search-box {
+    margin-bottom: 2rem;
+
+    input[type="text"] {
+        padding: 0.5rem;
+        width: 300px;
+        border: 1px solid $border-color;
+        border-radius: $border-radius;
+        margin-right: 0.5rem;
+
+        &:focus {
+            border-color: $primary-color;
+            outline: none;
+        }
+    }
+
+    button {
+        @extend .button;
+    }
+}
+
+.search-form {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+
+    .search-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        label {
+            color: $text-light;
+            font-size: $small-font-size;
+            white-space: nowrap;
+        }
+
+        input[type="number"] {
+            width: 100px;
+            padding: 0.5rem;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+
+            &:focus {
+                border-color: $primary-color;
+                outline: none;
+            }
+        }
+    }
+}
+
+// Control groups (shared between components)
+.control-group {
+    margin-bottom: 10px;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+
+    label {
+        margin-right: 10px;
+        color: $text-light;
+
+        input[type="checkbox"], input[type="radio"] {
+            margin-right: 5px;
+        }
+    }
+
+    select {
+        margin-right: 20px;
+        padding: 5px;
+        border-radius: $border-radius;
+        border: 1px solid $border-color;
+
+        &:focus {
+            border-color: $primary-color;
+            outline: none;
+        }
+    }
 }

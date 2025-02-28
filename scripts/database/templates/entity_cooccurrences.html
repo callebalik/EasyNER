@@ -64,64 +64,21 @@
         </table>
         <button id="load-more-summary" class="load-more-button">Load More</button>
     </div>
-    <style>
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 1em 0;
-        }
-        .data-table th {
-            background: #f5f5f5;
-            padding: 8px;
-            text-align: left;
-        }
-        .data-table td {
-            padding: 8px;
-            border-bottom: 1px solid #ddd;
-        }
-        .entity-text {
-            font-family: monospace;
-            min-width: 200px;
-        }
-        .numeric {
-            text-align: right;
-            font-family: monospace;
-        }
-        .load-more-button {
-            margin-top: 1em;
-            padding: 8px 16px;
-            background: #2196f3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .load-more-button:hover {
-            background: #1976d2;
-        }
-        .text-center {
-            text-align: center;
-        }
-        .doc-sent-info {
-            font-size: 0.9em;
-            color: #666;
-        }
-    </style>
     <script>
         $(document).ready(function() {
             let currentPage = 1;
             let currentViewType = 'raw';
             let frequencyPlot = null;
-            
+
             function loadTable(page, viewType) {
-                const endpoint = viewType === 'raw' ? 
-                    '/entity-cooccurrences/table' : 
+                const endpoint = viewType === 'raw' ?
+                    '/entity-cooccurrences/table' :
                     '/entity-cooccurrences/summary/table';
-                
+
                 const params = {
                     page: page
                 };
-                
+
                 if (viewType === 'summary') {
                     params.include_self = !$('#include-self').prop('checked');
                 }
@@ -132,7 +89,7 @@
                             $('<tr>').append(
                                 $('<th>').text('Entity 1'),
                                 $('<th>').text('Entity 2'),
-                                viewType === 'raw' ? 
+                                viewType === 'raw' ?
                                     [
                                         $('<th>').text('Document ID'),
                                         $('<th>').text('Sentence'),
@@ -147,7 +104,7 @@
                             )
                         )
                     );
-                    
+
                     const tbody = $('<tbody>');
                     if (viewType === 'raw') {
                         data.cooccurrences.forEach(cooc => {
@@ -189,26 +146,26 @@
                                     ),
                                     $('<td class="numeric">').text(summary.fq_document_level || '0'),
                                     $('<td class="numeric">').text(
-                                        summary.fq_document_level_normalized 
-                                            ? summary.fq_document_level_normalized.toFixed(4) 
+                                        summary.fq_document_level_normalized
+                                            ? summary.fq_document_level_normalized.toFixed(4)
                                             : '0.0000'
                                     ),
                                     $('<td class="numeric">').text(summary.fq_sentence_level || '0'),
                                     $('<td class="numeric">').text(
-                                        summary.fq_sentence_level_normalized 
-                                            ? summary.fq_sentence_level_normalized.toFixed(4) 
+                                        summary.fq_sentence_level_normalized
+                                            ? summary.fq_sentence_level_normalized.toFixed(4)
                                             : '0.0000'
                                     )
                                 )
                             );
                         });
                     }
-                    
+
                     table.append(tbody);
                     $('#table-view').empty().append(table);
-                    
+
                     // Add pagination if needed
-                    if ((viewType === 'raw' && data.has_more) || 
+                    if ((viewType === 'raw' && data.has_more) ||
                         (viewType === 'summary' && data.has_more)) {
                         $('#table-view').append(
                             $('<button>')
