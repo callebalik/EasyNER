@@ -46,3 +46,5 @@
 - We write CSS styling as SCSS in partials, imported via central styling.scss
 - Ensure thread safety and proper connection closing
 
+## Syntax
+-- We prefix python sql f-string statements with "--sql " for added syntax highlighting
