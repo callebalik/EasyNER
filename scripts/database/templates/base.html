@@ -25,6 +25,11 @@
                     <a href="{{ url_for('raw_cooccurrences') }}">Raw Co-occurrences</a>
                     <a href="{{ url_for('summary_cooccurrences') }}">Summary Co-occurrences</a>
                 </div>
+                <div class="nav-group presentations-group">
+                    <a href="{{ url_for('dis_pnm_presentation') }}">DIS_PNM</a>
+                    <a href="{{ url_for('ne_presentation') }}">NE_PRESENTATION</a>
+                    <a href="{{ url_for('table_view', table_name='v_DIS_PNM_AGGR_PRESENTATION') }}">DIS_PNM_AGGR</a>
+                </div>
                 <div class="nav-group">
                     <a href="{{ url_for('show_tables') }}">Tables</a>
                     <a href="{{ url_for('show_indexes') }}">Indexes</a>

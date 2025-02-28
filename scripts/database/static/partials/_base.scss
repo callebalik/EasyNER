@@ -52,6 +52,17 @@ body {
         min-width: 200px;
     }
 
+    .presentations-group {
+        background: rgba(76, 175, 80, 0.2);
+        border-left: 3px solid rgba(76, 175, 80, 0.7);
+
+        a {
+            &:hover {
+                background: rgba(76, 175, 80, 0.3);
+            }
+        }
+    }
+
     a {
         color: white;
         text-decoration: none;
