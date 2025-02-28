@@ -166,6 +166,46 @@ ne_error_schema = f"""--sql
                 );
                 """
 
+SCHEMA_TABLE_ENTITY_COOCURRENCES = f"""--sql
+                CREATE TABLE IF NOT EXISTS {TABLE_COOCCURRENCES} (
+                    {E1_ID} INTEGER NOT NULL,
+                    {E2_ID} INTEGER NOT NULL,
+                    {SENT_DIST} INTEGER,
+                    {CO_AGGR_ID} INTEGER,
+                    PRIMARY KEY ({E1_ID}, {E2_ID})
+                    FOREIGN KEY ({E1_ID}) REFERENCES {TABLE_NE}({NE_PRIMARY_ID}),
+                    FOREIGN KEY ({E2_ID}) REFERENCES {TABLE_NE}({NE_PRIMARY_ID}),
+                    FOREIGN KEY ({CO_AGGR_ID}) REFERENCES {TABLE_CO_AGGR}({CO_AGGR_ID})
+                )
+            """
+
+SCHEMA_TABLE_DIS_PNM = f"""--sql
+                CREATE TABLE IF NOT EXISTS {TABLE_DIS_PNM} (
+                    {E1_ID} INTEGER NOT NULL,
+                    {E2_ID} INTEGER NOT NULL,
+                    {SENT_DIST} INTEGER,
+                    {CO_AGGR_ID} INTEGER,
+                    PRIMARY KEY ({E1_ID}, {E2_ID})
+                    FOREIGN KEY ({E1_ID}) REFERENCES {TABLE_NE}({NE_PRIMARY_ID}),
+                    FOREIGN KEY ({E2_ID}) REFERENCES {TABLE_NE}({NE_PRIMARY_ID}),
+                    FOREIGN KEY ({CO_AGGR_ID}) REFERENCES {TABLE_CO_AGGR}({CO_AGGR_ID})
+                )
+            """
+
+SCHEMA_TABLE_COOCCURRENCES_AGGR = f"""--sql
+    CREATE TABLE IF NOT EXISTS {TABLE_CO_AGGR} (
+        {E1_NORM_ID} INTEGER NOT NULL,
+        {E2_NORM_ID} INTEGER NOT NULL,
+        {CO_AGGR_ID} INTEGER AUTOINCREMENT,    -- Used as a lookup key instead of joining on the composite key
+        {FQ_DOCUMENT_LEVEL} INTEGER DEFAULT NULL,
+        {FQ_SENTENCE_LEVEL} INTEGER DEFAULT NULL,
+        {UNIQ_DOCS} INTEGER DEFAULT NULL,
+        {PMI} REAL DEFAULT NULL,
+        PRIMARY KEY ({E1_NORM_ID}, {E2_NORM_ID})
+        FOREIGN KEY ({E1_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NE_NORM_ID}),
+        FOREIGN KEY ({E2_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NE_NORM_ID})
+    )
+"""
 # ----------------------
 # Views
 # ----------------------
