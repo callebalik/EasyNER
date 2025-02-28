@@ -286,7 +286,7 @@ class Index:
     def __str__(self) -> str:
         return self.stmt
 
-    def create_if_not_exists(self, cursor, analyze: bool = False):
+    def create_if_not_exists(self, cursor, analyze: bool = False) -> bool:
         """
         Execute the CREATE INDEX IF NOT EXISTS statement for this index.
         If 'analyze' is True, run ANALYZE on the indexed table if the index is created.
@@ -306,7 +306,7 @@ class Index:
                     print(
                         f"Index for table {self.table} with columns {self.columns} already exists."
                     )
-                return
+                return False
         try:
             cursor.execute(self.stmt)
             if self.logger:
@@ -319,11 +319,13 @@ class Index:
                 )
             if analyze:
                 self.analyze(cursor)
+            return True
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to create index for table {self.table}: {e}")
             else:
                 print(f"Failed to create index for table {self.table}: {e}")
+            return False
 
     def analyze(self, cursor):
         """Run ANALYZE on the indexed table"""
