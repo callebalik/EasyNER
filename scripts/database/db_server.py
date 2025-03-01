@@ -1762,6 +1762,55 @@ def ne_presentation():
         return render_template("error.html", message="Error loading NE Presentation"), 500
 
 
+@app.route("/monitor")
+def show_monitoring_status():
+    """Display monitoring stats for administrators"""
+    try:
+        # Check for active connections
+        connections = connection_monitor.get_open_connections()
+
+        # Check for leaked connections
+        leaks = connection_monitor.check_for_leaks(
+            age_threshold=float(os.environ.get('EASYNER_CONNECTION_LEAK_THRESHOLD', '300.0'))
+        )
+
+        # Check for stuck threads
+        stuck_threads = thread_monitor.check_for_stuck_threads(
+            heartbeat_threshold=float(os.environ.get('EASYNER_THREAD_STUCK_THRESHOLD', '60.0'))
+        )
+
+        # Get active threads
+        active_threads = thread_monitor.get_active_threads()
+
+        # Get resource stats
+        resource_stats = {
+            'memory': operation_monitor._get_memory_usage(),
+            'cpu': operation_monitor._get_cpu_usage(),
+            'disk': operation_monitor._get_disk_usage()
+        }
+
+        # Get operation stats
+        operation_stats = operation_monitor._operation_counts
+
+        # Get open transactions
+        open_transactions = operation_monitor.get_open_transactions()
+
+        return render_template(
+            "monitoring.html",
+            connections=connections,
+            leaks=leaks,
+            stuck_threads=stuck_threads,
+            active_threads=active_threads,
+            resource_stats=resource_stats,
+            operation_stats=operation_stats,
+            open_transactions=open_transactions
+        )
+    except Exception as e:
+        app.logger.error(f"Error displaying monitoring status: {e}")
+        operation_monitor.monitor_exception(e, context={'route': '/monitor'})
+        return render_template("error.html", message="Error accessing monitoring data"), 500
+
+
 if __name__ == "__main__":
     with app.app_context():
         try:

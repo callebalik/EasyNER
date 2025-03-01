@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+
+{% block title %}System Monitoring{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1>System Monitoring</h1>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">System Resources</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Memory Usage</h6>
+                            {% if resource_stats.memory %}
+                                <div class="progress mb-2">
+                                    <div class="progress-bar {% if resource_stats.memory.percent > 80 %}bg-danger{% elif resource_stats.memory.percent > 60 %}bg-warning{% else %}bg-success{% endif %}"
+                                         role="progressbar"
+                                         style="width: {{ resource_stats.memory.percent }}%;"
+                                         aria-valuenow="{{ resource_stats.memory.percent }}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100">
+                                        {{ "%.1f"|format(resource_stats.memory.percent) }}%
+                                    </div>
+                                </div>
+                                <small>{{ (resource_stats.memory.rss / (1024 * 1024))|round(1) }} MB used of {{ (resource_stats.memory.total / (1024 * 1024))|round(1) }} MB available</small>
+                            {% else %}
+                                <div class="alert alert-warning">Memory usage information not available</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <h6>CPU Usage</h6>
+                            {% if resource_stats.cpu %}
+                                <div class="progress mb-2">
+                                    <div class="progress-bar {% if resource_stats.cpu.percent > 80 %}bg-danger{% elif resource_stats.cpu.percent > 60 %}bg-warning{% else %}bg-success{% endif %}"
+                                         role="progressbar"
+                                         style="width: {{ resource_stats.cpu.percent }}%;"
+                                         aria-valuenow="{{ resource_stats.cpu.percent }}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100">
+                                        {{ "%.1f"|format(resource_stats.cpu.percent) }}%
+                                    </div>
+                                </div>
+                                <small>System CPU: {{ "%.1f"|format(resource_stats.cpu.system) }}%</small>
+                            {% else %}
+                                <div class="alert alert-warning">CPU usage information not available</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <h6>Disk Usage</h6>
+                            {% if resource_stats.disk %}
+                                <div class="progress mb-2">
+                                    <div class="progress-bar {% if resource_stats.disk.percent > 85 %}bg-danger{% elif resource_stats.disk.percent > 70 %}bg-warning{% else %}bg-success{% endif %}"
+                                         role="progressbar"
+                                         style="width: {{ resource_stats.disk.percent }}%;"
+                                         aria-valuenow="{{ resource_stats.disk.percent }}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100">
+                                        {{ "%.1f"|format(resource_stats.disk.percent) }}%
+                                    </div>
+                                </div>
+                                <small>{{ (resource_stats.disk.used / (1024 * 1024 * 1024))|round(1) }} GB used of {{ (resource_stats.disk.total / (1024 * 1024 * 1024))|round(1) }} GB total</small>
+                            {% else %}
+                                <div class="alert alert-warning">Disk usage information not available</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Operations</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td>Total Operations</td>
+                                            <td>{{ operation_stats.total }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Successful</td>
+                                            <td>{{ operation_stats.success }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Failed</td>
+                                            <td>{{ operation_stats.error }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Success Rate</td>
+                                            <td>{{ ((operation_stats.success / operation_stats.total * 100) if operation_stats.total > 0 else 100)|round(1) }}%</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Database Connections</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Active Connections ({{ connections|length }})</h6>
+                    {% if connections %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Connection ID</th>
+                                        <th>Thread ID</th>
+                                        <th>Age (sec)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for conn in connections %}
+                                    <tr {% if conn.age_seconds > 300 %}class="table-warning"{% endif %}>
+                                        <td>{{ conn.conn_id }}</td>
+                                        <td>{{ conn.thread_id }}</td>
+                                        <td>{{ conn.age_seconds|round(1) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">No active connections tracked</div>
+                    {% endif %}
+
+                    {% if leaks %}
+                        <div class="alert alert-danger mt-3">
+                            <h6>Possible Connection Leaks ({{ leaks|length }})</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-danger">
+                                    <thead>
+                                        <tr>
+                                            <th>Connection ID</th>
+                                            <th>Thread ID</th>
+                                            <th>Age (sec)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for leak in leaks %}
+                                        <tr>
+                                            <td>{{ leak.conn_id }}</td>
+                                            <td>{{ leak.thread_id }}</td>
+                                            <td>{{ leak.age_seconds|round(1) }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Threads</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Active Threads ({{ active_threads|length }})</h6>
+                    {% if active_threads %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Status</th>
+                                        <th>Runtime (sec)</th>
+                                        <th>Last Heartbeat (sec)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for thread in active_threads %}
+                                    <tr {% if thread.seconds_since_heartbeat > 60 %}class="table-warning"{% endif %}>
+                                        <td>{{ thread.thread_id }}</td>
+                                        <td>{{ thread.name }}</td>
+                                        <td>{{ thread.status }}</td>
+                                        <td>{{ thread.runtime_seconds|round(1) }}</td>
+                                        <td>{{ thread.seconds_since_heartbeat|round(1) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">No active threads tracked</div>
+                    {% endif %}
+
+                    {% if stuck_threads %}
+                        <div class="alert alert-danger mt-3">
+                            <h6>Possible Stuck Threads ({{ stuck_threads|length }})</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-danger">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Name</th>
+                                            <th>Status</th>
+                                            <th>No Heartbeat For (sec)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for thread in stuck_threads %}
+                                        <tr>
+                                            <td>{{ thread.thread_id }}</td>
+                                            <td>{{ thread.name }}</td>
+                                            <td>{{ thread.status }}</td>
+                                            <td>{{ thread.seconds_since_heartbeat|round(1) }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Active Operations</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Open Transactions ({{ open_transactions|length }})</h6>
+                    {% if open_transactions %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Operation</th>
+                                        <th>Start Time</th>
+                                        <th>Thread ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for tx in open_transactions %}
+                                    <tr>
+                                        <td>{{ tx.id }}</td>
+                                        <td>{{ tx.name }}</td>
+                                        <td>{{ tx.start_time|round(1) }}</td>
+                                        <td>{{ tx.thread_id if tx.thread_id else 'N/A' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">No open transactions tracked</div>
+                    {% endif %}
+
+                    <div class="mt-4">
+                        <h6>Actions</h6>
+                        <button class="btn btn-danger" id="clearCacheBtn">Clear Visualization Cache</button>
+                        <button class="btn btn-warning" id="reloadServerBtn">Reload Server</button>
+
+                        <div id="actionResult" class="mt-3" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('clearCacheBtn').addEventListener('click', function() {
+    fetch('/clear-visualization-cache', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        let resultEl = document.getElementById('actionResult');
+        resultEl.style.display = 'block';
+
+        if (data.status === 'success') {
+            resultEl.className = 'alert alert-success';
+            resultEl.textContent = data.message;
+        } else {
+            resultEl.className = 'alert alert-danger';
+            resultEl.textContent = data.message || 'An error occurred';
+        }
+
+        setTimeout(function() {
+            location.reload();
+        }, 2000);
+    })
+    .catch(error => {
+        let resultEl = document.getElementById('actionResult');
+        resultEl.style.display = 'block';
+        resultEl.className = 'alert alert-danger';
+        resultEl.textContent = 'Error: ' + error;
+    });
+});
+
+document.getElementById('reloadServerBtn').addEventListener('click', function() {
+    if (!confirm('Are you sure you want to reload the server? This will reset all modules.')) {
+        return;
+    }
+
+    fetch('/reload-server', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        let resultEl = document.getElementById('actionResult');
+        resultEl.style.display = 'block';
+
+        if (data.status === 'success') {
+            resultEl.className = 'alert alert-success';
+            resultEl.textContent = data.message;
+        } else {
+            resultEl.className = 'alert alert-danger';
+            resultEl.textContent = data.message || 'An error occurred';
+        }
+
+        setTimeout(function() {
+            location.reload();
+        }, 2000);
+    })
+    .catch(error => {
+        let resultEl = document.getElementById('actionResult');
+        resultEl.style.display = 'block';
+        resultEl.className = 'alert alert-danger';
+        resultEl.textContent = 'Error: ' + error;
+    });
+});
+
+// Auto-refresh the page every 30 seconds
+setTimeout(function() {
+    location.reload();
+}, 30000);
+</script>
+{% endblock %}
