@@ -441,7 +441,7 @@
     }
 
     th {
-        background-color: $background-light;
+        background-color: $header-background;
         position: relative;
 
         .sort-header {
@@ -565,5 +565,117 @@
         &:hover {
             color: $primary-color;
         }
+    }
+}
+
+// Table styles
+.table-container {
+    overflow-x: auto;
+    margin: $margin-lg 0;
+    border-radius: $border-radius;
+    box-shadow: $card-shadow;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: $background-color;
+
+    th, td {
+        padding: $padding-base;
+        text-align: left;
+        border-bottom: 1px solid $border-color;
+    }
+
+    th {
+        background: $background-light;
+        font-weight: 500;
+        color: $text-dark;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    tr {
+        &:hover {
+            background-color: $hover-color;
+        }
+    }
+
+    // Numeric column alignment
+    .numeric {
+        text-align: right;
+    }
+
+    // Status indicators
+    .status-cell {
+        display: flex;
+        align-items: center;
+        gap: $gap-xs;
+
+        &::before {
+            content: "";
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        &.success::before {
+            background-color: $success-color;
+        }
+
+        &.error::before {
+            background-color: $error-color;
+        }
+
+        &.warning::before {
+            background-color: $warning-color;
+        }
+    }
+}
+
+// Table pagination
+.table-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: $padding-base;
+    background: $background-light;
+    border-top: 1px solid $border-color;
+
+    .pagination-info {
+        color: $text-light;
+    }
+
+    .pagination-controls {
+        display: flex;
+        gap: $gap-xs;
+    }
+}
+
+// Sortable headers
+.sortable {
+    cursor: pointer;
+    user-select: none;
+
+    &::after {
+        content: "↕";
+        opacity: 0.3;
+        margin-left: $margin-xs;
+    }
+
+    &.asc::after {
+        content: "↑";
+        opacity: 1;
+    }
+
+    &.desc::after {
+        content: "↓";
+        opacity: 1;
+    }
+
+    &:hover {
+        background-color: darken($background-light, 3%);
     }
 }

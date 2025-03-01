@@ -1,0 +1,47 @@
+// Typography base styles
+body {
+    font-family: $font-family;
+    font-size: $base-font-size;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.monospace {
+    font-family: $mono-font;
+}
+
+// Data labels and small text
+.small-text {
+    font-size: $small-font-size;
+    color: $text-light;
+}
+
+// Stats and numbers
+.stat-number {
+    font-size: $large-font-size;
+    font-weight: 500;
+    color: $primary-color;
+}
+
+// Table headers
+th {
+    font-weight: 500;
+    color: $text-dark;
+}
+
+// Code blocks
+pre, code {
+    font-family: $mono-font;
+    font-size: $small-font-size;
+    background: $background-lighter;
+    padding: $padding-xs $padding-sm;
+    border-radius: $border-radius-sm;
+}
+
+// Descriptions and help text
+.help-text {
+    font-size: $small-font-size;
+    color: $text-muted;
+    line-height: 1.4;
+}

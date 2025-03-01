@@ -1,0 +1,95 @@
+// Button base styles
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: $padding-base $padding-lg;
+    border-radius: $border-radius;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    transition: all $transition-quick;
+    gap: $gap-xs;
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+// Button variants
+.btn-primary {
+    @extend .btn;
+    background: $primary-color;
+    color: white;
+
+    &:hover:not(:disabled) {
+        background: $primary-dark;
+    }
+}
+
+.btn-secondary {
+    @extend .btn;
+    background: $secondary-color;
+    color: white;
+
+    &:hover:not(:disabled) {
+        filter: brightness(0.9);
+    }
+}
+
+.btn-outline {
+    @extend .btn;
+    background: transparent;
+    border: 1px solid $border-color;
+    color: $text-color;
+
+    &:hover:not(:disabled) {
+        border-color: $primary-color;
+        color: $primary-color;
+    }
+}
+
+// Button sizes
+.btn-sm {
+    padding: $padding-xs $padding-sm;
+    font-size: $small-font-size;
+}
+
+.btn-lg {
+    padding: $padding-lg $padding-xl;
+    font-size: $large-font-size;
+}
+
+// Action buttons (special cases)
+.btn-action {
+    @extend .btn;
+    background: $accent-color;
+    color: white;
+    min-width: 120px;
+
+    &:hover:not(:disabled) {
+        background: $accent-dark;
+    }
+}
+
+// Button groups
+.btn-group {
+    display: inline-flex;
+    gap: $gap-xs;
+
+    .btn {
+        border-radius: 0;
+
+        &:first-child {
+            border-top-left-radius: $border-radius;
+            border-bottom-left-radius: $border-radius;
+        }
+
+        &:last-child {
+            border-top-right-radius: $border-radius;
+            border-bottom-right-radius: $border-radius;
+        }
+    }
+}

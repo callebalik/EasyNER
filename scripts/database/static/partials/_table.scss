@@ -66,7 +66,6 @@
     margin: 1em 0;
 
     th {
-        background: $background-light;
         color: $text-color;
         padding: $base-padding;
         text-align: left;
@@ -274,5 +273,180 @@ details {
     .page-info {
         color: $text-light;
         font-size: $small-font-size;
+    }
+}
+
+// Numeric filter styling
+.numeric-filter {
+    position: relative;
+    margin-top: 5px;
+
+    .filter-toggle {
+        cursor: pointer;
+        padding: 2px 5px;
+        border: 1px solid $border-color;
+        border-radius: $border-radius;
+        display: inline-block;
+        font-size: 0.8em;
+        background-color: $background-light;
+
+        &:hover {
+            background-color: darken($background-light, 5%);
+        }
+    }
+
+    .numeric-filter-dropdown {
+        display: none;
+        position: absolute;
+        left: 0;
+        top: 100%;
+        background: white;
+        border: 1px solid $border-color;
+        padding: 15px;
+        z-index: 1000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-radius: $border-radius;
+        width: 300px;
+
+        .numeric-filter-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            align-items: center;
+
+            select {
+                flex: 2;
+                padding: 6px;
+                border: 1px solid $border-color;
+                border-radius: $border-radius;
+                background: white;
+                font-size: 0.9em;
+
+                &:focus {
+                    border-color: $primary-color;
+                    outline: none;
+                }
+            }
+
+            input[type="number"] {
+                flex: 1;
+                padding: 6px;
+                border: 1px solid $border-color;
+                border-radius: $border-radius;
+                font-size: 0.9em;
+
+                &:focus {
+                    border-color: $primary-color;
+                    outline: none;
+                }
+            }
+        }
+
+        .percentile-row {
+            font-style: italic;
+            color: $text-light;
+            margin: 8px 0;
+            font-size: 0.9em;
+        }
+
+        .between-row {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            span {
+                color: $text-light;
+            }
+        }
+
+        .stats-container {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid $border-color;
+            font-size: 0.9em;
+
+            .stats-header {
+                font-weight: bold;
+                margin-bottom: 8px;
+                color: $text-color;
+            }
+
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+                margin-bottom: 12px;
+
+                .stat-item {
+                    background: $background-lighter;
+                    padding: 6px;
+                    border-radius: $border-radius;
+
+                    .stat-label {
+                        font-size: 0.8em;
+                        color: $text-light;
+                    }
+
+                    .stat-value {
+                        font-weight: bold;
+                        color: $text-color;
+                    }
+                }
+            }
+
+            .distribution-chart {
+                margin-top: 15px;
+                padding: 10px;
+                background: $background-lighter;
+                border-radius: $border-radius;
+                height: 150px;
+
+                canvas {
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+
+            .percentile-markers {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 5px;
+                font-size: 0.8em;
+                color: $text-light;
+            }
+        }
+    }
+
+    .filter-button {
+        margin-top: 12px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+
+        button {
+            padding: 6px 12px;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+            background: white;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+
+            &:hover {
+                background: $background-lighter;
+                border-color: darken($border-color, 10%);
+            }
+
+            &:first-child {
+                background: $primary-color;
+                color: white;
+                border-color: $primary-color;
+
+                &:hover {
+                    background: darken($primary-color, 5%);
+                }
+            }
+        }
     }
 }

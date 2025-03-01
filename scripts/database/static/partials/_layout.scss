@@ -1,0 +1,67 @@
+// Main content layout
+.content-wrapper {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: $padding-lg;
+}
+
+// Grid system
+.grid {
+    display: grid;
+    gap: $gap-base;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+// Flex layouts
+.flex {
+    display: flex;
+    gap: $gap-base;
+
+    &.flex-wrap {
+        flex-wrap: wrap;
+    }
+
+    &.flex-column {
+        flex-direction: column;
+    }
+
+    &.items-center {
+        align-items: center;
+    }
+
+    &.justify-between {
+        justify-content: space-between;
+    }
+}
+
+// Section layouts
+.section {
+    margin-bottom: $margin-xl;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+}
+
+// Card layouts
+.card-grid {
+    @extend .grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+// Form layouts
+.form-grid {
+    display: grid;
+    gap: $gap-lg;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+// Data visualization containers
+.visualization-container {
+    background: $background-color;
+    border-radius: $border-radius;
+    padding: $padding-lg;
+    margin: $margin-lg 0;
+    box-shadow: $card-shadow;
+    min-height: 400px;
+}

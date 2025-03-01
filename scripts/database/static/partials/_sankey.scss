@@ -1,0 +1,81 @@
+// Sankey diagram specific styles
+.sankey-diagram-container {
+    @extend %section-card;
+    position: relative; // Ensure proper positioning for absolutely positioned children
+    display: flex;
+    flex-direction: column;
+    align-items: center; // Center horizontally
+
+    .plotly-container {
+        min-height: 600px;
+        width: 100%;
+        display: flex;
+        justify-content: center; // Center the Plotly diagram
+
+        // Style the Plotly output element
+        .js-plotly-plot {
+            margin: 0 auto; // Center horizontally
+            max-width: 100%; // Ensure it doesn't overflow
+        }
+
+        text.annotation_text {
+            font-family: 'Open Sans', verdana, arial, sans-serif;
+            font-size: 15px;
+            fill: rgb(0, 0, 100);
+            fill-opacity: 0.8;
+            font-weight: normal;
+            font-style: normal;
+            font-variant: normal;
+            white-space: pre;
+            background-color: aqua;
+        }
+    }
+}
+
+
+// Form validation styles - moved outside nested structure
+.form-control {
+    &.is-invalid {
+        border-color: $error-color;
+        background-color: rgba($error-color, 0.05);
+
+        &:focus {
+            box-shadow: 0 0 0 2px rgba($error-color, 0.1);
+        }
+    }
+}
+
+
+// Responsive adjustments for Sankey diagram
+@media (min-width: 992px) {
+    .sankey-diagram-container {
+        .plotly-container {
+            width: 90%;
+            margin: 0 auto;
+        }
+    }
+}
+
+@media (min-width: 1200px) {
+    .sankey-diagram-container {
+        .plotly-container {
+            width: 85%;
+        }
+    }
+}
+
+// Ensure plotly SVG elements are centered
+.main-svg {
+    margin: 0 auto !important;
+}
+
+// Center filter panel on smaller screens
+@media (max-width: 768px) {
+    .filter-panel {
+        .sankey-filters {
+            .filter-group {
+                width: 100%;
+            }
+        }
+    }
+}

@@ -1,6 +1,13 @@
 /* Styling for base layout */
+html, body {
+    font-family: $font-family;
+    font-size: $base-font-size;
+    line-height: 1.5;
+    color: $text-color;
+    background-color: $background-lighter;
+}
+
 body {
-    font-family: Arial, sans-serif;
     margin: 0;
     padding: 20px;
     line-height: 1.6;
@@ -11,6 +18,7 @@ body {
 .container {
     max-width: 1200px;
     margin: 0 auto;
+    padding: $padding-lg;
 }
 
 .nav {
@@ -133,13 +141,15 @@ details ul {
 }
 
 h1, h2, h3, h4, h5, h6 {
-    color: $text-color;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
+    font-weight: 500;
+    line-height: 1.2;
+    margin-bottom: $margin-base;
+    color: $text-dark;
 }
 
 h1 {
-    font-size: 2em;
+    font-size: $large-font-size * 1.5;
+    margin-bottom: $margin-lg;
     color: $primary-color;
 }
 
@@ -261,7 +271,7 @@ h2 {
 }
 
 .card {
-    @extend %section-card;
+    @include card;
 }
 
 .grid {
@@ -384,3 +394,56 @@ h2 {
         }
     }
 }
+
+// Links
+a {
+    color: $primary-color;
+    text-decoration: none;
+    transition: color $transition-quick ease;
+
+    &:hover {
+        color: $primary-dark;
+        text-decoration: underline;
+    }
+}
+
+// Common utility classes
+.hidden {
+    display: none !important;
+}
+
+.center {
+    text-align: center;
+}
+
+.error {
+    color: $error-color;
+}
+
+.success {
+    color: $success-color;
+}
+
+.warning {
+    color: $warning-color;
+}
+
+.text-muted {
+    color: $text-muted;
+}
+
+// Spacing utilities
+.mt-lg { margin-top: $margin-lg; }
+.mb-lg { margin-bottom: $margin-lg; }
+.ml-lg { margin-left: $margin-lg; }
+.mr-lg { margin-right: $margin-lg; }
+
+.mt-base { margin-top: $margin-base; }
+.mb-base { margin-bottom: $margin-base; }
+.ml-base { margin-left: $margin-base; }
+.mr-base { margin-right: $margin-base; }
+
+.mt-sm { margin-top: $margin-sm; }
+.mb-sm { margin-bottom: $margin-sm; }
+.ml-sm { margin-left: $margin-sm; }
+.mr-sm { margin-right: $margin-sm; }

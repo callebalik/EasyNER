@@ -1,0 +1,369 @@
+// Numeric filter component styling
+.numeric-filter {
+    position: relative;
+    margin-top: 5px;
+
+    &.has-active-filter {
+        .filter-toggle {
+            background-color: rgba($primary-color, 0.15);
+            border-color: $primary-color;
+            color: darken($primary-color, 10%);
+
+            i {
+                color: $primary-color;
+            }
+        }
+    }
+
+    .filter-toggle {
+        cursor: pointer;
+        padding: 4px 8px;
+        border: 1px solid $border-color;
+        border-radius: $border-radius;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.9em;
+        background-color: $background-light;
+        transition: all 0.2s ease;
+
+        i {
+            font-size: 0.85em;
+            color: $text-light;
+            transition: color 0.2s ease;
+        }
+
+        &:hover {
+            background-color: rgba($primary-color, 0.1);
+            border-color: rgba($primary-color, 0.3);
+
+            i {
+                color: $primary-color;
+            }
+        }
+
+        .active-filter-indicator {
+            font-size: 0.8em;
+            color: $primary-color;
+            font-weight: 500;
+        }
+    }
+
+    .numeric-filter-dropdown {
+        display: none;
+        position: absolute;
+        left: 0;
+        top: 100%;
+        background: white;
+        border: 1px solid $border-color;
+        padding: 15px;
+        margin-top: 5px;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        border-radius: $border-radius;
+        width: 320px;
+
+        &::before {
+            content: '';
+            position: absolute;
+            top: -6px;
+            left: 20px;
+            width: 12px;
+            height: 12px;
+            background: white;
+            border-left: 1px solid $border-color;
+            border-top: 1px solid $border-color;
+            transform: rotate(45deg);
+        }
+
+        .filter-section {
+            &:not(:first-child) {
+                margin-top: 15px;
+                padding-top: 15px;
+                border-top: 1px solid $border-color;
+            }
+
+            .section-title {
+                font-weight: 500;
+                color: $text-color;
+                margin-bottom: 8px;
+                font-size: 0.95em;
+            }
+        }
+
+        .filter-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+
+            .control-row {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+
+                select {
+                    flex: 2;
+                    padding: 6px;
+                    border: 1px solid $border-color;
+                    border-radius: $border-radius;
+                    background: white;
+                    font-size: 0.9em;
+
+                    &:focus {
+                        border-color: $primary-color;
+                        outline: none;
+                        box-shadow: 0 0 0 2px rgba($primary-color, 0.1);
+                    }
+                }
+
+                input[type="number"] {
+                    flex: 1;
+                    padding: 6px;
+                    border: 1px solid $border-color;
+                    border-radius: $border-radius;
+                    font-size: 0.9em;
+
+                    &:focus {
+                        border-color: $primary-color;
+                        outline: none;
+                        box-shadow: 0 0 0 2px rgba($primary-color, 0.1);
+                    }
+                }
+            }
+        }
+
+        .stats-section {
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+                margin: 12px 0;
+
+                .stat-card {
+                    background: $background-lighter;
+                    padding: 8px;
+                    border-radius: $border-radius;
+
+                    .stat-label {
+                        font-size: 0.8em;
+                        color: $text-light;
+                        margin-bottom: 2px;
+                    }
+
+                    .stat-value {
+                        font-weight: 500;
+                        color: $text-color;
+                        font-size: 0.95em;
+                    }
+                }
+            }
+
+            .distribution-chart {
+                position: relative;
+                margin: 15px 0;
+                padding: 10px;
+                background: map-get($chart-colors, 'background');
+                border-radius: $border-radius;
+                height: $distribution-height;
+                min-height: 100px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                .loading-indicator.stats {
+                    width: 100%;
+                }
+
+                canvas {
+                    width: 100% !important;
+                    height: 100% !important;
+                    max-width: 100%;
+                    max-height: $distribution-height;
+                }
+
+                .empty-message,
+                .error-message {
+                    text-align: center;
+                    max-width: 90%;
+                    margin: 0 auto;
+
+                    i {
+                        font-size: 1.8em;
+                        margin-bottom: 8px;
+                        display: block;
+                    }
+                }
+
+                .percentile-marker-container {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    pointer-events: none; // Allow clicks to pass through to the chart
+
+                    .percentile-marker {
+                        position: absolute;
+                        width: $marker-line-width;
+                        height: 100%;
+                        background-color: rgba($text-color, 0.5);
+                        pointer-events: auto; // Make markers clickable
+                        cursor: pointer;
+                        z-index: $z-dropdown;
+
+                        &::before {
+                            content: '';
+                            position: absolute;
+                            width: $marker-dot-size;
+                            height: $marker-dot-size;
+                            background-color: $text-color;
+                            border-radius: 50%;
+                            top: 0;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                            transition: all $transition-quick ease;
+                        }
+
+                        .percentile-marker-label {
+                            position: absolute;
+                            top: 10px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            background-color: rgba($background-color, 0.9);
+                            padding: 2px 4px;
+                            border-radius: $border-radius;
+                            font-size: $small-font-size;
+                            font-weight: 500;
+                            color: $text-color;
+                            user-select: none;
+                            transition: all $transition-quick ease;
+                        }
+
+                        .percentile-tooltip {
+                            position: absolute;
+                            top: 40%;
+                            left: 50%;
+                            transform: translate(-50%, -50%) scale(0);
+                            background-color: rgba($text-color, 0.9);
+                            color: $background-color;
+                            padding: 3px 6px;
+                            border-radius: $border-radius;
+                            font-size: $small-font-size;
+                            opacity: 0;
+                            transition: all $transition-quick ease;
+                            white-space: nowrap;
+                            z-index: $z-tooltip;
+                        }
+
+                        &:hover {
+                            background-color: $primary-color;
+
+                            &::before {
+                                background-color: $primary-color;
+                                width: $marker-dot-size * 1.2;
+                                height: $marker-dot-size * 1.2;
+                            }
+
+                            .percentile-tooltip {
+                                opacity: 1;
+                                transform: translate(-50%, -50%) scale(1);
+                            }
+                        }
+
+                        &.selected {
+                            background-color: $primary-color;
+
+                            &::before {
+                                background-color: $primary-color;
+                                width: $marker-dot-size-selected;
+                                height: $marker-dot-size-selected;
+                            }
+
+                            .percentile-marker-label {
+                                background-color: $primary-color;
+                                color: $background-color;
+                            }
+                        }
+                    }
+                }
+            }
+
+            .percentile-grid {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: $padding-base;
+                margin: $margin-base 0;
+
+                .percentile-card {
+                    @extend %hover-card;
+                    padding: $padding-base;
+                    cursor: pointer;
+
+                    .value-bar {
+                        .fill {
+                            background-color: map-get($value-bar-colors, 'default');
+
+                            &.selected {
+                                background-color: map-get($value-bar-colors, 'selected');
+                            }
+                        }
+                    }
+
+                    &.selected {
+                        border-color: $primary-color;
+                        background-color: rgba($primary-color, 0.05);
+
+                        .percentile-label {
+                            color: $primary-color;
+                            font-weight: 600;
+                        }
+
+                        .percentile-value {
+                            color: $primary-color;
+                        }
+
+                        .value-bar .fill {
+                            background-color: $primary-color;
+                        }
+                    }
+                }
+            }
+        }
+
+        .actions-section {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 15px;
+
+            button {
+                padding: 6px 12px;
+                border: 1px solid $border-color;
+                border-radius: $border-radius;
+                font-size: 0.9em;
+                cursor: pointer;
+                transition: all 0.2s ease;
+
+                &.clear-btn {
+                    background: white;
+                    color: $text-color;
+
+                    &:hover {
+                        background: $background-lighter;
+                        border-color: darken($border-color, 10%);
+                    }
+                }
+
+                &.apply-btn {
+                    background: $primary-color;
+                    color: white;
+                    border-color: $primary-color;
+
+                    &:hover {
+                        background: darken($primary-color, 5%);
+                    }
+                }
+            }
+        }
+    }
+}

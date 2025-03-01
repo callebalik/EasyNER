@@ -1,0 +1,179 @@
+// Value bar component styling
+.value-bar {
+    width: 100%;
+    height: 4px;
+    background-color: rgba($text-light, 0.1);
+    border-radius: 2px;
+    margin-top: 4px;
+    overflow: hidden;
+
+    .fill {
+        height: 100%;
+        background-color: rgba($primary-color, 0.5);
+        transition: width 0.3s ease;
+        border-radius: inherit;
+
+        &.selected {
+            background-color: $primary-color;
+        }
+    }
+
+    &.animated .fill {
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+}
+
+// Range indicator styling
+.range-indicator {
+    position: relative;
+    padding: 8px 0;
+    margin: 12px 0;
+
+    .range-track {
+        height: 4px;
+        background: rgba($primary-color, 0.1);
+        border-radius: 2px;
+        position: relative;
+    }
+
+    .range-fill {
+        position: absolute;
+        height: 100%;
+        background: $primary-color;
+        border-radius: 2px;
+    }
+
+    .range-marker {
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        background: white;
+        border: 2px solid $primary-color;
+        border-radius: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        cursor: pointer;
+        transition: transform 0.2s ease;
+
+        &:hover {
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+
+        &.start {
+            left: 0;
+        }
+
+        &.end {
+            right: 0;
+        }
+    }
+
+    .range-label {
+        position: absolute;
+        font-size: 0.8em;
+        color: $text-light;
+        top: -20px;
+        transform: translateX(-50%);
+
+        &.start {
+            left: 0;
+        }
+
+        &.end {
+            right: 0;
+            transform: translateX(50%);
+        }
+    }
+}
+
+// Value distribution visualization
+.distribution-viz {
+    margin: 15px 0;
+    padding: 10px;
+    background: $background-lighter;
+    border-radius: $border-radius;
+    position: relative;
+
+    .distribution-bars {
+        display: flex;
+        align-items: flex-end;
+        height: 100px;
+        gap: 2px;
+
+        .bar {
+            flex: 1;
+            background: rgba($primary-color, 0.5);
+            transition: height 0.3s ease;
+            position: relative;
+            min-width: 4px;
+
+            &:hover {
+                background: rgba($primary-color, 0.8);
+
+                .bar-tooltip {
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(-100%);
+                }
+            }
+
+            .bar-tooltip {
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%) translateY(-90%);
+                background: rgba($text-color, 0.9);
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 0.8em;
+                white-space: nowrap;
+                pointer-events: none;
+                opacity: 0;
+                transition: all 0.2s ease;
+
+                &::after {
+                    content: '';
+                    position: absolute;
+                    top: 100%;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    border: 4px solid transparent;
+                    border-top-color: rgba($text-color, 0.9);
+                }
+            }
+        }
+    }
+
+    .axis {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 1px;
+        background: $border-color;
+
+        .tick {
+            position: absolute;
+            bottom: 0;
+            width: 1px;
+            height: 4px;
+            background: $border-color;
+
+            .tick-label {
+                position: absolute;
+                bottom: -20px;
+                left: 50%;
+                transform: translateX(-50%);
+                font-size: 0.75em;
+                color: $text-light;
+                white-space: nowrap;
+            }
+
+            &.p0 { left: 0; }
+            &.p25 { left: 25%; }
+            &.p50 { left: 50%; }
+            &.p75 { left: 75%; }
+            &.p100 { right: 0; }
+        }
+    }
+}

@@ -7,8 +7,10 @@ from .statistics.sankey_diagram import create_disease_phenomena_sankey
 from .statistics.visualization_manager import VisualizationManager
 import logging
 from logging.handlers import RotatingFileHandler
-from .data_model.schema import *
-
+import re
+import sys
+import importlib
+import time
 
 def setup_logging(app):
     """Configure logging for the application"""
@@ -1761,6 +1763,109 @@ def ne_presentation():
         app.logger.error(f"Error loading NE Presentation: {e}")
         return render_template("error.html", message="Error loading NE Presentation"), 500
 
+@app.route("/reload-server", methods=["POST"])
+def reload_server():
+    """Reload modules and refresh the server without restarting the process."""
+    try:
+        app.logger.info("Reload server request received")
+
+        # Get modules to reload - we're particularly interested in our own modules
+        import sys
+        import importlib
+
+        # Track detailed reload information for the response
+        reload_details = {
+            "attempted": 0,
+            "reloaded": 0,
+            "failed": 0,
+            "skipped": 0,
+            "successful_modules": [],
+            "failed_modules": {},
+            "skipped_modules": []
+        }
+
+        # Collect all modules that are part of our application
+        modules_to_reload = []
+        for module_name, module in list(sys.modules.items()):
+            # Filter for our application modules
+            if module_name.startswith('scripts.') or module_name == 'scripts':
+                modules_to_reload.append(module_name)
+                reload_details["attempted"] += 1
+
+        # Log which modules we'll reload
+        app.logger.info(f"Preparing to reload {len(modules_to_reload)} modules")
+
+        # Sort modules by dependency order (parent modules after their children)
+        # This helps with proper reloading order
+        modules_to_reload.sort(key=lambda m: -m.count('.'))
+
+        # Reload collected modules
+        for module_name in modules_to_reload:
+            try:
+                if module_name in sys.modules:
+                    # Check if module has reload capability (some built-ins don't)
+                    if hasattr(sys.modules[module_name], '__file__') and sys.modules[module_name].__file__:
+                        # Perform the actual reload
+                        importlib.reload(sys.modules[module_name])
+                        reload_details["reloaded"] += 1
+                        reload_details["successful_modules"].append(module_name)
+                        app.logger.debug(f"Reloaded module: {module_name}")
+                    else:
+                        # Skip modules without a file (built-ins or C extensions)
+                        reload_details["skipped"] += 1
+                        reload_details["skipped_modules"].append(module_name)
+                        app.logger.debug(f"Skipped module (no file): {module_name}")
+            except Exception as e:
+                reload_details["failed"] += 1
+                reload_details["failed_modules"][module_name] = str(e)
+                app.logger.error(f"Error reloading module {module_name}: {e}")
+
+        # Recompile SCSS files
+        scss_status = "failed"
+        try:
+            compile_scss()
+            scss_status = "successful"
+            app.logger.info("Recompiled SCSS files")
+        except Exception as e:
+            app.logger.error(f"Error recompiling SCSS: {e}")
+
+        # We skip re-initializing routes to avoid the endpoint overwriting issue
+        # Routes have already been registered and will use the reloaded module code
+        app.logger.info(f"Server reload completed. "
+                        f"Reloaded {reload_details['reloaded']} modules, "
+                        f"skipped {reload_details['skipped']}, "
+                        f"failed {reload_details['failed']}.")
+
+        # Return detailed information about the reload process
+        return jsonify({
+            "status": "success",
+            "message": f"Server reloaded. Refreshed {reload_details['reloaded']} modules.",
+            "details": {
+                "modules": {
+                    "attempted": reload_details["attempted"],
+                    "reloaded": reload_details["reloaded"],
+                    "failed": reload_details["failed"],
+                    "skipped": reload_details["skipped"]
+                },
+                "successful_modules": reload_details["successful_modules"],
+                "failed_modules": reload_details["failed_modules"],
+                "scss_compilation": scss_status
+            }
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f"Error during server reload: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to reload server: {str(e)}"
+        }), 500
+
+@app.route("/dev/reload")
+def dev_reload_page():
+    """Developer page with reload server button."""
+    return render_template("dev_reload.html",
+                          server_status="Running",
+                          modules_count=len([m for m in sys.modules if m.startswith('scripts.')]))
 
 @app.route("/monitor")
 def show_monitoring_status():
