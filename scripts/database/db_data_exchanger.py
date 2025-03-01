@@ -19,8 +19,9 @@ class DBDataExchanger:
         self._setup_necessary_views()
 
     def _setup_necessary_views(self):
-        VIEW_NE_COMP.create_if_not_exists(cursor=self.cursor)
-        VIEW_NE_COMP.refresh(cursor=self.cursor)
+        VIEW_NE_COMP.create_if_not_exists(cursor=self.cursor, logger=self.logger)
+        VIEW_NE_COMP.refresh(cursor=self.cursor, logger=self.logger)
+        VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY.refresh(cursor=self.cursor, logger=self.logger)
 
     def _safe_count(self, table_name: str) -> int:
         """Get count with zero-value protection"""

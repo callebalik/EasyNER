@@ -52,8 +52,8 @@ class SchemaManager(BaseComponent):
         self.stmt_view_eco_deprecated = f"""--sql
         CREATE VIEW IF NOT EXISTS view_eco_deprecated AS
         SELECT
-            eco.e1_id_normalized,
-            eco.e2_id_normalized,
+            eco.{E1_NORM_ID} as {E1_NORM_ID},
+            eco.{E2_NORM_ID},
             nea1.{TXT_NORM} as e1_txt_norm,
             nea2.{TXT_NORM} as e2_txt_norm,
             eco.fq_document_level,
@@ -62,14 +62,16 @@ class SchemaManager(BaseComponent):
             eco.pmi
         FROM eco_aggregated_deprecated eco
         JOIN {TABLE_NE_AGGR} nea1
-            ON eco.e1_id_normalized = nea1.norm_id
-        JOIN eo_aggr nea2
-            ON eco.e2_id_normalized = nea2.norm_id
+            ON eco.{E1_NORM_ID} = nea1.norm_id
+        JOIN {TABLE_NE_AGGR} nea2
+            ON eco.{E2_NORM_ID} = nea2.norm_id
         """
 
         self.stmt_view_deprecated_pnm_dis = f"""--sql
         CREATE VIEW IF NOT EXISTS view_deprecated_pnm_dis AS
         SELECT
+            ...
+            ...
         """
 
         # Drop existing view if it exists
@@ -146,13 +148,13 @@ class Analysis(BaseComponent):
                         WHERE NOT EXISTS ( -- Do not include existing co-occurrences
                             SELECT 1
                             FROM {TABLE_COOCCURRENCES} ec
-                            WHERE ec.e1_id = e1.id AND ec.e2_id = e2.id
+                                WHERE ec.{E1_ID} = e1.id AND ec.{E2_ID} = e2.id
                         )
                     )
                     SELECT -- Return the final distinct pair
-                        p.e1_id,
-                        p.e2_id
-                                {", (SELECT ABS(e1." + {SENT_IDX} + " - e2." + {SENT_IDX} + ") FROM doc_entities e1 JOIN doc_entities e2 ON e1.id = p.e1_id AND e2.id = p.e2_id) AS sentence_distance" if level == "sentence" else ""}
+                            p.{E1_ID},
+                            p.{E2_ID}
+                                {", (SELECT ABS(e1." + {SENT_IDX} + " - e2." + {SENT_IDX} + ") FROM doc_entities e1 JOIN doc_entities e2 ON e1.id = p.{E1_ID} AND e2.id = p.{E2_ID}) AS sentence_distance" if level == "sentence" else ""}
                     FROM distinct_pairs p
                 """
 
@@ -173,7 +175,7 @@ class Analysis(BaseComponent):
             """Writes a batch of entity co-occurrences to the database using executemany."""
             logger.info(f"Writing batch of {len(batch)} co-occurrences to the database.")
             sql = f"""--sql
-                    INSERT INTO {TABLE_COOCCURRENCES} (e1_id, e2_id {", sentence_distance" if level == "sentence" else ""})
+                        INSERT INTO {TABLE_COOCCURRENCES} ({E1_ID}, {E2_ID} {", sentence_distance" if level == "sentence" else ""})
                     VALUES (?, ? {", ?" if level == "sentence" else ""})
                 """
             try:
@@ -326,7 +328,7 @@ class Analysis(BaseComponent):
                         WHERE NOT EXISTS (
                             SELECT 1
                             FROM {TABLE_DIS_PNM} dp
-                            WHERE dp.e1_id = dis.{NE_PRIMARY_ID} AND dp.e2_id = pnm.{NE_PRIMARY_ID} -- Do not include existing co-occurrences
+                            WHERE dp.{E1_ID} = dis.{NE_PRIMARY_ID} AND dp.{E2_ID} = pnm.{NE_PRIMARY_ID} -- Do not include existing co-occurrences
                         )
                     )
                     SELECT

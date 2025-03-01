@@ -48,6 +48,8 @@ DOC_COUNT = "DOC_COUNT"  # Document count column name
 SENT_DIST = "SENT_DISTANCE"  # Sentence distance column name
 
 CO_AGGR_ID = "CO_AGGR_ID"  # Aggregated ID column name
+NE1 = "NE1"
+NE2 = "NE2"
 E1_ID = "E1_ID"
 E2_ID = "E2_ID"
 E1_NORM_ID = "E1_NORM_ID"
@@ -55,10 +57,16 @@ E2_NORM_ID = "E2_NORM_ID"
 E1_CLASS_ID = "E1_CLASS_ID"
 E2_CLASS_ID = "E2_CLASS_ID"
 
+AVG_SENT_DIST = "avg_sentence_distance"
+MIN_SENT_DIST = "min_sentence_distance"
+MAX_SENT_DIST = "max_sentence_distance"
+
+
 FQ_DOCUMENT_LEVEL = "FQ_DOCUMENT_LEVEL"
 FQ_SENTENCE_LEVEL = "FQ_SENTENCE_LEVEL"
 UNIQ_DOCS = "UNIQ_DOCS"
 PMI = "PMI"
+NPMI = "NPMI"
 BACKLINK_FOR_CO_OCCURRENCES = "BACKLINK_FOR_CO_OCCURRENCES"  # Extra column, since the primary key is a composite key
 
 VIEW_PREFIX = "v_"
@@ -201,6 +209,7 @@ SCHEMA_TABLE_COOCCURRENCES_AGGR = f"""--sql
         {FQ_SENTENCE_LEVEL} INTEGER DEFAULT NULL,
         {UNIQ_DOCS} INTEGER DEFAULT NULL,
         {PMI} REAL DEFAULT NULL,
+
         PRIMARY KEY ({E1_NORM_ID}, {E2_NORM_ID})
         FOREIGN KEY ({E1_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NE_NORM_ID}),
         FOREIGN KEY ({E2_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NE_NORM_ID})
@@ -431,3 +440,37 @@ class Index:
 
 
 IDX_NE_ERROR_ID_NOT_NULL = Index(TABLE_NE, [ERROR_ID], where=f"{ERROR_ID} IS NOT NULL")
+
+
+
+VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY = View(
+    name=TABLE_DIS_PNM_AGGR,
+    suffix="ROW_FACTORY",
+    select_stmt=f"""--sql
+            SELECT
+                    co.{E1_NORM_ID},
+                    co.{E2_NORM_ID},
+                    ne1.{TXT_NORM} as DIS, -- only variables with non generic names
+                    ne2.{TXT_NORM} as PNM, -- only variables with non generic names
+                    -- ne1.{NE_CLASS} as {NE1 + "_" + NE_CLASS}, remove untill migration to non specific use for aggregate co table without classes
+                    -- ne2.{NE_CLASS} as {NE2 + "_" + NE_CLASS},
+                    co.{FQ_DOCUMENT_LEVEL} as {FQ_DOCUMENT_LEVEL},
+                    co.{FQ_SENTENCE_LEVEL} as {FQ_SENTENCE_LEVEL},
+                    co.{UNIQ_DOCS} as {UNIQ_DOCS},
+                    co.{PMI} as {PMI},
+                    co.{NPMI} as {NPMI},
+                    co.{AVG_SENT_DIST} as {AVG_SENT_DIST},
+                    co.{MIN_SENT_DIST} as {MIN_SENT_DIST},
+                    co.{MAX_SENT_DIST} as {MAX_SENT_DIST},
+                    ne1.{FQ} as {NE1 + "_" + FQ},
+                    ne2.{FQ} as {NE2 + "_" + FQ},
+                    ne1.{UNIQ_DOCS}  as {NE1 + "_" + UNIQ_DOCS},
+                    ne2.{UNIQ_DOCS} as {NE2 + "_" + UNIQ_DOCS}
+                FROM
+                    {TABLE_DIS_PNM_AGGR} co
+                JOIN {TABLE_NE_AGGR} ne1 ON co.{E1_NORM_ID} = ne1.{NE_NORM_ID}
+                JOIN {TABLE_NE_AGGR} ne2 ON co.{E2_NORM_ID} = ne2.{NE_NORM_ID}
+            """,
+)
+
+
