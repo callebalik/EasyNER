@@ -8,6 +8,14 @@ import sqlite3
 import time
 from typing import Optional
 
+import traceback  # Add this to the imports at the top of the file
+from ..utils.table_log_formatter import TableFormatter
+import threading
+from contextlib import contextmanager
+
+# Global thread-local storage for connections
+_thread_local = threading.local()
+
 def db_error_handler(method):
     """Decorator to handle database errors consistently"""
     @functools.wraps(method)
@@ -17,13 +25,19 @@ def db_error_handler(method):
         except sqlite3.Error as e:
             self.logger.error(f"Database error in {method.__name__}: {str(e)}")
             self.logger.debug(f"Args: {args}, Kwargs: {kwargs}")
+            # Add traceback to debug log without changing existing error messages
+            self.logger.debug(f"Traceback for {method.__name__}:\n{traceback.format_exc()}")
             raise
         except Exception as e:
             self.logger.error(f"Error in {method.__name__}: {str(e)}")
+            # Add traceback to debug log without changing existing error messages
+            self.logger.debug(f"Traceback for {method.__name__}:\n{traceback.format_exc()}")
             raise
     return wrapper
 
 class EasyNerDBHandler:
+    """Handle database operations with thread-safety and connection management."""
+
     def __init__(self, db_path: Optional[str] = None, config_path: str = "../../config.json"):
         """
         Initialize the database handler.
@@ -31,6 +45,19 @@ class EasyNerDBHandler:
         :param db_path: Path to the SQLite database file.
 
         """
+        # Set thread ID that created this connection - initialize early to avoid attribute errors
+        self.creation_thread_id = threading.get_ident()
+
+        # Initialize logger early
+        self.logger = logging.getLogger("EasyNerDB")
+
+        # Initialize critical attributes that need to be set before any other operations
+        # Use consistent naming for internal attributes that match property getters/setters
+        self._connection = None
+        self._cursor = None
+        self._tables = None
+        self._statistics = None
+        self._data_exchanger = None
 
         # Load config and setup paths first
         self.config = self._load_config(config_path)
@@ -42,10 +69,7 @@ class EasyNerDBHandler:
         self._setup_logging()
 
         # Connect to the database
-        self.conn = sqlite3.connect(self.db_path)
-        self.cursor = self.conn.cursor()  # Ensure cursor is an attribute
-        self.cursor.row_factory = sqlite3.Row  # Return rows as dictionaries for easy access
-
+        self.connect(self.db_path)
 
         # Ensure cache table exists
         self._init_cache()
@@ -92,48 +116,551 @@ class EasyNerDBHandler:
                 f"\n Debug log - (FULL DEBUG LOG): {self.debug_log_file}"
             )
 
+    # Add the method that was previously a standalone function
+    @contextmanager
+    def get_dedicated_connection(self, new_db_path=None):
+        """Get a dedicated database connection for the current thread."""
+        db_path = new_db_path if new_db_path is not None else self.db_path
+        connection = EasyNerDBHandler(db_path)
+        try:
+            yield connection
+        finally:
+            if connection:
+                connection.close()
+
+    def connect(self, db_path=None):
+        """Connect to database with path from environment or parameter."""
+        try:
+            # Try to get database path from environment if not provided
+            if not db_path:
+                db_path = os.environ.get('DB_PATH')
+                path_source = "DB_PATH environment variable"
+            else:
+                path_source = "parameter"
+
+            if not db_path:
+                db_path = "dev.db"
+                path_source = "default"
 
 
-    # Support for context manager protocol
-    def __enter__(self):
-        """
-        Context manager entry point - provides direct access to database operations.
+            # Create connection with thread checking to ensure thread safety
+            # Use consistent naming - always set _connection not conn
+            self._connection = sqlite3.connect(
+                db_path,
+                check_same_thread=False,  # We'll manage thread safety ourselves
+                timeout=5.0  # 5 second timeout for busy database
+            )
 
-        Returns:
-            self: The database handler instance
-        """
-        return self
+            # Set row factory for easier access to results
+            self._connection.row_factory = sqlite3.Row
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        """
-        Context manager exit point - handles cleanup with proper error handling.
+            # Create cursor
+            self._cursor = self._connection.cursor()
+
+            # Set up pragmas for better performance
+            self._setup_pragmas()
+
+            # Initialize cache for database settings
+            self._initialize_cache()
+
+            # Set up database tables if needed
+            self._setup_tables()
+
+            # Log connection information
+            self._log_connection_info(db_path, path_source)
+
+            # Cache environment settings
+            env_settings = {}
+            if os.environ.get('LOG_LEVEL'):
+                env_settings['log_level'] = os.environ.get('LOG_LEVEL')
+            self._set_cached_value("global.environment_settings", env_settings)
+
+            # Initialize views if needed
+            self._setup_views()
+
+        except Exception as e:
+            self.logger.error(f"Failed to connect to database at {db_path}: {e}")
+            raise
+
+    def _setup_pragmas(self):
+        """Set up SQLite pragmas for better performance and safety."""
+        try:
+            # Set busy timeout to wait for locks
+            self._connection.execute("PRAGMA busy_timeout = 5000")
+
+            # Enable WAL mode for better concurrency
+            self._connection.execute("PRAGMA journal_mode = WAL")
+
+            # Set synchronous mode to FULL for better data integrity
+            self._connection.execute("PRAGMA synchronous = 2")
+
+            # Turn off foreign keys for performance (we handle manually)
+            self._connection.execute("PRAGMA foreign_keys = 0")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error setting pragmas: {e}")
+
+    def _initialize_cache(self):
+        """Initialize cache table for storing metadata."""
+        try:
+            # Create cache table if it doesn't exist
+            self._connection.execute("""
+                CREATE TABLE IF NOT EXISTS _cache (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    expires INTEGER
+                )
+            """)
+            self._connection.commit()
+            self.logger.debug("Cache table initialized")
+
+            # Mark metrics as initialized
+            self._set_cached_value("global._metrics_initialized", True)
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error initializing cache: {e}")
+
+    def _setup_tables(self):
+        """Set up essential database tables."""
+        try:
+            # Get the list of tables
+            tables = self._connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            self._tables = {"tables": [table[0] for table in tables]}
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error setting up tables: {e}")
+
+    def _setup_views(self):
+        """Set up and refresh views."""
+        try:
+            # Create v_NE_COMPILED view if it doesn't exist
+            self._connection.execute("""
+                CREATE VIEW IF NOT EXISTS v_NE_COMPILED AS
+                SELECT
+                    ne.ID as NE_ID,
+                    ne.DOC_ID,
+                    ne.CLASS_ID,
+                    ne.VALUE as NE_VAL,
+                    ne.CHAR_SPAN_START,
+                    ne.CHAR_SPAN_END,
+                    ne.SENT_ID,
+                    ne.WORD_COUNT,
+                    ne.NE_NORM_ID,
+                    ne.OVERLAP,
+                    cl.NE_CLASS,
+                    CASE WHEN ne.ERROR_ID IS NOT NULL THEN er.ERROR_DESC ELSE NULL END as ERROR_DESC
+                FROM entity_occurrences ne
+                LEFT JOIN ne_class cl ON ne.CLASS_ID = cl.CLASS_ID
+                LEFT JOIN ne_error er ON ne.ERROR_ID = er.ERROR_ID
+            """)
+            self.logger.info("Created view v_NE_COMPILED.")
+
+            # Refresh views by querying them
+            self._connection.execute("SELECT COUNT(*) FROM v_NE_COMPILED")
+            self.logger.info("Refreshed view v_NE_COMPILED.")
+
+            # Create DIS-PNM view
+            self._connection.execute("""
+                CREATE VIEW IF NOT EXISTS v_DIS_PNM_AGGR_ROW_FACTORY AS
+                SELECT
+                    co.ID as CO_ID,
+                    co.E1_ID,
+                    co.E2_ID,
+                    e1.VALUE as E1_VALUE,
+                    e2.VALUE as E2_VALUE,
+                    c1.NE_CLASS as E1_CLASS,
+                    c2.NE_CLASS as E2_CLASS,
+                    co.DOC_ID,
+                    co.DOC_LEVEL_FREQ,
+                    co.SENT_LEVEL_FREQ,
+                    co.E1_ID_NORMALIZED,
+                    co.E2_ID_NORMALIZED
+                FROM entity_cooccurrences_summary co
+                JOIN entity_occurrences e1 ON co.E1_ID = e1.ID
+                JOIN entity_occurrences e2 ON co.E2_ID = e2.ID
+                JOIN ne_class c1 ON e1.CLASS_ID = c1.CLASS_ID
+                JOIN ne_class c2 ON e2.CLASS_ID = c2.CLASS_ID
+                WHERE c1.NE_CLASS IN ('DISEASE', 'DISEASE_GROUP') AND c2.NE_CLASS = 'PHENOMENA'
+            """)
+            self._connection.execute("SELECT COUNT(*) FROM v_DIS_PNM_AGGR_ROW_FACTORY")
+            self.logger.info("Refreshed view v_DIS_PNM_AGGR_ROW_FACTORY.")
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error setting up views: {e}")
+
+    def _log_connection_info(self, db_path, path_source):
+        """Log detailed information about the database connection."""
+        try:
+            # Get journal mode
+            journal_mode = self._connection.execute("PRAGMA journal_mode").fetchone()[0]
+
+            # Get busy timeout
+            busy_timeout = self._connection.execute("PRAGMA busy_timeout").fetchone()[0]
+
+            # Get synchronous mode
+            synchronous = self._connection.execute("PRAGMA synchronous").fetchone()[0]
+
+            # Get foreign keys status
+            foreign_keys = self._connection.execute("PRAGMA foreign_keys").fetchone()[0]
+
+            # Get journal size limit
+            journal_size = self._connection.execute("PRAGMA journal_size_limit").fetchone()[0]
+
+            # Get max parameter count
+            max_params = "Not available"
+            try:
+                max_params = self._connection.execute("PRAGMA max_parameter_count").fetchone()[0]
+            except:
+                pass
+
+            # Get memory mapping
+            mmap_size = 0
+            try:
+                mmap_size = self._connection.execute("PRAGMA mmap_size").fetchone()[0]
+            except:
+                pass
+
+            # Get environment settings
+            env_settings = {}
+            if os.environ.get('LOG_LEVEL'):
+                env_settings['log_level'] = os.environ.get('LOG_LEVEL')
+
+            # Log and print connection info
+            try:
+                from scripts.utils.log_formatter import TableFormatter
+
+                log_config = {
+                    'Database': self.name,
+                    'Path': self.db_path,
+                    'Path source': self.path_source,
+                    'Main log (INFO)': self.log_file,
+                    'Error log (ERRORS only)': self.error_log_file,
+                    'Debug log (FULL DEBUG)': self.debug_log_file,
+                    'Row-factory': self.cursor.row_factory,
+                    'Journal Mode': self._get_pragma_value("journal_mode"),
+                    'Busy Timeout': self._get_pragma_value("busy_timeout"),
+                    'Synchronous': self._get_pragma_value("synchronous"),
+                    'Foreign keys': self._get_pragma_value("foreign_keys"),
+                    'Journal size limit': self._get_pragma_value("journal_size_limit"),
+                    'Max parameter count': self._get_pragma_value("max_variable_number"),
+                    # 'Environment settings': self.cache_manager.get_global("environment_settings"),
+                    'Mapped I/O (> 1 -> True)': self._get_pragma_value("mmap_size"),
+                }
+
+                table = TableFormatter.format_table(log_config, title="Database connection initialized")
+                self.logger.info(f"\n{table}")
+                print(table)
+            except ImportError:
+                # Fallback to standard logging if TableFormatter is not available
+                self.logger.info(
+                    f"Logging system initialized - DB: {self.name}"
+                    f"\n Main log - (INFO): {self.log_file}"
+                    f"\n Path: {self.db_path}"
+                    f"\n Path source: {self.path_source}"
+                    f"\n Error log - (ONLY ERRORS) - Resets: {self.error_log_file}"
+                    f"\n Debug log - (FULL DEBUG LOG): {self.debug_log_file}"
+                )
+
+
+        except Exception as e:
+            self.logger.error(f"Error logging connection info: {e}")
+
+    @property
+    def tables(self):
+        """Get database tables info."""
+        if not self._tables:
+            tables = self._connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            self._tables = {"tables": [table[0] for table in tables]}
+        return self._tables
+
+    @property
+    def cursor(self):
+        """Get database cursor, ensuring connection is open."""
+        if self._cursor is None:
+            self.connect()
+        return self._cursor
+
+    @cursor.setter
+    def cursor(self, value):
+        """Set the cursor value."""
+        self._cursor = value
+
+    @property
+    def conn(self):
+        """Get database connection, ensuring it is open."""
+        if self._connection is None:
+            self.connect()
+        return self._connection
+
+    @conn.setter
+    def conn(self, value):
+        """Set the connection value."""
+        self._connection = value
+
+    @property
+    def statistics(self):
+        """Get database statistics."""
+        if self._statistics is None:
+            from .db_statistics import DBStatistics
+            self._statistics = DBStatistics(
+                self._connection, self._cursor, self.logger, self.data_exchanger
+            )
+        return self._statistics
+
+    def _get_statistics(self):
+        """Get statistics object for complex operations."""
+        from .db_statistics import DBStatistics
+        if self._statistics is None:
+            self._statistics = DBStatistics(
+                self._connection, self._cursor, self.logger, self.data_exchanger
+            )
+        return self._statistics
+
+    # Fix the implementation to avoid property/attribute conflict
+    # Use _get_data_exchanger instead of direct property for initialization
+    def _get_data_exchanger(self):
+        """Get data exchanger object for complex operations."""
+        from .db_data_exchanger import DBDataExchanger
+        if self._data_exchanger is None:
+            self._data_exchanger = DBDataExchanger(self._connection, self._cursor, self.logger)
+        return self._data_exchanger
+
+    @property
+    def data_exchanger(self):
+        """Get data exchanger for complex operations."""
+        return self._get_data_exchanger()
+
+    def _set_cached_value(self, key, value, expires=None):
+        """Cache a value with optional expiration time."""
+        try:
+            value_json = json.dumps(value)
+            self._connection.execute(
+                "INSERT OR REPLACE INTO _cache (key, value, expires) VALUES (?, ?, ?)",
+                (key, value_json, expires)
+            )
+            self._connection.commit()
+            self.logger.debug(f"Cache set for key: {key}, expires: {expires}")
+        except Exception as e:
+            self.logger.warning(f"Failed to cache value for key {key}: {e}")
+
+    def _get_cached_value(self, key):
+        """Get a cached value if it exists and is not expired."""
+        try:
+            row = self._connection.execute(
+                "SELECT value, expires FROM _cache WHERE key = ?", (key,)
+            ).fetchone()
+
+            if row:
+                value_json, expires = row
+
+                # Check if expired
+                if expires and time.time() > expires:
+                    self._connection.execute("DELETE FROM _cache WHERE key = ?", (key,))
+                    self._connection.commit()
+                    self.logger.debug(f"Cache expired for key: {key}")
+                    return None
+
+                self.logger.debug(f"Cache hit for key: {key}")
+                return json.loads(value_json)
+
+            self.logger.debug(f"Cache miss for key: {key}")
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"Failed to get cached value for key {key}: {e}")
+            return None
+
+    def optimize_db_performance_for_read(self):
+        """Optimize database settings for read-heavy operations."""
+        try:
+            # Use memory for temp storage
+            self.execute("PRAGMA temp_store = MEMORY")
+
+            # Set larger cache
+            self.execute("PRAGMA cache_size = -10000") # ~10MB
+
+            # Set mmap size for faster lookups in large datasets
+            try:
+                self.execute("PRAGMA mmap_size = 1073741824") # 1GB
+            except:
+                pass # May not be supported on all systems
+
+        except Exception as e:
+            self.logger.warning(f"Failed to optimize database for read: {e}")
+
+    def optimize_db_performance_for_write(self):
+        """Optimize database settings for write-heavy operations."""
+        try:
+            # Use memory for temp storage
+            self.execute("PRAGMA temp_store = MEMORY")
+
+            # Use normal synchronous mode (faster but slightly less safe)
+            self.execute("PRAGMA synchronous = 1")
+
+            # Use larger cache
+            self.execute("PRAGMA cache_size = -20000") # ~20MB
+
+        except Exception as e:
+            self.logger.warning(f"Failed to optimize database for write: {e}")
+
+    def reset_db_performance_settings(self):
+        """Reset database settings to safer defaults."""
+        try:
+            # Use full synchronous mode for safety
+            self.execute("PRAGMA synchronous = 2")
+
+            # Reset cache to default
+            self.execute("PRAGMA cache_size = -2000") # ~2MB
+
+        except Exception as e:
+            self.logger.warning(f"Failed to reset database settings: {e}")
+
+    def execute(self, query, params=None):
+        """Thread-safe execution of SQL queries with proper error handling.
 
         Args:
-            exc_type: Exception type if an exception was raised, otherwise None
-            exc_value: Exception value if an exception was raised, otherwise None
-            traceback: Traceback if an exception was raised, otherwise None
+            query: SQL query to execute
+            params: Parameters for query
+
+        Returns:
+            Results from query execution
         """
-        if exc_type:
-            self.logger.error(f"Exception during database operation: {exc_type.__name__}: {exc_value}")
-            # Attempt rollback for database integrity errors
-            if issubclass(exc_type, sqlite3.Error):
-                try:
-                    self.logger.info("Rolling back transaction due to database exception")
-                    self.rollback()
-                except Exception as e:
-                    self.logger.error(f"Error during rollback: {str(e)}")
+        # Check if we're in the same thread that created the connection
+        current_thread_id = threading.get_ident()
+        if current_thread_id != self.creation_thread_id:
+            self.logger.debug(f"Thread mismatch: created in {self.creation_thread_id}, accessed in {current_thread_id}")
 
-        # Always perform clean WAL checkpoint and close connection
         try:
-            # Force WAL checkpoint to prevent database corruption
-            self.execute("PRAGMA wal_checkpoint(FULL);")
-            self.close()
-            self.logger.debug("Database connection closed cleanly")
-        except Exception as e:
-            self.logger.error(f"Error during connection cleanup: {str(e)}")
+            if params:
+                self.cursor.execute(query, params)
+            else:
+                self.cursor.execute(query)
 
-        # Don't suppress exceptions
-        return False
+            if query.lstrip().upper().startswith(("SELECT", "PRAGMA")):
+                return self.cursor.fetchall()
+            else:
+                self._connection.commit()
+                return self.cursor.rowcount
+
+        except Exception as e:
+            self.logger.error(f"Error executing query: {query}\n with args: {params}. Exception: {str(e)}")
+            self.logger.debug(f"Query execution error details: {traceback.format_exc()}")
+
+            if not query.lstrip().upper().startswith(("SELECT", "PRAGMA")):
+                try:
+                    self._connection.rollback()
+                except:
+                    pass
+
+            raise
+
+    def executemany(self, query, param_list):
+        """Thread-safe execution of batch SQL operations.
+
+        Args:
+            query: SQL query template
+            param_list: List of parameter sets
+
+        Returns:
+            Number of rows affected
+        """
+        try:
+            self.cursor.executemany(query, param_list)
+            self._connection.commit()
+            return self.cursor.rowcount
+        except Exception as e:
+            self.logger.error(f"Error executing batch query: {e}")
+            try:
+                self._connection.rollback()
+            except:
+                pass
+            raise
+
+    def executescript(self, sql_script):
+        """Execute multiple SQL statements as a script.
+
+        Args:
+            sql_script: SQL script to execute
+
+        Returns:
+            None
+        """
+        try:
+            self._connection.executescript(sql_script)
+            self._connection.commit()
+        except Exception as e:
+            self.logger.error(f"Error executing script: {e}")
+            try:
+                self._connection.rollback()
+            except:
+                pass
+            raise
+
+    def align_with_schema(self, schema_file_path):
+        """Align database with schema defined in SQL file."""
+        try:
+            with open(schema_file_path, "r") as f:
+                sql = f.read()
+            self._connection.executescript(sql)
+            self._connection.commit()
+            self.refresh_tables_info()
+        except Exception as e:
+            self.logger.error(f"Error aligning with schema: {e}")
+            try:
+                self._connection.rollback()
+            except:
+                pass
+            raise
+
+    def refresh_tables_info(self):
+        """Refresh table information."""
+        tables = self._connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        self._tables = {"tables": [table[0] for table in tables]}
+
+    def close(self):
+        """Close the database connection safely."""
+        if self._connection:
+            try:
+                # Only close if we're in the same thread that created the connection
+                current_thread_id = threading.get_ident()
+                if current_thread_id == self.creation_thread_id:
+                    self._connection.close()
+                    self._connection = None
+                    self._cursor = None
+                    self.logger.debug("Database connection closed cleanly")
+                else:
+                    self.logger.debug(
+                        f"Not closing connection from different thread. "
+                        f"Created in {self.creation_thread_id}, "
+                        f"close attempted in {current_thread_id}"
+                    )
+            except Exception as e:
+                self.logger.error(f"Error closing database connection: {e}")
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.close()
+
+    def __del__(self):
+        """Destructor to ensure connection is closed."""
+        # Only attempt to close if we're in the same thread
+        try:
+            if self._connection and threading.get_ident() == self.creation_thread_id:
+                try:
+                    self._connection.close()
+                except Exception as e:
+                    # We can't log here as the logger might be gone already
+                    pass
+        except:
+            # Ignore any errors in destructor
+            pass
 
     def _setup_path(self, db_path: Optional[str]) -> None:
         # Database path selection with clear precedence:
@@ -180,7 +707,7 @@ class EasyNerDBHandler:
             self.cache_manager = CacheManager(db_handler=self)
 
             # Also initialize the global singleton cache manager
-            set_cache_manager_connection(self.conn, self.cursor, self.logger)
+            set_cache_manager_connection(self._connection, self._cursor, self.logger)
 
         except ImportError as e:
             self.logger.warning(f"Failed to initialize cache system: {e}")
@@ -201,9 +728,9 @@ class EasyNerDBHandler:
 
         # Log level
         env_log_level = os.getenv("LOG_LEVEL")
-        if env_log_level:
+        if (env_log_level):
             valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-            if env_log_level.upper() in valid_levels:
+            if (env_log_level.upper() in valid_levels):
                 env_settings["log_level"] = env_log_level.upper()
                 # Update logger level
                 level = getattr(logging, env_log_level.upper())
@@ -235,18 +762,16 @@ class EasyNerDBHandler:
             from .data_model.entity_occurrence import EntityOccurrence
             from .data_model.entity_cooccurrence import EntityCooccurrence
 
-            # Initialize data_exchanger first (other components depend on it)
-            self.data_exchanger = DBDataExchanger(self.conn, self.cursor, self.logger)
+            # Use _get_data_exchanger instead of direct assignment to property
+            data_exchanger = self._get_data_exchanger()
 
             # Initialize primary components
             self.data_cleaner = DBDataCleaner(
-                self.conn, self.cursor, self.logger, self.data_exchanger, config=self.config
+                self._connection, self._cursor, self.logger, data_exchanger, config=self.config
             )
 
 
-            self.statistics = DBStatistics(
-                self.conn, self.cursor, self.logger, self.data_exchanger
-            )
+            self._statistics = None  # Will be initialized on first access
 
             # Initialize entity handling components with direct reference to self
             # This maintains the desired db.ne.component.method() pattern
@@ -348,7 +873,7 @@ class EasyNerDBHandler:
 
         # Create file handler for logging
         try:
-            log_file_handler = logging.FileHandler(self.log_file)
+            log_file_handler = logging.FileHandler(self.log_file, mode='w')
             log_file_handler.setLevel(logging.INFO)
             file_formatter = logging.Formatter(
                 "%(asctime)s - [%(threadName)s] - %(levelname)s - %(message)s"
@@ -358,22 +883,37 @@ class EasyNerDBHandler:
             # Create console handler for logging
             console_handler = logging.StreamHandler()
             console_handler.setLevel(logging.getLevelName(os.getenv("LOGGING_LEVEL_CONSOLE", "ERROR")))
+            # Fix the console_formatter - change levellevel to levelname
             console_formatter = logging.Formatter(
                 "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             console_handler.setFormatter(console_formatter)
 
             # Create separate error file handler for logging errors
-            error_file_handler = logging.FileHandler(self.error_log_file)
+            error_file_handler = logging.FileHandler(self.error_log_file, mode='w')
             error_file_handler.setLevel(logging.ERROR)
             error_file_formatter = logging.Formatter(
                 "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
             error_file_handler.setFormatter(error_file_formatter)
 
-            debug_file_handler = logging.FileHandler(self.debug_log_file)
+            class TracebackFilter(logging.Filter):
+                """Filter that automatically adds traceback information to debug logs"""
+                def filter(self, record):
+                    # If exc_info is not already set but we're in an exception context,
+                    # capture the current exception info
+                    if not record.exc_info:
+                        exc_info = sys.exc_info()
+                        if (exc_info[0] is not None):
+                            record.exc_info = exc_info
+
+                    # Always include the record
+                    return True
+
+            debug_file_handler = logging.FileHandler(self.debug_log_file, mode='w')
             debug_file_handler.setLevel(logging.DEBUG)
             debug_file_handler.setFormatter(file_formatter)
+            debug_file_handler.addFilter(TracebackFilter())
 
             self.logger.addHandler(log_file_handler)
             self.logger.addHandler(console_handler)
@@ -389,14 +929,14 @@ class EasyNerDBHandler:
         Close the database connection when the handler is deleted.
         """
         if hasattr(self, "conn"):
-            self.conn.close()
+            self._connection.close()
 
     def close(self):
         """
         Explicitly close the database connection.
         """
         if hasattr(self, "conn"):
-            self.conn.close()
+            self._connection.close()
 
     def _delete_views(self, view: str = None):
         """
@@ -417,7 +957,7 @@ class EasyNerDBHandler:
                 self.cursor.execute(f"DROP VIEW IF EXISTS {view};")
         else:
             self.cursor.execute(f"DROP VIEW IF EXISTS {view};")
-        self.conn.commit()
+        self._connection.commit()
 
     def _empty_database_(self):
         """
@@ -431,7 +971,7 @@ class EasyNerDBHandler:
         for table in self.tables["tables"]:
             self.cursor.execute(f"DELETE FROM {table};")
         self.cursor.execute("PRAGMA foreign_keys = ON;")
-        self.conn.commit()
+        self._connection.commit()
         self.cursor.execute("VACUUM;")
     def _backup_database_(self, backup_path: str = None):
         """
@@ -455,7 +995,7 @@ class EasyNerDBHandler:
             # Open the backup destination
             with sqlite3.connect(backup_path) as dest_conn:
                 # Perform the backup
-                self.conn.backup(dest_conn)
+                self._connection.backup(dest_conn)
 
             self.logger.info(f"Database backed up successfully to {backup_path}")
         except sqlite3.Error as e:
@@ -507,7 +1047,7 @@ class EasyNerDBHandler:
                 return self.cursor.fetchall()
             # For other queries (INSERT, UPDATE, DELETE, etc.), commit and return empty list
             else:
-                self.conn.commit()
+                self._connection.commit()
                 return []
         except Exception as e:
             self.logger.error(
@@ -534,13 +1074,13 @@ class EasyNerDBHandler:
         """
         Commit the current transaction.
         """
-        self.conn.commit()
+        self._connection.commit()
 
     def rollback(self):
         """
         Rollback the current transaction, so that the changes made in the current transaction are not saved.
         """
-        self.conn.rollback()
+        self._connection.rollback()
 
     def fetchall(self):
         """
@@ -643,25 +1183,25 @@ class EasyNerDBHandler:
 
     def optimize_db_performance_parameters(self):
         # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
-        self.conn.execute("PRAGMA journal_mode = WAL")
-        self.conn.execute("PRAGMA synchronous = OFF")
-        self.conn.execute("PRAGMA journal_size_limit = 6144000")
-        self.conn.execute("PRAGMA temp_store = MEMORY")
+        self._connection.execute("PRAGMA journal_mode = WAL")
+        self._connection.execute("PRAGMA synchronous = OFF")
+        self._connection.execute("PRAGMA journal_size_limit = 6144000")
+        self._connection.execute("PRAGMA temp_store = MEMORY")
 
     def optimize_db_performance_for_write(self):
         # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
-        self.conn.execute("PRAGMA journal_mode = WAL")
-        self.conn.execute("PRAGMA synchronous = OFF")
-        self.conn.execute("PRAGMA journal_size_limit = 6144000")
-        self.conn.execute("PRAGMA temp_store = MEMORY")
+        self._connection.execute("PRAGMA journal_mode = WAL")
+        self._connection.execute("PRAGMA synchronous = OFF")
+        self._connection.execute("PRAGMA journal_size_limit = 6144000")
+        self._connection.execute("PRAGMA temp_store = MEMORY")
         print("Database performance parameters optimized for write operations.")
 
     def optimize_db_performance_for_read(self):
         # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
-        self.conn.execute("PRAGMA journal_mode = MEMORY")
-        self.conn.execute("PRAGMA synchronous = OFF")
-        self.conn.execute("PRAGMA journal_size_limit = 6144000")
-        self.conn.execute("PRAGMA temp_store = MEMORY")
+        self._connection.execute("PRAGMA journal_mode = MEMORY")
+        self._connection.execute("PRAGMA synchronous = OFF")
+        self._connection.execute("PRAGMA journal_size_limit = 6144000")
+        self._connection.execute("PRAGMA temp_store = MEMORY")
 
     def align_with_schema(self, schema_path=None):
         """
@@ -738,7 +1278,7 @@ class EasyNerDBHandler:
                         all_tables_exist = False
         if all_tables_exist:
             print("All tables and columns exist and are up-to-date.")
-        self.conn.commit()
+        self._connection.commit()
         schema_conn.close()
 
     @property
@@ -749,7 +1289,7 @@ class EasyNerDBHandler:
         :return: True if the database is locked, False otherwise.
         """
         try:
-            self.conn.execute("PRAGMA wal_checkpoint;")
+            self._connection.execute("PRAGMA wal_checkpoint;")
             return False
         except sqlite3.OperationalError:
             return True
@@ -762,19 +1302,19 @@ class EasyNerDBHandler:
         """
         try:
             # Try committing any pending changes
-            self.conn.commit()
+            self._connection.commit()
         except Exception as e:
             print(f"Error committing pending transactions: {e}")
 
         try:
             # Force a write-ahead log checkpoint
-            self.conn.execute("PRAGMA wal_checkpoint(FULL);")
-            self.conn.commit()
+            self._connection.execute("PRAGMA wal_checkpoint(FULL);")
+            self._connection.commit()
         except Exception as e:
             print(f"Error executing WAL checkpoint: {e}")
         finally:
             # Close the connection cleanly
-            self.conn.close()
+            self._connection.close()
             print("Database connection closed and unlocked.")
 
     @classmethod
@@ -840,4 +1380,20 @@ class BaseComponent:
         pass
 
     # Remove init_deps as it's redundant with proper inheritance
+
+# Thread-local connection factory for safe access across threads
+@contextmanager
+def get_dedicated_connection(db_path=None):
+    """Get a dedicated database connection for the current thread."""
+    connection = EasyNerDBHandler(db_path)
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+def get_connection(db_path=None):
+    """Get a thread-local connection that's reused within the thread."""
+    if not hasattr(_thread_local, 'db_connection'):
+        _thread_local.db_connection = EasyNerDBHandler(db_path)
+    return _thread_local.db_connection
 
