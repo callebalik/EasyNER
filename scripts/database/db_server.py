@@ -1,16 +1,39 @@
-from flask import Flask, jsonify, g, render_template, request
+from flask import Flask, jsonify, g, render_template, request, has_request_context
 from .db_main import EasyNerDBHandler
 from .data_model import entities
+from .data_model.schema import *
 import os
 import sass
-from .statistics.sankey_diagram import create_disease_phenomena_sankey
-from .statistics.visualization_manager import VisualizationManager
 import logging
 from logging.handlers import RotatingFileHandler
 import re
 import sys
 import importlib
 import time
+import traceback
+import psutil
+import atexit
+import argparse
+from socket import socket, AF_INET, SOCK_STREAM
+import threading
+from contextlib import contextmanager
+import tempfile
+
+
+DBPATH = os.environ.get("DB_PATH")
+if not DBPATH:
+    raise ValueError("DB_PATH environment variable is not set")
+if not os.path.exists(DBPATH):
+    raise ValueError(f"Database path {DBPATH} does not exist")
+if not os.path.isabs(DBPATH):
+    raise ValueError(f"Database path {DBPATH} is not an absolute path")
+
+
+# Import our new monitoring module
+from .monitoring import OperationMonitor, DBConnectionMonitor, ThreadMonitor
+
+# Import after app is defined
+from .statistics.visualization_manager import VisualizationManager
 
 def setup_logging(app):
     """Configure logging for the application"""
@@ -94,49 +117,123 @@ template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templat
 app = Flask(__name__, template_folder=template_dir)
 setup_logging(app)
 
-# Initialize single database connection
+# Initialize thread-local storage for database connections
+db_connections = threading.local()
+
+# Initialize monitors
+operation_monitor = OperationMonitor(app.logger)
+connection_monitor = DBConnectionMonitor(app.logger)
+thread_monitor = ThreadMonitor(app.logger)
+
+# Register periodic monitoring
+operation_monitor.register_periodic_monitor(
+    app,
+    interval=int(os.environ.get('EASYNER_METRIC_INTERVAL', '60'))
+)
+
+# Initialize visualization manager
 visualization_manager = VisualizationManager(app)
-db_instance = None
 
-
-def init_db():
-    """Initialize the database connection"""
-    global db_instance
-    if db_instance is None:
+@contextmanager
+def get_db_connection():
+    """Get a thread-local database connection with monitoring"""
+    # Check if we already have a connection for this thread
+    if not hasattr(db_connections, 'connection'):
         try:
-            db_instance = EasyNerDBHandler()
-            db_instance.logger.info("Database connection initialized")
+            # Start monitoring the database connection operation
+            with operation_monitor.monitor_operation('create_db_connection'):
+                # Create a new connection
+                connection = EasyNerDBHandler()
+                db_connections.connection = connection
+
+                # Track whether this connection was created within a request context
+                # to determine if it should be closed at request end
+                is_request_context = has_request_context()
+                db_connections.is_request_connection = is_request_context
+
+                # Register the connection with the monitor
+                connection_monitor.register_connection(
+                    connection.conn,
+                    context={
+                        'thread_id': threading.get_ident(),
+                        'request_connection': is_request_context
+                    }
+                )
+
+                app.logger.debug(f"Created new database connection (request context: {is_request_context})", extra={
+                    'thread_id': threading.get_ident(),
+                    'conn_id': id(connection.conn)
+                })
         except Exception as e:
-            app.logger.error(f"Database initialization error: {e}")
+            app.logger.error(f"Database connection error: {e}", exc_info=True)
             raise
-    return db_instance
+
+    # Yield the connection
+    try:
+        yield db_connections.connection
+    except Exception as e:
+        # Log the exception with the monitor
+        operation_monitor.monitor_exception(e, context={
+            'operation': 'database_operation',
+            'thread_id': threading.get_ident()
+        })
+        raise
 
 
-# Initialize database on startup
-with app.app_context():
-    init_db()
+def get_db_simple_connection() -> sqlite3.Connection:
+    """Get a simple database connection"""
+    db = getattr(g, '_database_simple', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DBPATH)
+    return db
 
+def get_db_easyner():
+    """Get the database handler using the connection manager"""
+    with get_db_connection() as db:
+        return db
 
-def get_db():
-    """Get the database connection"""
-    global db_instance
-    if db_instance is None:
-        db_instance = init_db()
-    return db_instance
+def close_db_connections():
+    """Close all database connections during cleanup"""
+    app.logger.info("Closing all database connections")
 
+    # Use connection monitor to check for leaked connections
+    leaks = connection_monitor.check_for_leaks()
+    if leaks:
+        app.logger.warning(f"Found {len(leaks)} potentially leaked connections")
+
+    # Close all connections
+    connection_monitor.close_all()
+
+# Register cleanup function
+atexit.register(close_db_connections)
 
 @app.teardown_appcontext
 def cleanup(e=None):
-    """Only close the database connection when the app is shutting down"""
-    global db_instance
-    if db_instance is not None:
-        try:
-            db_instance.close()
-            db_instance.logger.info("Database connection closed on shutdown")
-            db_instance = None
-        except Exception as e:
-            app.logger.error(f"Error closing database connection: {e}")
+    """Close database connections created during this request"""
+    if e:
+        app.logger.error(f"Error during request: {e}", exc_info=True)
 
+    # Close main connection if it was created during a request
+    if hasattr(db_connections, 'connection') and getattr(db_connections, 'is_request_connection', False):
+        try:
+            # Close the connection
+            db_connections.connection.close()
+
+            # Remove the connection from thread-local storage
+            del db_connections.connection
+            del db_connections.is_request_connection
+
+            app.logger.debug("Closed request-specific database connection")
+        except Exception as close_error:
+            app.logger.error(f"Error closing request database connection: {close_error}")
+
+def close_simple_connection(exception):
+    """Close the simple database connection."""
+    db = getattr(g, '_database_simple', None)
+    if db is not None:
+        db.close()
+
+app.teardown_appcontext(close_simple_connection)
 
 # Compile SCSS to CSS on server load
 def compile_scss():
@@ -185,33 +282,34 @@ def styles():
 
 
 def align_with_schema():
+    """Initialize database schema if needed"""
     try:
-        # Use existing schema alignment method
-        schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
-        db.align_with_schema(schema_path)
+        with get_db_connection() as db:
+            # Use existing schema alignment method
+            schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
+            db.align_with_schema(schema_path)
 
-        # Apply indexes (they are idempotent with IF NOT EXISTS)
-        with open(os.path.join(os.path.dirname(__file__), "indexes.sql"), "r") as f:
-            indexes_sql = f.read()
-            for statement in indexes_sql.split(";"):
-                if statement.strip():
-                    try:
-                        db.execute(statement)
-                    except Exception as e:
-                        app.logger.warning(f"Error applying index: {e}")
-                        continue
-        app.logger.info("Database indexes applied successfully")
+            # Apply indexes (they are idempotent with IF NOT EXISTS)
+            with open(os.path.join(os.path.dirname(__file__), "indexes.sql"), "r") as f:
+                indexes_sql = f.read()
+                for statement in indexes_sql.split(";"):
+                    if statement.strip():
+                        try:
+                            db.execute(statement)
+                        except Exception as e:
+                            app.logger.warning(f"Error applying index: {e}")
+                            continue
 
+            app.logger.info("Database indexes applied successfully")
+
+            return db
     except Exception as e:
         app.logger.error(f"Error initializing database: {e}")
         raise
 
 
-    app.logger.info("Flask application initialized")
-    return db
-
-
 def get_available_entities(db):
+    """Get available entity types from database"""
     try:
         return db.execute(
             f"SELECT {CLASS_ID}, {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}"
@@ -223,33 +321,36 @@ def get_available_entities(db):
 
 @app.route("/")
 def home():
+    """Home page displaying database statistics"""
     try:
-        db = get_db()
-        tables_info = {}
+        with operation_monitor.monitor_operation('home_page_load'):
+            with get_db_connection() as db:
+                tables_info = {}
 
-        # Get counts for each table
-        for table in db.tables["tables"]:
-            count = db.execute(f"SELECT COUNT(*) FROM {table}")[0][0]
-            columns = db.execute(f"PRAGMA table_info({table})")
-            tables_info[table] = {
-                "row_count": count,
-                "columns": [col[1] for col in columns],
-            }
+                # Get counts for each table
+                for table in db.tables["tables"]:
+                    count = db.execute(f"SELECT COUNT(*) FROM {table}")[0][0]
+                    columns = db.execute(f"PRAGMA table_info({table})")
+                    tables_info[table] = {
+                        "row_count": count,
+                        "columns": [col[1] for col in columns],
+                    }
 
-        # Get database statistics
-        stats = {
-            "db_name": db.name,
-            "db_size": _format_size(db.statistics.size),
-            "source_size": _format_size(db.statistics.total_source_size),
-            "compression_ratio": f"{db.statistics.compression_ratio:.2f}",
-            "document_count": db.statistics.document_count,
-            "sentence_count": db.statistics.sentence_count,
-            "named_entity_count": db.statistics.named_entity_classes_count,
-        }
+                # Get database statistics
+                stats = {
+                    "db_name": db.name,
+                    "db_size": _format_size(db.statistics.size),
+                    "source_size": _format_size(db.statistics.total_source_size),
+                    "compression_ratio": f"{db.statistics.compression_ratio:.2f}",
+                    "document_count": db.statistics.document_count,
+                    "sentence_count": db.statistics.sentence_count,
+                    "named_entity_count": db.statistics.named_entity_classes_count,
+                }
 
-        return render_template("home.html", tables=tables_info, stats=stats)
+                return render_template("home.html", tables=tables_info, stats=stats)
     except Exception as e:
         app.logger.error(f"Error loading home page: {e}")
+        operation_monitor.monitor_exception(e, context={'route': '/'})
         return (
             render_template("error.html", message="Error loading database information"),
             500,
@@ -266,107 +367,131 @@ def _format_size(size_bytes):
 
 @app.route("/health")
 def health_check():
+    """Health check endpoint with database status"""
     try:
-        db = get_db()
-        tables_info = {}
+        with operation_monitor.monitor_operation('health_check'):
+            with get_db_connection() as db:
+                tables_info = {}
 
-        # Get counts for each table
-        for table in db.tables["tables"]:
-            count = db.execute(f"SELECT COUNT(*) FROM {table}")[0][0]
-            columns = db.execute(f"PRAGMA table_info({table})")
-            tables_info[table] = {
-                "row_count": count,
-                "columns": [col[1] for col in columns],
-            }
+                # Get counts for each table
+                for table in db.tables["tables"]:
+                    count = db.execute(f"SELECT COUNT(*) FROM {table}")[0][0]
+                    columns = db.execute(f"PRAGMA table_info({table})")
+                    tables_info[table] = {
+                        "row_count": count,
+                        "columns": [col[1] for col in columns],
+                    }
 
-        return (
-            jsonify(
-                {
-                    "status": "healthy",
-                    "database": {"connected": True, "tables": tables_info},
-                    "server_status": "running",
-                    "endpoints": {
-                        "/": "Health check and basic info",
-                        "/tables": "Detailed table information",
-                        "/document/<id>": "Get document by ID",
-                    },
-                }
-            ),
-            200,
-        )
+                # Get connection status
+                connections = connection_monitor.get_open_connections()
+
+                # Get thread status
+                threads = thread_monitor.get_active_threads()
+
+                return (
+                    jsonify(
+                        {
+                            "status": "healthy",
+                            "database": {"connected": True, "tables": tables_info},
+                            "server_status": "running",
+                            "connections": {
+                                "count": len(connections),
+                                "details": connections[:5]  # Limit for readability
+                            },
+                            "threads": {
+                                "count": len(threads),
+                                "details": threads[:5]  # Limit for readability
+                            },
+                            "endpoints": {
+                                "/": "Health check and basic info",
+                                "/tables": "Detailed table information",
+                                "/document/<id>": "Get document by ID",
+                            },
+                        }
+                    ),
+                    200,
+                )
     except Exception as e:
         app.logger.error(f"Health check failed: {e}")
+        operation_monitor.monitor_exception(e, context={'route': '/health'})
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
 @app.route("/documents")
 def list_documents():
+    """Display documents with filtering"""
     try:
-        db = get_db()
-        page = int(request.args.get("page", 1))
-        query = request.args.get("query", "")
-        doc_id = request.args.get("doc_id", "")
-        selected_entities = request.args.getlist("entities")
-        per_page = 30
-        offset = (page - 1) * per_page
+        with operation_monitor.monitor_operation('list_documents'):
+            with get_db_connection() as db:
+                page = int(request.args.get("page", 1))
+                query = request.args.get("query", "")
+                doc_id = request.args.get("doc_id", "")
+                selected_entities = request.args.getlist("entities")
+                per_page = 30
+                offset = (page - 1) * per_page
 
-        params = []
-        conditions = []
+                params = []
+                conditions = []
 
-        if query:
-            conditions.append(f"d.{TITLE} LIKE ?")
-            params.append(f"%{query}%")
+                if query:
+                    conditions.append(f"d.{TITLE} LIKE ?")
+                    params.append(f"%{query}%")
 
-        if doc_id:
-            conditions.append(f"d.{DOC_ID} = ?")
-            params.append(doc_id)
+                if doc_id:
+                    conditions.append(f"d.{DOC_ID} = ?")
+                    params.append(doc_id)
 
-        # Base query
-        sql = f"""--sql
-            SELECT DISTINCT d.{DOC_ID}, d.{TITLE}, d.{WORD_COUNT}
-            FROM documents d
-        """
+                # Base query
+                sql = f"""--sql
+                    SELECT DISTINCT d.{DOC_ID}, d.{TITLE}, d.{WORD_COUNT}
+                    FROM documents d
+                """
 
-        # Add entity filtering - using EXISTS for each entity to ensure ALL are present
-        if selected_entities:
-            for entity_id in selected_entities:
-                sql_condition = f"""
-                EXISTS (
-                    SELECT 1 FROM {TABLE_NE} eo{entity_id}
-                    JOIN {TABLE_NE_CLASS} ne{entity_id} ON eo{entity_id}.{CLASS_ID} = ne{entity_id}.{CLASS_ID}
-                    WHERE eo{entity_id}.{DOC_ID} = d.{DOC_ID} AND ne{entity_id}.{DOC_ID} = ?
-                )"""
-                conditions.append(sql_condition)
-                params.append(entity_id)
+                # Add entity filtering - using EXISTS for each entity to ensure ALL are present
+                if selected_entities:
+                    for entity_id in selected_entities:
+                        sql_condition = f"""
+                        EXISTS (
+                            SELECT 1 FROM {TABLE_NE} eo{entity_id}
+                            JOIN {TABLE_NE_CLASS} ne{entity_id} ON eo{entity_id}.{CLASS_ID} = ne{entity_id}.{CLASS_ID}
+                            WHERE eo{entity_id}.{DOC_ID} = d.{DOC_ID} AND ne{entity_id}.{CLASS_ID} = ?
+                        )"""
+                        conditions.append(sql_condition)
+                        params.append(entity_id)
 
-        if conditions:
-            sql += " WHERE " + " AND ".join(conditions)
+                if conditions:
+                    sql += " WHERE " + " AND ".join(conditions)
 
-        sql += f" ORDER BY d.{DOC_ID} LIMIT ? OFFSET ?"
-        params.extend([per_page + 1, offset])
+                sql += f" ORDER BY d.{DOC_ID} LIMIT ? OFFSET ?"
+                params.extend([per_page + 1, offset])
 
-        documents = db.execute(sql, params)
-        has_more = len(documents) > per_page
-        documents = documents[:per_page]  # Trim to per_page items
+                # Using monitor_query to track query performance
+                with operation_monitor.monitor_query(sql, params,
+                                                  context={'page': page, 'per_page': per_page},
+                                                  conn=db.conn):
+                    documents = db.execute(sql, params)
 
-        # Get available entities for the filter
-        entities = get_available_entities(db)
+                has_more = len(documents) > per_page
+                documents = documents[:per_page]  # Trim to per_page items
 
-        return render_template(
-            "documents.html",
-            documents=[
-                dict(zip(["id", "title", "word_count"], doc)) for doc in documents
-            ],
-            page=page,
-            query=query,
-            doc_id=doc_id,
-            has_more=has_more,
-            entities=entities,
-            selected_entities=selected_entities,
-        )
+                # Get available entities for the filter
+                entities = get_available_entities(db)
+
+                return render_template(
+                    "documents.html",
+                    documents=[
+                        dict(zip(["id", "title", "word_count"], doc)) for doc in documents
+                    ],
+                    page=page,
+                    query=query,
+                    doc_id=doc_id,
+                    has_more=has_more,
+                    entities=entities,
+                    selected_entities=selected_entities,
+                )
     except Exception as e:
         app.logger.error(f"Error loading documents page: {e}")
+        operation_monitor.monitor_exception(e, context={'route': '/documents'})
         return render_template("error.html", message="Error loading documents"), 500
-
 
 @app.route("/named-entities")
 def list_named_entity_classes():
@@ -379,7 +504,7 @@ def list_named_entity_classes():
 @app.route("/named-entities/types")
 def get_named_entity_types():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         sql = f"SELECT {CLASS_ID}, {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}"
         types = db.execute(sql)
         return jsonify(
@@ -406,7 +531,7 @@ def list_entity_occurrences():
 
 @app.route("/document/<int:doc_id>")
 def show_document(doc_id):
-    db = get_db()
+    db = get_db_simple_connection()
 
     document = db.data_exchanger.get_document(doc_id)
     if not document:
@@ -430,7 +555,7 @@ def entity_cooccurrences_summary():
 @app.route("/entity-cooccurrences/table")
 def entity_cooccurrences_table():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 30))
         offset = (page - 1) * per_page
@@ -488,7 +613,7 @@ def entity_cooccurrences_table():
 @app.route("/entity-cooccurrences/summary/table")
 def entity_cooccurrences_summary_table():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 30))
         include_self = request.args.get("include_self", "false").lower() == "true"
@@ -536,7 +661,7 @@ def summary_cooccurrences():
 @app.route("/raw-cooccurrences/table")
 def raw_cooccurrences_table():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 30))
         offset = (page - 1) * per_page
@@ -594,7 +719,7 @@ def raw_cooccurrences_table():
 @app.route("/summary-cooccurrences/table")
 def summary_cooccurrences_table():
     try:
-        db = get_db()
+        db = get_db_easyner()
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 30))
         include_self = request.args.get("include_self", "false").lower() == "true"
@@ -632,7 +757,7 @@ def summary_cooccurrences_table():
 @app.route("/entity-cooccurrences/plot-data")
 def entity_cooccurrences_plot_data():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         freq_column = request.args.get("freq_column", "fq_document_level")
         min_freq = int(request.args.get("min_freq", 0))
         max_freq = int(request.args.get("max_freq", 100))
@@ -664,7 +789,8 @@ def entity_cooccurrences_plot_data():
 @app.route("/entity-cooccurrences/summary/plot-data")
 def entity_cooccurrences_summary_plot_data():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
+        cursor = db.cursor
         freq_column = request.args.get("freq_column", "fq_document_level")
         min_freq = int(request.args.get("min_freq", 0))
         max_freq = int(request.args.get("max_freq", 100))
@@ -678,12 +804,12 @@ def entity_cooccurrences_summary_plot_data():
         """
         params = [min_freq, max_freq]
 
-        plot_data = db.execute(sql, params)
+        plot_data = cursor.execute(sql, params)
 
         return jsonify(
             {
                 "plot_data": [
-                    dict(zip([col[0] for col in db.cursor.description], row))
+                    dict(zip([col[0] for col in cursor.description], row))
                     for row in plot_data
                 ]
             }
@@ -696,7 +822,7 @@ def entity_cooccurrences_summary_plot_data():
 @app.route("/summary-cooccurrences/plot-data")
 def summary_cooccurrences_plot_data():
     try:
-        db = get_db()
+        db = get_db_easyner()
         app.logger.debug("Starting plot data generation")
 
         # Log request parameters
@@ -827,7 +953,7 @@ def summary_cooccurrences_plot_data():
 @app.route("/debug/entity-cooccurrences-summary")
 def debug_entity_cooccurrences_summary():
     try:
-        db = get_db()
+        db = get_db_easyner()
 
         # Check total count
         count_sql = "SELECT COUNT(*) FROM entity_cooccurrences_summary"
@@ -873,7 +999,7 @@ def debug_entity_cooccurrences_summary():
 @app.route("/view/<view_name>/sample")
 def get_view_sample(view_name):
     try:
-        db = get_db()
+        db = get_db_easyner()
         # Check if it's actually a view first
         view_check = db.execute(
             "SELECT type FROM sqlite_master WHERE type='view' AND name=?", [view_name]
@@ -904,7 +1030,7 @@ def get_view_sample(view_name):
 @app.route("/views")
 def show_views():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         views_info = {}
 
         # Get list of views with their full definitions
@@ -979,7 +1105,7 @@ def show_views():
 @app.route("/tables-json")
 def get_tables_json():
     try:
-        db = get_db()
+        db = get_db_easyner()
         tables_info = {}
 
         for table in db.tables["tables"]:
@@ -1014,7 +1140,7 @@ def get_tables_json():
 @app.route("/tables/")
 def show_tables():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         tables_info = {}
 
         # Get list of tables ordered alphabetically
@@ -1071,7 +1197,7 @@ def show_tables():
 
 def get_table_rowcount(table_name):
     try:
-        db = get_db()
+        db = get_db_easyner()
         count = db.execute(f"SELECT COUNT(*) FROM {table_name}")[0][0]
         return jsonify({"row_count": count})
     except Exception as e:
@@ -1082,7 +1208,7 @@ def get_table_rowcount(table_name):
 @app.route("/tables/<table_name>")
 def view_table(table_name):
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         page = int(request.args.get("page", 1))
         per_page = 30
         offset = (page - 1) * per_page
@@ -1120,7 +1246,8 @@ def view_table(table_name):
 
 def display_table(table_name):
     try:
-        db = get_db()
+        db = get_db_simple_connection()
+        cursor = db.cursor()
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 30))
         offset = (page - 1) * per_page
@@ -1129,10 +1256,12 @@ def display_table(table_name):
         search_query = request.args.get("search_query", "")
         # Default to False (show only OVERLAP = 0)
         show_overlap = request.args.get("show_overlap", "false").lower() == "true"
+        # Get filter_no_errors parameter (default to True for showing only valid entities)
+        filter_no_errors = request.args.get("filter_no_errors", "true").lower() == "true"
 
         # Get column information dynamically
-        db.cursor.execute(f"PRAGMA table_info({table_name})")
-        columns_info = db.cursor.fetchall()
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        columns_info = cursor.fetchall()
         columns = [col[1] for col in columns_info]
         column_types = {
             col[1]: col[2].upper() for col in columns_info
@@ -1140,6 +1269,9 @@ def display_table(table_name):
 
         # Get text columns for text search
         text_columns = [col[1] for col in columns_info if col[2].upper() == "TEXT"]
+
+        # Get numeric columns for numeric filtering
+        numeric_columns = [col[1] for col in columns_info if col[2].upper() in ["INTEGER", "INT", "REAL", "FLOAT", "NUMERIC"]]
 
         # Include ID columns that should be searchable
         searchable_id_columns = [col[1] for col in columns_info if col[1] in ['id', 'NE_NORM_ID', 'NE_PRIMARY_ID'] and col[2].upper() in ['INTEGER', 'INT']]
@@ -1155,11 +1287,25 @@ def display_table(table_name):
         # Get ERROR_ID filters (can be multiple values)
         selected_errors = request.args.getlist("ERROR_ID_filter")
 
+        # Process numeric filters
+        numeric_filters = {}
+        for column in numeric_columns:
+            op = request.args.get(f"{column}_op")
+            if op:
+                val1 = request.args.get(f"{column}_val1")
+                if val1:
+                    # Create a filter object with operator and value(s)
+                    numeric_filters[column] = {
+                        "op": op,
+                        "val1": val1,
+                        "val2": request.args.get(f"{column}_val2", "") if op == "between" else None
+                    }
+
         # Fetch available NE_CLASS values if the table has that column
         ne_classes = None
         if 'NE_CLASS' in columns:
             try:
-                query_result = db.execute(f"SELECT {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}")
+                query_result = cursor.execute(f"SELECT {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}")
                 ne_classes = [row[0] for row in query_result if row[0]]
             except Exception as ne_class_error:
                 app.logger.warning(f"Error fetching NE_CLASS values: {ne_class_error}")
@@ -1168,7 +1314,7 @@ def display_table(table_name):
         error_codes = None
         if 'ERROR_ID' in columns:
             try:
-                query_result = db.execute(f"SELECT {ERROR_ID}, {ERROR_DESC} FROM {TABLE_NE_ERROR} ORDER BY {ERROR_ID}")
+                query_result = cursor.execute(f"SELECT {ERROR_ID}, {ERROR_DESC} FROM {TABLE_NE_ERROR} ORDER BY {ERROR_ID}")
                 error_codes = [(row[0], row[1]) for row in query_result if row[0]]
             except Exception as error_code_error:
                 app.logger.warning(f"Error fetching ERROR_ID values: {error_code_error}")
@@ -1196,6 +1342,63 @@ def display_table(table_name):
                     params.append(f"%{query}%")
                     app.logger.debug(f"Non-integer search value '{query}' for ID column {col}")
 
+        # Process numeric filters
+        percentile_filters = []  # Track any percentile filters for later processing
+
+        for column, filter_data in numeric_filters.items():
+            op = filter_data["op"]
+            try:
+                # For percentile filters, we'll handle them differently
+                if op.startswith('percentile_'):
+                    # Validate percentile value (0-100)
+                    percentile_value = float(filter_data["val1"])
+                    if not (0 <= percentile_value <= 100):
+                        app.logger.warning(f"Invalid percentile value: {percentile_value}. Must be between 0 and 100.")
+                        continue
+
+                    # Store for later processing after we have the query structure
+                    percentile_filters.append({
+                        "column": column,
+                        "op": op,
+                        "value": percentile_value
+                    })
+                    continue
+
+                # Convert the first value based on column type
+                if column_types[column] in ["REAL", "FLOAT", "NUMERIC"]:
+                    val1 = float(filter_data["val1"])
+                else:
+                    val1 = int(filter_data["val1"])
+
+                # Apply the appropriate operator
+                if op == "gt":
+                    search_conditions.append(f"{column} > ?")
+                    params.append(val1)
+                elif op == "lt":
+                    search_conditions.append(f"{column} < ?")
+                    params.append(val1)
+                elif op == "eq":
+                    search_conditions.append(f"{column} = ?")
+                    params.append(val1)
+                elif op == "gte":
+                    search_conditions.append(f"{column} >= ?")
+                    params.append(val1)
+                elif op == "lte":
+                    search_conditions.append(f"{column} <= ?")
+                    params.append(val1)
+                elif op == "between" and filter_data["val2"]:
+                    # For BETWEEN, we need two values
+                    if column_types[column] in ["REAL", "FLOAT", "NUMERIC"]:
+                        val2 = float(filter_data["val2"])
+                    else:
+                        val2 = int(filter_data["val2"])
+                    search_conditions.append(f"{column} BETWEEN ? AND ?")
+                    params.extend([val1, val2])
+
+                app.logger.debug(f"Applied numeric filter on {column}: {op} {val1} {filter_data['val2'] if op == 'between' else ''}")
+            except (ValueError, TypeError) as e:
+                app.logger.warning(f"Invalid numeric filter value for {column}: {e}")
+
         # Add NE_CLASS filter if present
         if selected_classes and 'NE_CLASS' in columns:
             placeholders = ','.join('?' for _ in selected_classes)
@@ -1203,18 +1406,99 @@ def display_table(table_name):
             params.extend(selected_classes)
             app.logger.debug(f"Applied NE_CLASS filter: {selected_classes}")
 
-        # Add ERROR_ID filter if present
-        if selected_errors and 'ERROR_ID' in columns:
-            placeholders = ','.join('?' for _ in selected_errors)
-            search_conditions.append(f"ERROR_ID IN ({placeholders})")
-            params.extend(selected_errors)
+        # Handle ERROR_ID filtering
+        if 'ERROR_ID' in columns:
+            if filter_no_errors:
+                # Filter out entities with error codes
+                search_conditions.append(f"{ERROR_ID} IS NULL")
+                app.logger.debug("Applied filter: Show only entries without errors")
+            elif selected_errors:
+                # Only apply specific error codes filter if No Errors filter is not active
+                placeholders = ','.join('?' for _ in selected_errors)
+                search_conditions.append(f"{ERROR_ID} IN ({placeholders})")
+                params.extend(selected_errors)
+                app.logger.debug(f"Applied ERROR_ID filter: {selected_errors}")
 
         # Add OVERLAP filter if column exists and show_overlap is false
         if 'OVERLAP' in columns and not show_overlap:
             search_conditions.append("OVERLAP = 0")
 
+        # Apply any WHERE conditions from the base filters
+        where_clause = ""
         if search_conditions:
-            sql += " WHERE " + " AND ".join(search_conditions)
+            where_clause = " WHERE " + " AND ".join(search_conditions)
+            sql += where_clause
+
+        # Handle percentile filters
+        if percentile_filters:
+            app.logger.debug(f"Processing {len(percentile_filters)} percentile filters")
+
+            for p_filter in percentile_filters:
+                column = p_filter["column"]
+                is_top_percentile = p_filter["op"] == "percentile_gt"
+                percentile_value = p_filter["value"]
+
+                try:
+                    # First check if the column has any data at all
+                    check_query = f"""--sql
+                        SELECT COUNT(*) FROM {table_name}
+                        WHERE {column} IS NOT NULL
+                        {' AND ' + ' AND '.join(search_conditions) if search_conditions else ''}
+                    """
+
+                    count_result = db.execute(check_query, params)
+                    if not count_result or count_result[0][0] == 0:
+                        app.logger.warning(f"No data found for percentile calculation on {column}")
+                        continue
+
+                    # Calculate the threshold value for this percentile
+                    # Use a window function to calculate percentiles with error handling
+                    percentile_query = f"""--sql
+                        WITH data AS (
+                            SELECT {column}
+                            FROM {table_name}
+                            WHERE {column} IS NOT NULL
+                            {' AND ' + ' AND '.join(search_conditions) if search_conditions else ''}
+                        ),
+                        ranked AS (
+                            SELECT
+                                {column},
+                                PERCENT_RANK() OVER (ORDER BY {column}) * 100 AS pct_rank
+                            FROM data
+                        )
+                        SELECT {column} FROM ranked
+                        WHERE pct_rank {'>' if is_top_percentile else '<'} ?
+                        ORDER BY {column} {'DESC' if is_top_percentile else 'ASC'}
+                        LIMIT 1
+                    """
+
+                    percentile_params = params + [100 - percentile_value if is_top_percentile else percentile_value]
+                    app.logger.debug(f"Executing percentile query: {percentile_query} with params: {percentile_params}")
+
+                    threshold_result = cursor.execute(percentile_query, percentile_params)
+
+                    if threshold_result and threshold_result[0][0] is not None:
+                        threshold_value = threshold_result[0][0]
+                        app.logger.debug(f"Calculated {'top' if is_top_percentile else 'bottom'} {percentile_value}% threshold for {column}: {threshold_value}")
+
+                        # Now that we have the threshold, add it as a condition to our main query
+                        if search_conditions:
+                            sql = sql + " AND "
+                        else:
+                            sql = sql + " WHERE "
+
+                        if is_top_percentile:
+                            sql = sql + f"{column} >= ?"
+                            params.append(threshold_value)
+                        else:
+                            sql = sql + f"{column} <= ?"
+                            params.append(threshold_value)
+
+                        app.logger.debug(f"Applied percentile filter on {column}: {'top' if is_top_percentile else 'bottom'} {percentile_value}%")
+                    else:
+                        app.logger.warning(f"No valid threshold found for percentile filter on {column}")
+                except Exception as e:
+                    app.logger.error(f"Error applying percentile filter on {column}: {str(e)}", exc_info=True)
 
         # Add sorting
         if sort_by in columns:
@@ -1236,8 +1520,8 @@ def display_table(table_name):
         app.logger.debug(f"Generated SQL: {generated_sql} with params: {params}")
 
         # Execute the query
-        db.cursor.execute(sql, params)
-        rows = db.cursor.fetchall()
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
         has_more = len(rows) > per_page
         rows = rows[:per_page]
 
@@ -1254,13 +1538,15 @@ def display_table(table_name):
             "selected_classes": selected_classes,
             "error_codes": error_codes,
             "selected_errors": selected_errors,
+            "numeric_filters": numeric_filters,  # Pass numeric filter state to template
             "generated_sql": generated_sql,
             "searchable_id_columns": searchable_id_columns,
             "show_overlap": show_overlap,  # Pass the filter state to template
-            "has_overlap_column": 'OVERLAP' in columns  # Tell template if OVERLAP exists
+            "has_overlap_column": 'OVERLAP' in columns,  # Tell template if OVERLAP exists
+            "filter_no_errors": filter_no_errors  # Pass the "No Errors Only" filter state
         }
     except Exception as e:
-        app.logger.error(f"Error displaying table {table_name}: {e}")
+        app.logger.error(f"Error displaying table {table_name}: {e}", exc_info=True)
         return {"error": str(e)}
 
 
@@ -1272,121 +1558,10 @@ def table_view(table_name):
     return render_template("table_view.html", table_name=table_name, **result)
 
 
-@app.route("/disease-phenomena-sankey")
-def disease_phenomena_sankey():
-    try:
-        db = get_db()
-        # Get filter parameters from request, only pass non-empty values
-        disease_search = request.args.get('disease_search', '').strip() or None
-        phenomenon_search = request.args.get('phenomenon_search', '').strip() or None
-        min_pmi = request.args.get('min_pmi', '5.0').strip()  # Default to 5.0
-        max_pmi = request.args.get('max_pmi', '').strip()
-        min_fq = request.args.get('min_fq', '').strip()
-        max_fq = request.args.get('max_fq', '').strip()
-        limit = request.args.get('limit', '30').strip()
-
-        # Get numeric filters with validation, convert empty strings to None
-        try:
-            min_pmi = float(min_pmi) if min_pmi else 5.0  # Default to 5.0 if empty
-            max_pmi = float(max_pmi) if max_pmi else None
-            min_fq = float(min_fq) if min_fq else None
-            max_fq = float(max_fq) if max_fq else None
-            limit_val = int(limit) if limit else 30
-            # Ensure limit is between 1 and 100
-            limit_val = max(1, min(100, limit_val))
-        except ValueError as e:
-            app.logger.error(f"Invalid numeric filter value: {e}")
-            return render_template("error.html", message="Invalid numeric filter value"), 400
-
-        # Create a unique cache key based on actual filter values
-        filters = []
-        if disease_search: filters.append(f"d_{disease_search}")
-        if phenomenon_search: filters.append(f"p_{phenomenon_search}")
-        if min_pmi != 5.0: filters.append(f"minp_{min_pmi}")  # Only include if different from default
-        if max_pmi is not None: filters.append(f"maxp_{max_pmi}")
-        if min_fq is not None: filters.append(f"minf_{min_fq}")
-        if max_fq is not None: filters.append(f"maxf_{max_fq}")
-        if limit_val != 30: filters.append(f"lim_{limit_val}")  # Only include if different from default
-
-        # If no filters are applied or only default values are used, use 'base' as the cache key
-        cache_key = 'sankey_' + ('base' if not filters else '_'.join(filters))
-
-        return visualization_manager.get_cached_visualization(
-            cache_key,
-            db,
-            lambda db: create_disease_phenomena_sankey(
-                db,
-                disease_search=disease_search,
-                phenomenon_search=phenomenon_search,
-                min_pmi=min_pmi,
-                max_pmi=max_pmi,
-                min_fq=min_fq,
-                max_fq=max_fq,
-                limit=limit_val
-            )
-        )
-    except Exception as e:
-        app.logger.error(f"Error in disease phenomena sankey route: {e}")
-        return render_template("error.html", message="Error generating Sankey diagram"), 500
-
-
-@app.route("/disease-phenomena")
-def disease_phenomena_page():
-    try:
-        db = get_db()
-        # Get filter parameters
-        disease_search = request.args.get('disease_search', '').strip()
-        phenomenon_search = request.args.get('phenomenon_search', '').strip()
-        min_pmi = request.args.get('min_pmi', '5.0').strip()  # Default to 5.0
-        max_pmi = request.args.get('max_pmi', '').strip()
-        min_fq = request.args.get('min_fq', '').strip()
-        max_fq = request.args.get('max_fq', '').strip()
-        limit = request.args.get('limit', '30').strip()
-
-        # Get the Sankey diagram HTML
-        try:
-            limit_val = int(limit) if limit else 30
-            # Ensure limit is between 1 and 100
-            limit_val = max(1, min(100, limit_val))
-
-            sankey_html = create_disease_phenomena_sankey(
-                db,
-                disease_search=disease_search or None,
-                phenomenon_search=phenomenon_search or None,
-                min_pmi=float(min_pmi) if min_pmi else 5.0,  # Default to 5.0 if empty
-                max_pmi=float(max_pmi) if max_pmi else None,
-                min_fq=float(min_fq) if min_fq else None,
-                max_fq=float(max_fq) if max_fq else None,
-                limit=limit_val
-            )
-        except ValueError as e:
-            app.logger.error(f"Invalid numeric filter value: {e}")
-            sankey_html = "<div class='alert alert-danger'>Invalid numeric filter value</div>"
-        except Exception as e:
-            app.logger.error(f"Error generating Sankey diagram: {e}")
-            sankey_html = f"<div class='alert alert-danger'>Error generating visualization: {str(e)}</div>"
-
-        # Render template with both filters and diagram
-        return render_template(
-            "disease_phenomena.html",
-            disease_search=disease_search,
-            phenomenon_search=phenomenon_search,
-            min_pmi=min_pmi,  # Pass the original or default value
-            max_pmi=max_pmi,
-            min_fq=min_fq,
-            max_fq=max_fq,
-            limit=limit_val if 'limit_val' in locals() else 30,
-            sankey_html=sankey_html
-        )
-    except Exception as e:
-        app.logger.error(f"Error rendering disease phenomena page: {e}")
-        return render_template("error.html", message="Error loading page"), 500
-
-
 @app.route("/indexes")
 def show_indexes():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         indexes_info = {}
         indexed_columns_by_table = {}
         table_schemas = {}
@@ -1490,7 +1665,7 @@ def explain_query():
             app.logger.error(f"Invalid query type: {query_lower[:20]}...")
             return jsonify({"error": "Invalid query. Only CREATE VIEW and SELECT statements are allowed."}), 400
 
-        db = get_db()
+        db = get_db_simple_connection()
 
         # Wrap the query in a transaction that we'll roll back
         db.cursor.execute("BEGIN")
@@ -1537,7 +1712,7 @@ def explain_query():
 def delete_table(table_name):
     db = None
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         app.logger.info(f"Attempting to delete table: {table_name}")
         cursor = db.cursor
 
@@ -1614,7 +1789,7 @@ def delete_table(table_name):
 def delete_view(view_name):
     db = None
     try:
-        db = get_db()
+        db = get_db_easyner()
         app.logger.info(f"Attempting to delete view: {view_name}")
         cursor = db.cursor
 
@@ -1678,7 +1853,7 @@ def delete_view(view_name):
 @app.route("/execute-query", methods=["POST"])
 def execute_query():
     try:
-        db = get_db()
+        db = get_db_simple_connection()
         query = request.json.get("query", "").strip()
 
         if not query:
@@ -1737,7 +1912,7 @@ def validate_view(db, view_name):
 @app.route("/api/view/<view_name>/validate")
 def validate_view_api(view_name):
     try:
-        db = get_db()
+        db = get_db_simple_connection()
 
         # First check if view exists
         view_check = db.execute(
@@ -1773,7 +1948,7 @@ def validate_view_api(view_name):
 @app.route("/table/<table_name>/schema")
 def get_table_schema(table_name):
     try:
-        db = get_db()
+        db = get_db_easyner()
         # Get table creation SQL
         result = db.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
@@ -1799,10 +1974,10 @@ def get_table_schema(table_name):
 def dis_pnm_presentation():
     """Display the DIS-PNM Presentation view."""
     try:
-        result = display_table("v_DIS_PNM_PRESENTATION")
+        result = display_table(VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY)
         if "error" in result:
             return render_template("error.html", message=result["error"]), 500
-        return render_template("table_view.html", table_name="v_DIS_PNM_PRESENTATION", **result)
+        return render_template("table_view.html", table_name=VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY, **result)
     except Exception as e:
         app.logger.error(f"Error loading DIS-PNM Presentation: {e}")
         return render_template("error.html", message="Error loading DIS-PNM Presentation"), 500
@@ -1818,6 +1993,75 @@ def ne_presentation():
     except Exception as e:
         app.logger.error(f"Error loading NE Presentation: {e}")
         return render_template("error.html", message="Error loading NE Presentation"), 500
+
+@app.route("/clear-visualization-cache", methods=["POST"])
+def clear_visualization_cache():
+    """Clear all visualization cache files and in-memory caches."""
+    try:
+        app.logger.info("Clear visualization cache request received")
+
+        # Get cache stats before clearing for logging purposes
+        stats_before = visualization_manager.get_cache_stats()
+
+        # Clear the cache
+        cleared_count = visualization_manager.clear_cache()
+
+        # Get updated cache stats to verify clearing worked
+        stats_after = visualization_manager.get_cache_stats()
+
+        app.logger.info(
+            f"Visualization cache cleared successfully. "
+            f"Removed {cleared_count} cache files. "
+            f"Before: {stats_before['file_cache_count']} files ({_format_size(stats_before['cache_size_bytes'])}), "
+            f"After: {stats_after['file_cache_count']} files ({_format_size(stats_after['cache_size_bytes'])})"
+        )
+
+        return jsonify({
+            "status": "success",
+            "message": f"Cleared {cleared_count} visualization cache files",
+            "details": {
+                "cleared_count": cleared_count,
+                "before": stats_before,
+                "after": stats_after
+            }
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f"Error clearing visualization cache: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to clear visualization cache: {str(e)}"
+        }), 500
+
+@app.route("/visualization-cache-stats")
+def visualization_cache_stats():
+    """Get statistics about the visualization cache."""
+    try:
+        stats = visualization_manager.get_cache_stats()
+
+        # Format the stats for display
+        formatted_stats = {
+            "in_memory_cache_count": stats["in_memory_cache_count"],
+            "file_cache_count": stats["file_cache_count"],
+            "cache_size": _format_size(stats["cache_size_bytes"]),
+            "cache_items": []
+        }
+
+        # Format each cache item
+        for item in stats["cache_items"]:
+            formatted_stats["cache_items"].append({
+                "name": item["name"],
+                "size": _format_size(item["size_bytes"]),
+                "last_modified": time.strftime(
+                    "%Y-%m-%d %H:%M:%S",
+                    time.localtime(item["last_modified"])
+                )
+            })
+
+        return jsonify(formatted_stats)
+    except Exception as e:
+        app.logger.error(f"Error getting visualization cache stats: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/reload-server", methods=["POST"])
 def reload_server():
@@ -1905,6 +2149,7 @@ def reload_server():
                 },
                 "successful_modules": reload_details["successful_modules"],
                 "failed_modules": reload_details["failed_modules"],
+                "skipped_modules": reload_details["skipped_modules"],  # Add this line
                 "scss_compilation": scss_status
             }
         }), 200
@@ -1971,22 +2216,134 @@ def show_monitoring_status():
         operation_monitor.monitor_exception(e, context={'route': '/monitor'})
         return render_template("error.html", message="Error accessing monitoring data"), 500
 
+# Import route implementations
+from .routes import init_routes
+
+# Initialize all routes from the routes module
+init_routes(app, get_db_easyner, visualization_manager)
 
 if __name__ == "__main__":
-    with app.app_context():
-        try:
-            # Initialize database before running the server
-            db = get_db()
-            app.logger.info("Starting Flask server...")
+    import os
+    import signal
+    import tempfile
 
-            app.run(
-                host="127.0.0.1",
-                port=5001,
-                debug=True,
-                use_reloader=True,
-                threaded=True,
-            )
+    # Set up command-line argument parsing
+    parser = argparse.ArgumentParser(description='EasyNer DB Server')
+    parser.add_argument('--port', type=int, help='Port to run the server on')
+    args = parser.parse_args()
+
+    # Create PID file for process tracking
+    pid = os.getpid()
+    pid_dir = os.path.join(tempfile.gettempdir(), 'easyner')
+    os.makedirs(pid_dir, exist_ok=True)
+    pid_file = os.path.join(pid_dir, 'db_server.pid')
+
+    # Check for existing PID file (orphaned process)
+    if os.path.exists(pid_file):
+        with open(pid_file, 'r') as f:
+            old_pid = int(f.read().strip())
+            try:
+                # Check if process exists and terminate it
+                if psutil.pid_exists(old_pid):
+                    old_process = psutil.Process(old_pid)
+                    if "python" in old_process.name().lower():
+                        app.logger.info(f"Terminating orphaned server process: {old_pid}")
+                        old_process.terminate()
+                        try:
+                            old_process.wait(timeout=3)
+                        except psutil.TimeoutExpired:
+                            old_process.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                app.logger.info(f"Old PID {old_pid} no longer exists or not accessible")
+
+    # Write current PID to file
+    with open(pid_file, 'w') as f:
+        f.write(str(pid))
+
+    # Cleanup function for proper server shutdown
+    def cleanup_server():
+        app.logger.info("Cleaning up server resources...")
+        try:
+            if os.path.exists(pid_file):
+                os.unlink(pid_file)
         except Exception as e:
-            if "db" in locals():
+            app.logger.error(f"Error cleaning up PID file: {e}")
+
+        # Close all database connections
+        close_db_connections()
+
+    # Register the cleanup function
+    atexit.register(cleanup_server)
+
+    # Handle termination signals gracefully
+    def signal_handler(sig, frame):
+        app.logger.info(f"Received signal {sig}, shutting down server...")
+        cleanup_server()
+        os._exit(0)
+
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    if hasattr(signal, 'SIGUSR1'):
+        signal.signal(signal.SIGUSR1, signal_handler)
+    if hasattr(signal, 'SIGUSR2'):
+        signal.signal(signal.SIGUSR2, signal_handler)
+
+    # Determine the port (command line > environment variable > default)
+    port = args.port if args.port else int(os.environ.get('EASYNER_SERVER_PORT', 5001))
+
+    # Check if the port is available
+    s = socket(AF_INET, SOCK_STREAM)
+    port_in_use = False
+    try:
+        s.bind(('127.0.0.1', port))
+    except OSError:
+        port_in_use = True
+    finally:
+        s.close()
+
+    # If port is in use and not explicitly specified, find an available one
+    if port_in_use and not args.port:
+        app.logger.warning(f"Port {port} is in use. Trying alternative ports...")
+        for test_port in range(5002, 5020):
+            s = socket(AF_INET, SOCK_STREAM)
+            try:
+                s.bind(('127.0.0.1', test_port))
+                port = test_port
+                port_in_use = False
+                app.logger.info(f"Found available port: {port}")
+                break
+            except OSError:
+                pass
+            finally:
+                s.close()
+
+    # Start the server if we found an available port
+    if not port_in_use:
+        with app.app_context():
+            try:
+                # Initialize database schema before running the server
+                align_with_schema()
+
+                app.logger.info(f"Starting Flask server on port {port}...")
+
+                app.run(
+                    host="127.0.0.1",
+                    port=port,
+                    debug=True,
+                    use_reloader=False,  # Disable reloader to prevent duplicate processes
+                    threaded=True,
+                )
+            except Exception as e:
                 app.logger.error(f"Server error: {e}")
-            raise
+                cleanup_server()  # Ensure cleanup happens on error
+                raise
+    else:
+        print(f"ERROR: Port {port} is already in use. To fix:")
+        print(f"1. Find and stop the process using port {port}:")
+        print(f"   $ lsof -i :{port}    # Find the process ID")
+        print(f"   $ kill <PID>         # Stop the process")
+        print("2. Or specify a different port:")
+        print(f"   $ python db_server.py --port 5002")
+        print("3. Or set environment variable:")
+        print(f"   $ export EASYNER_SERVER_PORT=5002 && python db_server.py")
