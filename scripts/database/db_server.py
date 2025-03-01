@@ -21,17 +21,73 @@ def setup_logging(app):
     # Set up file handler
     log_file = os.path.join(log_dir, 'server.log')
     print(f"Logging to: {log_file}")
-    file_handler = RotatingFileHandler(log_file, maxBytes=1024 * 1024, backupCount=10)
-    file_handler.setFormatter(logging.Formatter(
+
+    # Only remove Flask's default handlers, not handlers from other loggers
+    flask_logger = app.logger
+    werkzeug_logger = logging.getLogger('werkzeug')
+
+    # Remove Flask's default handlers
+    for handler in flask_logger.handlers[:]:
+        flask_logger.removeHandler(handler)
+
+    # Remove Werkzeug's default handlers
+    for handler in werkzeug_logger.handlers[:]:
+        werkzeug_logger.removeHandler(handler)
+
+    class SmartFormatter(logging.Formatter):
+        def format(self, record):
+            # First format the basic message
+            formatted = super().format(record)
+
+            # Only append traceback info if there is an actual exception
+            if record.exc_info:
+                # Get the traceback text
+                tb = '\n'.join(traceback.format_exception(*record.exc_info))
+                if tb:
+                    formatted += f"\nStack trace:\n{tb}"
+
+            return formatted
+
+    class RequestFormatter(logging.Formatter):
+        def format(self, record):
+            # For Werkzeug request logs, simplify the message
+            if hasattr(record, 'msg') and isinstance(record.msg, str) and ' - - [' in record.msg:
+                # Extract just the method, path and status code
+                try:
+                    method = record.msg.split('"')[1].split()[0]
+                    path = record.msg.split('"')[1].split()[1]
+                    status = record.msg.split('"')[2].strip().split()[0]
+                    record.msg = f"{method} {path} - {status}"
+                except:
+                    pass # If parsing fails, leave message as is
+            return super().format(record)
+
+    # Create file handler with the smart formatter
+    # file_handler = RotatingFileHandler(log_file, maxBytes=1024 * 1024, backupCount=10)
+    file_handler = logging.FileHandler(log_file, mode='w')
+    file_handler.setFormatter(SmartFormatter(
         '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
     ))
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(logging.DEBUG)
+
+    # Create console handler with the request formatter for cleaner output
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(RequestFormatter(
+        '[%(levelname)s] %(message)s'
+    ))
+    console_handler.setLevel(logging.WARNING)
 
     # Add handler to app logger
-    app.logger.addHandler(file_handler)
-    app.logger.setLevel(logging.INFO)
+    flask_logger.addHandler(file_handler)
+    flask_logger.addHandler(console_handler)
+    flask_logger.setLevel(logging.INFO)
 
-    app.logger.info('Logging setup completed')
+    # Configure werkzeug logger to be less verbose
+    werkzeug_logger.addHandler(file_handler)
+    werkzeug_logger.addHandler(console_handler)
+    werkzeug_logger.setLevel(logging.WARNING)  # Only show warnings and errors
+
+    app.logger.info('Flask logging setup completed')
 
 # Set template directory to current directory/templates
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
