@@ -38,17 +38,20 @@ def db_error_handler(method):
 class EasyNerDBHandler:
     """Handle database operations with thread-safety and connection management."""
 
-    def __init__(self, db_path: Optional[str] = None, config_path: str = "../../config.json"):
+    def __init__(self, db_path: Optional[str] = None, config_path: str = "../../config.json", from_pool: bool = False):
         """
         Initialize the database handler.
 
         :param db_path: Path to the SQLite database file.
-
+        :param config_path: Path to the configuration file.
+        :param from_pool: Whether this instance is being created from a connection pool.
+                        If True, some initialization is skipped (shared resources are already set up).
         """
         # Set thread ID that created this connection - initialize early to avoid attribute errors
         self.creation_thread_id = threading.get_ident()
 
-        # Initialize logger early
+        # TODO FIx hacky solution Initialize logger early
+        # if logging.getLogger("EasyNerDB").hasHandlers():
         self.logger = logging.getLogger("EasyNerDB")
 
         # Initialize critical attributes that need to be set before any other operations
@@ -58,12 +61,28 @@ class EasyNerDBHandler:
         self._tables = None
         self._statistics = None
         self._data_exchanger = None
+        self._from_pool = from_pool
+
+        # Set default log file paths (will be properly set later for non-pool connections)
+        self.log_file = "pooled_connection.log"  # Default value for pooled connections
+        self.error_log_file = "pooled_connection.err"
+        self.debug_log_file = "pooled_connection.debug.log"
 
         # Load config and setup paths first
         self.config = self._load_config(config_path)
         self.db_path, self.path_source = self._setup_path(db_path=db_path)
         self.name = os.path.basename(self.db_path)
 
+        # For pooled connections, skip some initialization
+        if from_pool:
+            self._setup_logging()
+            # self.logger = logging.getLogger("EasyNerDB")  # Should already be set up
+
+            self.connect(self.db_path)
+            self._init_cache_minimal()
+            self._initialize_components()
+            self.logger.debug(f"Created pooled connection to {self.db_path}")
+        else:
         # Now set up the full logging system with proper file paths
         # Can't use @db_error_handler before logging is set up
         self._setup_logging()
@@ -115,6 +134,24 @@ class EasyNerDBHandler:
                 f"\n Error log - (ONLY ERRORS) - Resets: {self.error_log_file}"
                 f"\n Debug log - (FULL DEBUG LOG): {self.debug_log_file}"
             )
+
+
+    def _init_cache_minimal(self):
+        """Initialize the cache table for pooled connections."""
+        try:
+            # Import here to avoid circular imports
+            from .core.cache_manager import CacheManager
+            from .core.cache_singleton import set_cache_manager_connection
+
+            # Create a local instance for this handler
+            self.cache_manager = CacheManager(db_handler=self)
+
+            # Also set the global singleton connection to ensure cached decorators work
+            set_cache_manager_connection(self._connection, self._cursor, self.logger)
+
+            self.logger.debug("Initialized cache manager for pooled connection")
+        except ImportError as e:
+            self.logger.warning(f"Failed to initialize cache system: {e}")
 
     # Add the method that was previously a standalone function
     @contextmanager
@@ -292,6 +329,11 @@ class EasyNerDBHandler:
     def _log_connection_info(self, db_path, path_source):
         """Log detailed information about the database connection."""
         try:
+            # Skip detailed logging for pooled connections
+            if self._from_pool:
+                self.logger.debug(f"Connected to {self.db_path} (pooled connection)")
+                return
+
             # Get journal mode
             journal_mode = self._connection.execute("PRAGMA journal_mode").fetchone()[0]
 
@@ -844,6 +886,7 @@ class EasyNerDBHandler:
         self.logger = logging.getLogger("EasyNerDB")
 
         # Clear temporary console handlers - Fixed: Added parentheses to removeHandler method call
+
         for handler in self.logger.handlers[:]:
             self.logger.removeHandler(handler)
 

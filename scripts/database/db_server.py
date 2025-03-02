@@ -19,6 +19,9 @@ import threading
 from contextlib import contextmanager
 import tempfile
 
+# Import connection pool
+from .core.connection_pool import ConnectionPool
+
 
 DBPATH = os.environ.get("DB_PATH")
 if not DBPATH:
@@ -27,6 +30,8 @@ if not os.path.exists(DBPATH):
     raise ValueError(f"Database path {DBPATH} does not exist")
 if not os.path.isabs(DBPATH):
     raise ValueError(f"Database path {DBPATH} is not an absolute path")
+
+
 
 
 # Import our new monitoring module
@@ -117,6 +122,9 @@ template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templat
 app = Flask(__name__, template_folder=template_dir)
 setup_logging(app)
 
+# Import after app is defined
+from .statistics.visualization_manager import VisualizationManager
+
 # Initialize thread-local storage for database connections
 db_connections = threading.local()
 
@@ -131,48 +139,52 @@ operation_monitor.register_periodic_monitor(
     interval=int(os.environ.get('EASYNER_METRIC_INTERVAL', '60'))
 )
 
+# Initialize the connection pool as a global
+db_pool = ConnectionPool(
+    max_connections=int(os.environ.get('EASYNER_POOL_SIZE', '5')), # Fallback to server defaults
+    idle_timeout=int(os.environ.get('EASYNER_POOL_TIMEOUT', '300')),
+)
+
+# Register shutdown handler
+@atexit.register
+def shutdown_pool():
+    app.logger.info("Shutting down connection pool")
+    db_pool.shutdown()
+
+
 # Initialize visualization manager
 visualization_manager = VisualizationManager(app)
 
 @contextmanager
-def get_db_connection():
-    """Get a thread-local database connection with monitoring"""
-    # Check if we already have a connection for this thread
-    if not hasattr(db_connections, 'connection'):
+def get_db_easyner_context_connection():
+    """Get a database connection from the pool with monitoring"""
         try:
             # Start monitoring the database connection operation
-            with operation_monitor.monitor_operation('create_db_connection'):
-                # Create a new connection
-                connection = EasyNerDBHandler()
-                db_connections.connection = connection
-
-                # Track whether this connection was created within a request context
-                # to determine if it should be closed at request end
-                is_request_context = has_request_context()
-                db_connections.is_request_connection = is_request_context
-
+        with operation_monitor.monitor_operation('get_db_connection'):
+            # Get connection from pool instead of creating a new one
+            with db_pool.get_connection() as connection:
                 # Register the connection with the monitor
                 connection_monitor.register_connection(
                     connection.conn,
                     context={
                         'thread_id': threading.get_ident(),
-                        'request_connection': is_request_context
+                        'request_connection': has_request_context(),
                     }
                 )
 
-                app.logger.debug(f"Created new database connection (request context: {is_request_context})", extra={
+                app.logger.debug("Using connection from pool", extra={
                     'thread_id': threading.get_ident(),
                     'conn_id': id(connection.conn)
                 })
-        except Exception as e:
-            app.logger.error(f"Database connection error: {e}", exc_info=True)
-            raise
 
-    # Yield the connection
+                # Yield the connection to the caller
     try:
-        yield db_connections.connection
+                    yield connection
+                finally:
+                    # Unregister from monitor
+                    connection_monitor.unregister_connection(connection.conn)
     except Exception as e:
-        # Log the exception with the monitor
+        app.logger.error(f"Database connection error: {e}", exc_info=True)
         operation_monitor.monitor_exception(e, context={
             'operation': 'database_operation',
             'thread_id': threading.get_ident()
@@ -189,7 +201,7 @@ def get_db_simple_connection() -> sqlite3.Connection:
 
 def get_db_easyner():
     """Get the database handler using the connection manager"""
-    with get_db_connection() as db:
+    with get_db_easyner_context_connection() as db:
         return db
 
 def close_db_connections():
@@ -203,6 +215,9 @@ def close_db_connections():
 
     # Close all connections
     connection_monitor.close_all()
+
+    # Shutdown the connection pool
+    db_pool.shutdown()
 
 # Register cleanup function
 atexit.register(close_db_connections)
@@ -284,7 +299,7 @@ def styles():
 def align_with_schema():
     """Initialize database schema if needed"""
     try:
-        with get_db_connection() as db:
+        with get_db_easyner_context_connection() as db:
             # Use existing schema alignment method
             schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
             db.align_with_schema(schema_path)
@@ -324,7 +339,7 @@ def home():
     """Home page displaying database statistics"""
     try:
         with operation_monitor.monitor_operation('home_page_load'):
-            with get_db_connection() as db:
+            with get_db_easyner_context_connection() as db:
                 tables_info = {}
 
                 # Get counts for each table
@@ -370,7 +385,7 @@ def health_check():
     """Health check endpoint with database status"""
     try:
         with operation_monitor.monitor_operation('health_check'):
-            with get_db_connection() as db:
+            with get_db_easyner_context_connection() as db:
                 tables_info = {}
 
                 # Get counts for each table
@@ -421,7 +436,7 @@ def list_documents():
     """Display documents with filtering"""
     try:
         with operation_monitor.monitor_operation('list_documents'):
-            with get_db_connection() as db:
+            with get_db_easyner_context_connection() as db:
                 page = int(request.args.get("page", 1))
                 query = request.args.get("query", "")
                 doc_id = request.args.get("doc_id", "")
@@ -999,21 +1014,24 @@ def debug_entity_cooccurrences_summary():
 @app.route("/view/<view_name>/sample")
 def get_view_sample(view_name):
     try:
-        db = get_db_easyner()
+
+        db = get_db_simple_connection()
+        cursor = db.cursor
+
         # Check if it's actually a view first
-        view_check = db.execute(
+        view_check = cursor.execute(
             "SELECT type FROM sqlite_master WHERE type='view' AND name=?", [view_name]
         )
         if not view_check:
             return jsonify({"error": "View not found"}), 404
 
         # Get schema info for column names
-        schema = db.execute(f"PRAGMA table_info({view_name})")
+        schema = cursor.execute(f"PRAGMA table_info({view_name})")
         columns = [col[1] for col in schema]
 
         # Get sample row
         sample_sql = f"SELECT * FROM {view_name} LIMIT 1"
-        sample = db.execute(sample_sql)
+        sample = cursor.execute(sample_sql)
 
         if not sample:
             return jsonify({"message": "No data available"}), 404
@@ -2271,6 +2289,12 @@ if __name__ == "__main__":
 
         # Close all database connections
         close_db_connections()
+
+        # Explicitly shutdown the pool
+        try:
+            db_pool.shutdown()
+        except Exception as e:
+            app.logger.error(f"Error shutting down connection pool: {e}")
 
     # Register the cleanup function
     atexit.register(cleanup_server)
