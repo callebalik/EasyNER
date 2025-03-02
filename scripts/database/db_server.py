@@ -2247,6 +2247,54 @@ from .routes import init_routes
 init_routes(app, get_db_easyner, visualization_manager)
 
 if __name__ == "__main__":
+
+@app.route("/dev/terminate-connection", methods=["POST"])
+def terminate_connection():
+    """Terminate a database connection by ID"""
+    try:
+        conn_id = int(request.json.get('connection_id'))
+
+        # Find the active query to get connection ID
+        active_queries = operation_monitor.get_active_queries()
+        query_found = False
+
+        if 'query_id' in request.json:
+            query_id = request.json.get('query_id')
+            # Find the connection associated with this query
+            for query in active_queries:
+                if query['id'] == query_id:
+                    # Extract connection ID from transaction ID if possible
+                    # This depends on your transaction ID format and storage
+                    query_found = True
+                    break
+
+            if not query_found:
+                return jsonify({
+                    'success': False,
+                    'message': f'Query ID {query_id} not found in active queries'
+                }), 404
+
+        # Perform the termination
+        result = connection_monitor.terminate_connection(conn_id)
+
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 404
+
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'message': 'Invalid connection ID'
+        }), 400
+    except Exception as e:
+        app.logger.error(f"Error terminating connection: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'Error terminating connection: {str(e)}'
+        }), 500
+
+
     import os
     import signal
     import tempfile
@@ -2289,7 +2337,8 @@ if __name__ == "__main__":
         app.logger.info("Cleaning up server resources...")
         try:
             if os.path.exists(pid_file):
-                os.unlink(pid_file)
+                os.remove(pid_file)
+                app.logger.info(f"Removed PID file: {pid_file}")
         except Exception as e:
             app.logger.error(f"Error cleaning up PID file: {e}")
 
