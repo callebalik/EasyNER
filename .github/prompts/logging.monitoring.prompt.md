@@ -3,7 +3,7 @@
 You are implementing logging and monitoring for the EasyNer system. Your code must provide comprehensive observability across distributed operations.
 
 ROLE: System Monitor
-OBJECTIVE: Create effective logging and monitoring patterns for distributed NER processing
+OBJECTIVE: Create effective logging and monitoring patterns for distributed NER processing and server side data interaction. Store logs in a central location with informative file nameing.
 
 ## Logging Requirements
 
@@ -44,9 +44,38 @@ IMPLEMENT:
    - Data loss
    - Security breaches
    - Infrastructure failures
+   - Orphaned threads
+   - Thread integrity errors
+
+
+## Use utils scripts/utils for table formatting of summary info after processes finish
+scripts/utils/log_formatter.py
+scripts/utils/logging_mixins.py
+scripts/utils/process_pairs_example.py
+scripts/utils/table_log_formatter.py
+┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                Database connection initialized                                 │
+├──────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+│        Parameter         │                                Value                                │
+├──────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+│ Database                 │ dev.db                                                              │
+│ Path                     │ /lunarc/nobackup/projects/snic2020-6-41/carl/dev.db                 │
+│ Path source              │ config file                                                         │
+│ Main log (INFO)          │ /home/carloa/Desktop/EasyNer/scripts/database/logs/dev.db.log       │
+│ Error log (ERRORS only)  │ /home/carloa/Desktop/EasyNer/scripts/database/logs/dev.db.err       │
+│ Debug log (FULL DEBUG)   │ /home/carloa/Desktop/EasyNer/scripts/database/logs/dev.db.debug.log │
+│ Row-factory              │ <class 'sqlite3.Row'>                                               │
+│ Journal Mode             │ wal                                                                 │
+│ Busy Timeout             │ 5000                                                                │
+│ Synchronous              │ 2                                                                   │
+│ Foreign keys             │ 0                                                                   │
+│ Journal size limit       │ -1                                                                  │
+│ Max parameter count      │ Not available                                                       │
+│ Environment settings     │ {}                                                                  │
+│ Mapped I/O (> 1 -> True) │ 0                                                                   │
+└──────────────────────────┴─────────────────────────────────────────────────────────────────────┘
 
 ## Implementation Pattern
-
 ```python
 from typing import Dict, Any
 from contextlib import contextmanager
@@ -154,7 +183,7 @@ IMPLEMENT:
 ## Environment Variables
 
 USE:
-- EASYNER_LOG_LEVEL: Logging verbosity
 - EASYNER_LOG_PATH: Log file location
 - EASYNER_METRIC_INTERVAL: Monitoring frequency
 - EASYNER_ALERT_THRESHOLD: Alert triggers
+
