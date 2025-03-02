@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>{{ title }}</h1>
+    <!-- <div id="sankey_chart" style="width: 100%; height: 500px;"></div>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+        google.charts.load('current', {'packages':['sankey']});
+        google.charts.setOnLoadCallback(drawChart);
+
+        function drawChart() {
+            var data = new google.visualization.DataTable();
+            data.addColumn('string', 'From');
+            data.addColumn('string', 'To');
+            data.addColumn('number', 'Weight');
+
+            data.addRows([
+                {% for link in sankey_data %}
+                ['{{ link.from }}', '{{ link.to }}', {{ link.weight }}],
+                {% endfor %}
+            ]);
+
+            var options = {
+                width: '100%',
+                height: 500
+            };
+
+            var chart = new google.visualization.Sankey(document.getElementById('sankey_chart'));
+            chart.draw(data, options);
+        }
+    </script> -->
+    <div id="sankey_chart">
+        <h2>Sankey Diagram</h2>
+        {{ sankey_html|safe }}
+    </div>
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2>Document Statistics</h2>
+        </div>
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Count</th>
+                        <th>Percentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in basic_stats %}
+                    <tr>
+                        <td>{{ stat.metric }}</td>
+                        <td>{{ stat.value }}</td>
+                        <td>{{ stat.percentage if 'percentage' in stat else '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Entity Class Distribution</h2>
+        </div>
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Entity Class</th>
+                        <th>Document Count</th>
+                        <th>Percentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in class_stats %}
+                    <tr>
+                        <td>{{ stat.class_name }}</td>
+                        <td>{{ stat.document_count }}</td>
+                        <td>{{ stat.percentage }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

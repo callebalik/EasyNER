@@ -371,6 +371,13 @@ def home():
             500,
         )
 
+@app.route("/data_flow")
+def data_flow():
+    """Data flow processing endpoint"""
+
+
+
+
 
 def _format_size(size_bytes):
     """Convert size in bytes to human readable format."""
