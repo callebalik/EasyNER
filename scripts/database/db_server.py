@@ -2186,7 +2186,7 @@ def dev_reload_page():
                           server_status="Running",
                           modules_count=len([m for m in sys.modules if m.startswith('scripts.')]))
 
-@app.route("/monitor")
+@app.route("/dev/monitor")
 def show_monitoring_status():
     """Display monitoring stats for administrators"""
     try:
@@ -2219,6 +2219,10 @@ def show_monitoring_status():
         # Get open transactions
         open_transactions = operation_monitor.get_open_transactions()
 
+        # Get active and slow queries
+        active_queries = operation_monitor.get_active_queries()
+        slow_queries = operation_monitor.get_slow_queries_history()
+
         return render_template(
             "monitoring.html",
             connections=connections,
@@ -2227,7 +2231,9 @@ def show_monitoring_status():
             active_threads=active_threads,
             resource_stats=resource_stats,
             operation_stats=operation_stats,
-            open_transactions=open_transactions
+            open_transactions=open_transactions,
+            active_queries=active_queries,
+            slow_queries=slow_queries
         )
     except Exception as e:
         app.logger.error(f"Error displaying monitoring status: {e}")

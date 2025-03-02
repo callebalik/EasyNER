@@ -44,6 +44,9 @@ class OperationMonitor:
             'slow_query_ms': float(os.environ.get('EASYNER_ALERT_THRESHOLD_SLOW_QUERY', 1000.0))
         }
 
+        self.slow_queries_history = []
+        self.max_slow_queries = int(os.environ.get('EASYNER_MAX_SLOW_QUERIES', 20))
+
     def _get_memory_usage(self) -> Dict[str, float]:
         """Get current memory usage statistics."""
         try:
@@ -204,6 +207,21 @@ class OperationMonitor:
         for alert in alerts:
             if alert['level'] == 'WARNING':
                 self.logger.warning(alert['message'], extra={'alert': alert})
+
+                # Store slow query history
+                if alert['type'] == 'SLOW_QUERY':
+                    slow_query = {
+                        'query': alert.get('query', 'Unknown'),
+                        'duration_ms': alert.get('value'),
+                        'timestamp': datetime.now().isoformat(),
+                        'transaction_id': alert.get('transaction_id')
+                    }
+
+                    # Add to history with size limit
+                    self.slow_queries_history.append(slow_query)
+                    if len(self.slow_queries_history) > self.max_slow_queries:
+                        self.slow_queries_history.pop(0)  # Remove oldest
+
             elif alert['level'] == 'ERROR':
                 self.logger.error(alert['message'], extra={'alert': alert})
             elif alert['level'] == 'CRITICAL':
@@ -228,6 +246,26 @@ class OperationMonitor:
                 formatter.add_row([key, str(value)])
 
         return formatter.render()
+
+    def get_active_queries(self) -> List[Dict[str, Any]]:
+        """Get list of currently running database queries."""
+        active_queries = []
+
+        for tx in self.get_open_transactions():
+            if tx['name'] == 'database_query' and 'query' in tx.get('context', {}):
+                active_queries.append({
+                    'id': tx['id'],
+                    'query': tx['context']['query'],
+                    'params': tx['context'].get('params', []),
+                    'start_time': tx['start_time'],
+                    'duration_so_far': time.time() - tx['start_time']
+                })
+
+        return active_queries
+
+    def get_slow_queries_history(self) -> List[Dict[str, Any]]:
+        """Get history of slow queries."""
+        return self.slow_queries_history
 
     @contextmanager
     def monitor_operation(self, operation_name: str, context: Dict[str, Any] = None, conn: sqlite3.Connection = None):
@@ -266,6 +304,14 @@ class OperationMonitor:
             'thread_id': thread_id,
             'start_time': datetime.fromtimestamp(start_time).isoformat()
         }
+
+
+        # Include query details if present in context
+        if 'query' in context:
+            stats['query'] = context['query']
+            if 'params' in context:
+                stats['query_params'] = context['params']
+
 
         if conn:
             stats['connection'] = self._get_connection_stats(conn)
@@ -524,6 +570,54 @@ class DBConnectionMonitor:
 
                 del self.connections[conn_id]
 
+    def terminate_connection(self, conn_id: int) -> Dict[str, Any]:
+        """Forcibly terminate a database connection by ID.
+
+        Args:
+            conn_id: ID of the connection to terminate
+
+        Returns:
+            Dictionary with status of the termination operation
+        """
+        with self.lock:
+            if conn_id not in self.connections:
+                return {
+                    'success': False,
+                    'message': f'Connection ID {conn_id} not found'
+                }
+
+            try:
+                # Get connection info before closing
+                conn_info = {
+                    'conn_id': conn_id,
+                    'thread_id': self.connections[conn_id]['thread_id'],
+                    'age_seconds': time.time() - self.connections[conn_id]['created_at'],
+                    'context': self.connections[conn_id]['context']
+                }
+
+                # Close the connection
+                self.connections[conn_id]['conn'].close()
+
+                # Log the termination
+                self.logger.warning(
+                    f"Manually terminated connection {conn_id} from thread {conn_info['thread_id']}",
+                    extra={'connection_info': conn_info}
+                )
+
+                # Remove from tracking
+                del self.connections[conn_id]
+
+                return {
+                    'success': True,
+                    'message': f'Connection {conn_id} terminated successfully',
+                    'connection_info': conn_info
+                }
+            except Exception as e:
+                self.logger.error(f"Error terminating connection {conn_id}: {e}")
+                return {
+                    'success': False,
+                    'message': f'Error terminating connection: {str(e)}'
+                }
 
 class ThreadMonitor:
     """Monitor thread health and detect orphaned or stuck threads."""

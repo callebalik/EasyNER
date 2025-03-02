@@ -264,6 +264,83 @@
                         <div class="alert alert-info">No open transactions tracked</div>
                     {% endif %}
 
+                    <!-- Add after the Open Transactions section -->
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card mb-4">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="card-title mb-0">Database Queries</h5>
+                                </div>
+                                <div class="card-body">
+                                    <!-- Active Queries Section -->
+                                    <h6>Active Queries ({{ active_queries|length }})</h6>
+                                    {% if active_queries %}
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>ID</th>
+                                                        <th>SQL Query</th>
+                                                        <th>Parameters</th>
+                                                        <th>Duration (ms)</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for query in active_queries %}
+                                                    <tr>
+                                                        <td>{{ query.id }}</td>
+                                                        <td><code>{{ query.query }}</code></td>
+                                                        <td><code>{{ query.params }}</code></td>
+                                                        <td>{{ (query.duration_so_far * 1000)|round(1) }}</td>
+                                                        <td>
+                                                            <button
+                                                                class="btn btn-sm btn-danger terminate-query-btn"
+                                                                data-query-id="{{ query.id }}"
+                                                                data-conn-id="{{ query.id.split('_')[1] if '_' in query.id else '' }}">
+                                                                Terminate
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-info">No active queries running</div>
+                                    {% endif %}
+
+                                    <!-- Slow Queries History Section -->
+                                    <h6 class="mt-4">Slow Queries History ({{ slow_queries|length }})</h6>
+                                    {% if slow_queries %}
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>SQL Query</th>
+                                                        <th>Duration (ms)</th>
+                                                        <th>Timestamp</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for query in slow_queries %}
+                                                    <tr>
+                                                        <td><code>{{ query.query }}</code></td>
+                                                        <td>{{ query.duration_ms|round(1) }}</td>
+                                                        <td>{{ query.timestamp }}</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-info">No slow queries recorded</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mt-4">
                         <h6>Actions</h6>
                         <button class="btn btn-danger" id="clearCacheBtn">Clear Visualization Cache</button>
@@ -350,5 +427,62 @@ document.getElementById('reloadServerBtn').addEventListener('click', function() 
 setTimeout(function() {
     location.reload();
 }, 30000);
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listeners for terminate buttons
+    document.querySelectorAll('.terminate-query-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (!confirm('Are you sure you want to terminate this query? This will close the database connection.')) {
+                return;
+            }
+
+            const queryId = this.getAttribute('data-query-id');
+            const connId = this.getAttribute('data-conn-id');
+
+            if (!connId) {
+                alert('Could not determine connection ID for this query.');
+                return;
+            }
+
+            fetch('/dev/terminate-connection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    connection_id: parseInt(connId),
+                    query_id: queryId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                let resultEl = document.getElementById('actionResult');
+                resultEl.style.display = 'block';
+
+                if (data.success) {
+                    resultEl.className = 'alert alert-success';
+                    resultEl.textContent = data.message;
+                } else {
+                    resultEl.className = 'alert alert-danger';
+                    resultEl.textContent = data.message || 'Failed to terminate connection';
+                }
+
+                // Refresh the page after short delay
+                setTimeout(function() {
+                    location.reload();
+                }, 1500);
+            })
+            .catch(error => {
+                let resultEl = document.getElementById('actionResult');
+                resultEl.style.display = 'block';
+                resultEl.className = 'alert alert-danger';
+                resultEl.textContent = 'Error: ' + error;
+            });
+        });
+    });
+});
+
 </script>
+
+
 {% endblock %}

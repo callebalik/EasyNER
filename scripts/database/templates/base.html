@@ -39,9 +39,12 @@
                 <a href="{{ url_for('disease_phenomena_page') }}">Disease-Phenomena Sankey</a>
             </div>
             <div class="nav-right">
+                <div class="nav-group">
+                    <a href="{{ url_for('show_monitoring_status') }}">Developer Tools</a>
                 <button onclick="openQueryModal()" class="query-button">SQL Query</button>
                 <button id="reloadServerBtn" class="reload-button" title="Reload server modules">⟳</button>
                 <button id="clearCacheBtn" class="clear-cache-button" title="Clear visualization cache">🗑️</button>
+                </div>
             </div>
         </div>
     </div>
