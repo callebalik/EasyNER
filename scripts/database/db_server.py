@@ -158,8 +158,8 @@ visualization_manager = VisualizationManager(app)
 @contextmanager
 def get_db_easyner_context_connection():
     """Get a database connection from the pool with monitoring"""
-        try:
-            # Start monitoring the database connection operation
+    try:
+        # Start monitoring the database connection operation
         with operation_monitor.monitor_operation('get_db_connection'):
             # Get connection from pool instead of creating a new one
             with db_pool.get_connection() as connection:
@@ -178,7 +178,7 @@ def get_db_easyner_context_connection():
                 })
 
                 # Yield the connection to the caller
-    try:
+                try:
                     yield connection
                 finally:
                     # Unregister from monitor
@@ -2247,13 +2247,6 @@ def show_monitoring_status():
         operation_monitor.monitor_exception(e, context={'route': '/monitor'})
         return render_template("error.html", message="Error accessing monitoring data"), 500
 
-# Import route implementations
-from .routes import init_routes
-
-# Initialize all routes from the routes module
-init_routes(app, get_db_easyner, visualization_manager)
-
-if __name__ == "__main__":
 
 @app.route("/dev/terminate-connection", methods=["POST"])
 def terminate_connection():
@@ -2302,6 +2295,16 @@ def terminate_connection():
         }), 500
 
 
+# Import route implementations
+from .routes import init_routes
+
+# Initialize all routes from the routes module
+
+init_routes(app, get_db_easyner, visualization_manager)
+from .server.statistics.route import stats
+app.register_blueprint(stats)
+
+if __name__ == "__main__":
     import os
     import signal
     import tempfile
