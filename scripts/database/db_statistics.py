@@ -232,6 +232,122 @@ class DBStatistics:
             'without_entities': self.documents_without_entities
         }
 
+    def get_doc_entity_distribution_data_for_sankey(self):
+        """
+        Get data for sankey diagram showing named entity distribution across documents.
+
+        Uses cached data if available to avoid expensive database query.
+
+        Returns:
+            DataFrame: Data for sankey diagram with columns [source, target, value]
+        """
+
+
+        document_entity_counts = self.documents_entity_distribution
+
+        sankey_data = {
+            "source": [],
+            "target": [],
+            "value": []
+        }
+
+
+        sankey_data['source'].append("Total Documents")
+        sankey_data['target'].append("Documents with Named Entities")
+        sankey_data['value'].append(document_entity_counts['with_entities'])
+
+        sankey_data['source'].append("Total Documents")
+        sankey_data['target'].append("Documents without Named Entities")
+        sankey_data['value'].append(document_entity_counts['without_entities'])
+
+
+        print(sankey_data)
+        return sankey_data
+
+    @cached(ttl_seconds=3600)
+    def get_entity_class_document_distribution(self):
+        """
+        Get distribution of named entity classes across documents.
+
+        Returns:
+            DataFrame: Distribution with columns [class_name, document_count, percentage]
+        """
+        self.cursor.execute(f"""
+            SELECT
+                nec.{NE_CLASS},
+                COUNT(DISTINCT s.{DOC_ID}) as document_count
+            FROM {TABLE_NE} ne
+            JOIN {TABLE_NE_CLASS} nec ON ne.{CLASS_ID} = nec.{CLASS_ID}
+            JOIN sentences s ON ne.{SENT_IDX} = s.{CLASS_ID}
+            GROUP BY nec.{NE_CLASS}
+            ORDER BY document_count DESC
+        """)
+
+        results = self.cursor.fetchall()
+        df = pd.DataFrame(results, columns=[NE_CLASS, "document_count"])
+
+        # Calculate percentage of total documents
+        total_docs = self.document_count
+        df['percentage'] = (df['document_count'] / total_docs * 100).round(2)
+
+        return df
+
+    @cached(ttl_seconds=3600)
+    def get_documents_with_entity_class_combinations(self, top_n=None):
+        """
+        Get counts of documents with specific entity class combinations.
+
+        Args:
+            top_n (int, optional): Limit to top N combinations by document count
+
+        Returns:
+            DataFrame: Combinations with columns for each class (True/False) and document_count
+        """
+        # First get all entity classes
+        self.cursor.execute(f"SELECT class_name FROM {TABLE_NE_CLASS}")
+        classes = [row[0] for row in self.cursor.fetchall()]
+
+        # Get document-class pairs
+        self.cursor.execute(f"""
+            SELECT
+                s.{DOC_ID},
+                nec.{NE_CLASS}
+            FROM {TABLE_NE} ne
+            JOIN {TABLE_NE_CLASS} nec ON ne.{CLASS_ID} = nec.{CLASS_ID}
+            JOIN {TABLE_SENTENCES} s ON ne.{SENT_IDX} = s.{SENT_IDX}
+            GROUP BY s.{DOC_ID}, nec.{NE_CLASS}
+        """)
+
+        # Process results to get combinations
+        doc_classes = {}
+        for doc_id, class_name in self.cursor.fetchall():
+            if doc_id not in doc_classes:
+                doc_classes[doc_id] = set()
+            doc_classes[doc_id].add(class_name)
+
+        # Count combinations
+        combinations = {}
+        for doc_id, class_set in doc_classes.items():
+            key = tuple(sorted(class_set))
+            combinations[key] = combinations.get(key, 0) + 1
+
+        # Convert to DataFrame
+        rows = []
+        for classes_tuple, count in sorted(combinations.items(), key=lambda x: -x[1]):
+            row = {cls: cls in classes_tuple for cls in classes}
+            row['document_count'] = count
+            rows.append(row)
+
+        df = pd.DataFrame(rows)
+
+        # Limit to top N combinations if specified
+        if top_n is not None and top_n > 0:
+            df = df.head(top_n)
+
+        return df
+
+
+
     def count_named_entity_errors(self) -> DataFrame:
         """
         Counts the frequency of each error type (error_id) for each named entity from the entity_occurrences table.
