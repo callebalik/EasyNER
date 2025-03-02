@@ -33,3 +33,14 @@ DIS,pc - 10,MISLAB
 DIS,smg,MISLAB
 PNM,climate,AMBIG
 DIS,( b,MISLAB
+PNM,smoke,AMBIG
+DIS,nepal earthquake,MISLAB
+PNM,smokes,MISLAB
+PNM,climates,AMBIG
+PNM,ice,AMBIG
+PNM,tumurs,MISLAB
+PNM,fire,AMBIG
+PNM,gloves,AMBIG
+DIS,forest degradation,MISLAB
+DIS,disaster,MISLAB
+PNM,swell,AMBIG
