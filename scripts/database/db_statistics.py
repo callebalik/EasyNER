@@ -8,6 +8,7 @@ import sqlite3
 import seaborn as sns
 from .data_model.schema import *
 
+
 # We use this decorator as an instance method of CacheManager
 # So we need to create a cache_manager instance to use its cached decorator
 from .core.cache_singleton import cached
@@ -142,16 +143,24 @@ class DBStatistics:
         return self.cursor.fetchone()[0]
 
     @property
-    @cached(ttl_seconds=3600, prefix="stats.named_entities_count")
-    def named_entities_count(self):
+    @cached(ttl_seconds=3600)
+    def named_entities_count(self, ne_class: str = None):
         """
-        Get the total number of entity occurrences in the database.
+        Get the total number of entity occurrences in the database matching optional WHERE condition for the named entity class
+
         Uses cache if available to avoid expensive database query.
 
         :return: The number of entity occurrences.
         """
+        query = f"SELECT COUNT(*) FROM {TABLE_NE};"
+        if ne_class:
+            class_id = self.data_exchanger.get_named_entity_class_id(ne_class)
+            query += f" WHERE {CLASS_ID}='{ne_class}'"
+
         self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE};")
         return self.cursor.fetchone()[0]
+
+
 
     @property
     @cached(ttl_seconds=3600, prefix="stats.entity_cooccurrence_count")
@@ -162,8 +171,66 @@ class DBStatistics:
 
         :return: The number of entity cooccurrences.
         """
-        self.cursor.execute("SELECT COUNT(*) FROM entity_cooccurrences;")
+        query = f"""
+        SELECT COUNT(*) FROM {TABLE_DIS_PNM};
+        """
+        self.cursor.execute(query)
         return self.cursor.fetchone()[0]
+
+    # -------- Data for data flow analysis --------
+    @property
+    @cached(ttl_seconds=3600)
+    def documents_with_entities(self):
+        """
+        Get counts of documents with and without named entities.
+
+        Returns:
+            dict: Document counts with keys 'with_entities', 'without_entities', and 'total'
+        """
+
+        # Get documents with at least one entity
+        query = f"""
+        SELECT COUNT(DISTINCT ne.{DOC_ID})
+        FROM {TABLE_NE} ne
+        """
+        self.cursor.execute(query)
+
+        docs_with_entities = self.cursor.fetchone()[0]
+
+        if docs_with_entities is None:
+            self.logger.warning(
+                f"No documents with entities found."
+                f"\n- Total documents: {self.document_count:,}"
+                f"\n- Documents with entities: {docs_with_entities:,}"
+                f"\n- Total entities in database {self.named_entities_count:,}"
+                f"\n---------Query ---------\n{query}"
+            )
+        return docs_with_entities
+
+    @property
+    @cached(ttl_seconds=3600)
+    def documents_without_entities(self):
+        """
+        Get counts of documents with and without named entities.
+
+        Returns:
+            dict: Document counts with keys 'with_entities', 'without_entities', and 'total'
+        """
+        return self.document_count - self.documents_with_entities
+
+    @property
+    def documents_entity_distribution(self) -> dict:
+        """
+        Get distribution of documents with and without named entities.
+
+        Returns:
+            dict: Document counts with keys 'with_entities', 'without_entities', and 'total'
+        """
+        return {
+            'total': self.document_count,
+            'with_entities': self.documents_with_entities,
+            'without_entities': self.documents_without_entities
+        }
 
     def count_named_entity_errors(self) -> DataFrame:
         """
