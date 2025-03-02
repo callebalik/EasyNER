@@ -39,7 +39,7 @@ def set_cache_manager_connection(conn, cursor, logger=None):
         cache_mgr._ensure_cache_table_exists()
     return cache_mgr
 
-def cached(ttl_seconds: Optional[int] = 3600, prefix: str = "", overwrite: bool = True):
+def cached(ttl_seconds: Optional[int] = 3600, prefix: str = None, overwrite: bool = True):
     """
     Global cached decorator that works without explicit CacheManager instantiation.
     If the cache manager is not fully initialized when this decorator is used,
@@ -47,7 +47,7 @@ def cached(ttl_seconds: Optional[int] = 3600, prefix: str = "", overwrite: bool 
 
     Args:
         ttl_seconds: Time to live in seconds (None for no expiration)
-        prefix: Cache key prefix
+        prefix: Cache key prefix, if None, automatically generate from class and method names
         overwrite: Whether to overwrite existing cached values
 
     Returns:
@@ -66,6 +66,16 @@ def cached(ttl_seconds: Optional[int] = 3600, prefix: str = "", overwrite: bool 
             try:
                 # Generate a cache key from function name, args, and kwargs
                 func_name = func.__name__
+
+                # Autogenerate prefix if not provided
+                nonlocal prefix
+                if prefix is None:
+                    prefix = f"{func.__module__.split('.')[-1]}"
+
+
+                # Autogenerate prefix if not provided
+                if prefix is None:
+                    prefix = f"{func.__module__.split('.')[-1]}"
 
                 # Add self.__class__.__name__ if this is an instance method
                 if args and hasattr(args[0], '__class__'):
