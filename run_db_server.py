@@ -8,6 +8,8 @@ import pwd
 from socket import socket, AF_INET, SOCK_STREAM
 import traceback
 
+from scripts.database.db_server import get_db_easyner_context_connection
+
 # Set environment variables before importing app modules
 # This prevents the invalid subscript error by ensuring variables are set before any tracking happens
 os.environ.setdefault('PYTHONPATH', os.path.dirname(os.path.abspath(__file__)))
@@ -188,12 +190,11 @@ def optimize_performance():
 def test_database_connection():
     """Test the database connection to verify it's working correctly"""
     try:
-        # Try to get the database connection
-        db = get_db_easyner()
-        # Execute a simple query to verify connection is working
-        db.execute("SELECT 1")
-        print("Database connection test successful")
-        return True
+        # Use the context manager directly
+        with get_db_easyner_context_connection() as db:
+            db.execute("SELECT 1")
+            print("Database connection test successful")
+            return True
     except Exception as e:
         print(f"ERROR: Database connection test failed: {e}")
         print(traceback.format_exc())
