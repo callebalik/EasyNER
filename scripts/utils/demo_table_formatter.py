@@ -9,9 +9,9 @@ import os
 import time
 from typing import Dict, Any
 
-from scripts.utils.log_formatter import TableFormatter
-from scripts.utils.table_log_formatter import TableLogFormatter, setup_table_logging
-from scripts.utils.logging_mixins import TableLoggingMixin
+from log_formatter import TableFormatter
+from table_log_formatter import TableLogFormatter, setup_table_logging
+from logging_mixins import TableLoggingMixin
 
 
 # Example 1: Direct use of TableFormatter
