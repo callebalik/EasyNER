@@ -83,57 +83,57 @@ class EasyNerDBHandler:
             self._initialize_components()
             self.logger.debug(f"Created pooled connection to {self.db_path}")
         else:
-        # Now set up the full logging system with proper file paths
-        # Can't use @db_error_handler before logging is set up
-        self._setup_logging()
+            # Now set up the full logging system with proper file paths
+            # Can't use @db_error_handler before logging is set up
+            self._setup_logging()
 
-        # Connect to the database
-        self.connect(self.db_path)
+            # Connect to the database
+            self.connect(self.db_path)
 
-        # Ensure cache table exists
-        self._init_cache()
+            # Ensure cache table exists
+            self._init_cache()
 
-        # Load environment settings and store in cache
-        self._load_environment_settings()
+            # Load environment settings and store in cache
+            self._load_environment_settings()
 
-        # Initialize components
-        self._initialize_components()
+            # Initialize components
+            self._initialize_components()
 
-        # Log and print connection info
-        try:
-            from scripts.utils.log_formatter import TableFormatter
+            # Log and print connection info
+            try:
+                from scripts.utils.log_formatter import TableFormatter
 
-            log_config = {
-                'Database': self.name,
-                'Path': self.db_path,
-                'Path source': self.path_source,
-                'Main log (INFO)': self.log_file,
-                'Error log (ERRORS only)': self.error_log_file,
-                'Debug log (FULL DEBUG)': self.debug_log_file,
-                'Row-factory': self.cursor.row_factory,
-                'Journal Mode': self._get_pragma_value("journal_mode"),
-                'Busy Timeout': self._get_pragma_value("busy_timeout"),
-                'Synchronous': self._get_pragma_value("synchronous"),
-                'Foreign keys': self._get_pragma_value("foreign_keys"),
-                'Journal size limit': self._get_pragma_value("journal_size_limit"),
-                'Max parameter count': self._get_pragma_value("max_variable_number"),
-                'Environment settings': self.cache_manager.get_global("environment_settings"),
-                'Mapped I/O (> 1 -> True)': self._get_pragma_value("mmap_size"),
-            }
+                log_config = {
+                    'Database': self.name,
+                    'Path': self.db_path,
+                    'Path source': self.path_source,
+                    'Main log (INFO)': self.log_file,
+                    'Error log (ERRORS only)': self.error_log_file,
+                    'Debug log (FULL DEBUG)': self.debug_log_file,
+                    'Row-factory': self.cursor.row_factory,
+                    'Journal Mode': self._get_pragma_value("journal_mode"),
+                    'Busy Timeout': self._get_pragma_value("busy_timeout"),
+                    'Synchronous': self._get_pragma_value("synchronous"),
+                    'Foreign keys': self._get_pragma_value("foreign_keys"),
+                    'Journal size limit': self._get_pragma_value("journal_size_limit"),
+                    'Max parameter count': self._get_pragma_value("max_variable_number"),
+                    'Environment settings': self.cache_manager.get_global("environment_settings"),
+                    'Mapped I/O (> 1 -> True)': self._get_pragma_value("mmap_size"),
+                }
 
-            table = TableFormatter.format_table(log_config, title="Database connection initialized")
-            self.logger.info(f"\n{table}")
-            print(table)
-        except ImportError:
-            # Fallback to standard logging if TableFormatter is not available
-            self.logger.info(
-                f"Logging system initialized - DB: {self.name}"
-                f"\n Main log - (INFO): {self.log_file}"
-                f"\n Path: {self.db_path}"
-                f"\n Path source: {self.path_source}"
-                f"\n Error log - (ONLY ERRORS) - Resets: {self.error_log_file}"
-                f"\n Debug log - (FULL DEBUG LOG): {self.debug_log_file}"
-            )
+                table = TableFormatter.format_table(log_config, title="Database connection initialized")
+                self.logger.info(f"\n{table}")
+                print(table)
+            except ImportError:
+                # Fallback to standard logging if TableFormatter is not available
+                self.logger.info(
+                    f"Logging system initialized - DB: {self.name}"
+                    f"\n Main log - (INFO): {self.log_file}"
+                    f"\n Path: {self.db_path}"
+                    f"\n Path source: {self.path_source}"
+                    f"\n Error log - (ONLY ERRORS) - Resets: {self.error_log_file}"
+                    f"\n Debug log - (FULL DEBUG LOG): {self.debug_log_file}"
+                )
 
 
     def _init_cache_minimal(self):
@@ -914,7 +914,7 @@ class EasyNerDBHandler:
         self.error_log_file = os.path.join(log_dir, self.name + ".err")
         self.debug_log_file = os.path.join(log_dir, self.name + ".debug.log")
 
-        # Create file handler for logging
+            # Create file handler for logging
         try:
             log_file_handler = logging.FileHandler(self.log_file, mode='w')
             log_file_handler.setLevel(logging.INFO)
@@ -1225,19 +1225,27 @@ class EasyNerDBHandler:
         return {"views": views}
 
     def optimize_db_performance_parameters(self):
-        # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
-        self._connection.execute("PRAGMA journal_mode = WAL")
-        self._connection.execute("PRAGMA synchronous = OFF")
-        self._connection.execute("PRAGMA journal_size_limit = 6144000")
-        self._connection.execute("PRAGMA temp_store = MEMORY")
+        pragmas = [
+            "PRAGMA journal_mode = WAL",
+            "PRAGMA synchronous = OFF",
+            "PRAGMA journal_size_limit = 6144000",
+            "PRAGMA temp_store = MEMORY",
+            "PRAGMA cache_size = -20000", # 20 MB
+            "PRAGMA mmap_size = 30000000000", # ~30 GB,
+            "PRAGMA busy_timeout = 30000", # Wait 30 seconds for a lock to clear
+        ]
 
-    def optimize_db_performance_for_write(self):
-        # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
-        self._connection.execute("PRAGMA journal_mode = WAL")
-        self._connection.execute("PRAGMA synchronous = OFF")
-        self._connection.execute("PRAGMA journal_size_limit = 6144000")
-        self._connection.execute("PRAGMA temp_store = MEMORY")
-        print("Database performance parameters optimized for write operations.")
+        try:
+            for pragma in pragmas:
+                self._connection.execute(pragma)
+        except sqlite3.Error as e:
+            self.logger.error(f"Error setting {pragma}: {e}")
+
+        self.logger.info(
+            f"Database performance parameters optimized."
+            f"{' '.join(pragmas)}")
+
+
 
     def optimize_db_performance_for_read(self):
         # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
