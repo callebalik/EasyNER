@@ -284,7 +284,7 @@ class DBDataCleaner:
                     AND LOWER({TXT}) = LOWER(?)
                     """
 
-                    batch_size = 100000
+                    batch_size = 200000
                     total_updates = len(entity_updates)
                     with tqdm(total=total_updates, desc="Updating entity occurrences") as pbar:
                         for i in range(0, total_updates, batch_size):
