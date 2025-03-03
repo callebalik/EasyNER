@@ -349,6 +349,14 @@ VIEW_NE_COMP = View(
             """,
 )
 
+VIEW_NE_CLEAN = View(
+    main_table=TABLE_NE,
+    suffix="CLEAN",
+    select_stmt=f"""--sql
+            SELECT * FROM {TABLE_NE} WHERE {ERROR_ID} IS NULL AND {NE_OVERLAP} = 0
+            """,
+)
+
 VIEW_NE_VALIDATION_NORMALIZATION = View(
     main_table=TABLE_NE,
     suffix="VALIDATION_NORMALIZATION",
