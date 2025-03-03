@@ -572,6 +572,17 @@ reader_query_fn()
 
 
 class Aggregator(BaseComponent):
+    def __init__(self, db_handler: EasyNerDBHandler):
+        """
+        Initialize Aggregator component with proper dependencies.
+
+        Args:
+            db_handler: Database handler providing connection and logging
+        """
+        # Initialize base component resources
+        super().__init__(db_handler)
+        VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY.refresh(self.cursor)
+
         """
         Aggregates entity co-occurrences.
         Accessed via db_system.entity_cooccurrence.co_aggregate_old()
