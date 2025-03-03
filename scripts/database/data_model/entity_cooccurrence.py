@@ -1707,7 +1707,7 @@ self.aggregator = Aggregator(db_system_instance)
 
         # Tests component requires both db_handler and statistics component
         self.tests = Tests(db_system_instance, self.statistics)
-        
+
     def record_entity_cooccurrences_multithreaded(self, *args, **kwargs):
         """
         Delegate to analysis component.
