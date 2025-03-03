@@ -15,7 +15,27 @@ from .color_scheme import (
 
 def plot_stacked_bar(entity_stats):
     # Create figure with two subplots
-    fig, (ax_percentages, ax_counts) = plt.subplots(1, 2, figsize=(18, 7), constrained_layout=True)
+    fig, (ax_percentages, ax_counts) = plt.subplots(1, 2, figsize=(15, 5), constrained_layout=False)
+    # Fine-tune layout
+    plt.tight_layout(rect=[0, 0.03, 1, 0.90])  # Make room for shared legend and annotation
+    plt.subplots_adjust(wspace=0.05)  # Reduce space between subplots
+    # Fine-tune layout - replace existing layout adjustments with these
+    plt.tight_layout(rect=[0, 0.03, 1, 0.80])  # Make room for shared legend and annotation
+    plt.subplots_adjust(wspace=0.3, left=0.1, right=0.9)  # Increase space between subplots and add margins
+
+    # Set larger font sizes
+    SMALL_FONT_SIZE = 12
+    MEDIUM_FONT_SIZE = 14
+    LARGE_FONT_SIZE = 16
+    TITLE_FONT_SIZE = 18
+
+    plt.rc('font', size=MEDIUM_FONT_SIZE)          # default text size
+    plt.rc('axes', titlesize=LARGE_FONT_SIZE)      # axes title font size
+    plt.rc('axes', labelsize=MEDIUM_FONT_SIZE)     # axes label font size
+    plt.rc('xtick', labelsize=SMALL_FONT_SIZE)     # x tick labels font size
+    plt.rc('ytick', labelsize=MEDIUM_FONT_SIZE)    # y tick labels font size
+    plt.rc('legend', fontsize=MEDIUM_FONT_SIZE)    # legend font size
+    plt.rc('figure', titlesize=TITLE_FONT_SIZE)    # figure title size
 
     # Adjust spacing to reduce vertical padding
     plt.rcParams['figure.constrained_layout.h_pad'] = 0.05
@@ -59,46 +79,49 @@ def plot_stacked_bar(entity_stats):
     mislab_log = np.array([max(m, epsilon) for m in mislab_percentages])
     ambig_log = np.array([max(a, epsilon) for a in ambig_percentages])
 
-    # Plot stacked percentage bars
-    valid_bars = ax_percentages.barh(y_pos, valid_log, bar_height, color=colors['valid'], label='Valid')
-    mislab_bars = ax_percentages.barh(y_pos, mislab_log, bar_height, left=valid_log, color=colors['mislab'], label='Mislabeled')
-    ambig_bars = ax_percentages.barh(y_pos, ambig_log, bar_height, left=valid_log + mislab_log, color=colors['ambig'], label='Ambiguous')
+    # Plot stacked percentage bars with errors first (ambig, mislab, valid)
+    ambig_bars = ax_percentages.barh(y_pos, ambig_log, bar_height, color=colors['ambig'], label='Ambiguous')
+    mislab_bars = ax_percentages.barh(y_pos, mislab_log, bar_height, left=ambig_log, color=colors['mislab'], label='Mislabeled')
+    valid_bars = ax_percentages.barh(y_pos, valid_log, bar_height, left=ambig_log + mislab_log, color=colors['valid'], label='Valid')
 
     # Improved log-space positioning for text labels
-    for i, (valid, mislab, ambig) in enumerate(zip(valid_percentages, mislab_percentages, ambig_percentages)):
-        # Valid segment - proper log-space calculation
-        if valid > 0.5:  # Only show if enough space
-            log_mid_point = np.log10(epsilon + valid/2) if valid > 0 else 0
-            ax_percentages.text(10**log_mid_point, i, f'{valid:.1f}%', ha='center', va='center',
-                            fontweight='bold', color='black' if valid > 20 else 'white')
+    for i, (ambig, mislab, valid) in enumerate(zip(ambig_percentages, mislab_percentages, valid_percentages)):
+        # Ambiguous segment - proper log-space calculation
+        if ambig > 0.01:
+            log_mid_point = np.log10(epsilon + ambig/2) if ambig > 0 else 0
+            ax_percentages.text(10**log_mid_point, i, f'{ambig:.2f}%', ha='center', va='center',
+                            fontweight='bold', color='black',
+                            fontsize=SMALL_FONT_SIZE)
 
         # Mislabeled segment - proper log-space calculation
         if mislab > 0.01:
             # Find midpoint in original space, then convert to log space
-            mid_point_orig = valid + mislab/2
+            mid_point_orig = ambig + mislab/2
             log_mid_point = np.log10(mid_point_orig)
             ax_percentages.text(10**log_mid_point, i, f'{mislab:.2f}%', ha='center', va='center',
-                            fontweight='bold', color='white' if mislab > 5 else 'black')
+                            fontweight='bold', color='white' if mislab > 5 else 'black',
+                            fontsize=SMALL_FONT_SIZE)
 
-        # Ambiguous segment - proper log-space calculation
-        if ambig > 0.01:
+        # Valid segment - proper log-space calculation
+        if valid > 0.5:  # Only show if enough space
             # Find midpoint in original space, then convert to log space
-            mid_point_orig = valid + mislab + ambig/2
+            mid_point_orig = ambig + mislab + valid/2
             log_mid_point = np.log10(mid_point_orig)
-            ax_percentages.text(10**log_mid_point, i, f'{ambig:.2f}%', ha='center', va='center',
-                            fontweight='bold', color='black')
+            ax_percentages.text(10**log_mid_point, i, f'{valid:.1f}%', ha='center', va='center',
+                            fontweight='bold', color='black' if valid > 20 else 'white',
+                            fontsize=SMALL_FONT_SIZE)
 
     # Customize percentage subplot
     ax_percentages.set_yticks(y_pos)
-    ax_percentages.set_yticklabels(classes)
-    ax_percentages.set_xlabel('Percentage (%) - Log Scale')
-    ax_percentages.set_ylabel('Named Entity Class')
-    ax_percentages.set_title('A: Distribution by Percentage', fontsize=14)
+    ax_percentages.set_yticklabels(classes, fontsize=MEDIUM_FONT_SIZE)
+    ax_percentages.set_xlabel('Percentage (%) - Log Scale', fontsize=MEDIUM_FONT_SIZE, fontweight='bold')
+    ax_percentages.set_ylabel('Named Entity Class', fontsize=MEDIUM_FONT_SIZE, fontweight='bold')
+    ax_percentages.set_title('A: Distribution by Percentage', fontsize=LARGE_FONT_SIZE, fontweight='bold')
 
     # Custom x-ticks for percentage subplot
     log_percentage_ticks = [0.001, 0.01, 0.1, 1, 10, 100]
     ax_percentages.set_xticks(log_percentage_ticks)
-    ax_percentages.set_xticklabels([f'{x}%' for x in log_percentage_ticks])
+    ax_percentages.set_xticklabels([f'{x}%' for x in log_percentage_ticks], fontsize=SMALL_FONT_SIZE)
     ax_percentages.grid(True, axis='x', linestyle='--', alpha=0.7)
 
     # ---- RIGHT SUBPLOT: ABSOLUTE COUNTS (LOG SCALE) WITH REVERSED STACKING ----
@@ -131,38 +154,52 @@ def plot_stacked_bar(entity_stats):
         if ambig > 10:
             log_mid_point = np.log10(ambig/2 + 1)
             ax_counts.text(10**log_mid_point, i, format_count(ambig), ha='center', va='center',
-                        fontweight='bold', color='black')
+                        fontweight='bold', color='black',
+                        fontsize=SMALL_FONT_SIZE)
 
         # Mislabeled segment - properly calculate log-space midpoint
         if mislab > 10:
             mid_point_orig = ambig + mislab/2
             log_mid_point = np.log10(mid_point_orig)
             ax_counts.text(10**log_mid_point, i, format_count(mislab), ha='center', va='center',
-                        fontweight='bold', color='white' if mislab > 1000 else 'black')
+                        fontweight='bold', color='white' if mislab > 1000 else 'black',
+                        fontsize=SMALL_FONT_SIZE)
 
         # Valid segment - properly calculate log-space midpoint
         if valid > 100:
             mid_point_orig = ambig + mislab + valid/2
             log_mid_point = np.log10(mid_point_orig)
             ax_counts.text(10**log_mid_point, i, format_count(valid), ha='center', va='center',
-                        fontweight='bold', color='white' if valid > 1000000 else 'black')
+                        fontweight='bold', color='white' if valid > 1000000 else 'black',
+                        fontsize=SMALL_FONT_SIZE)
 
     # Customize counts subplot
     ax_counts.set_yticks(y_pos)
-    ax_counts.set_yticklabels([])  # Hide y-labels on right plot
-    ax_counts.set_xlabel('Entity Count (log scale)')
-    ax_counts.set_title('B: Distribution by Count (Errors First)', fontsize=14)
+    # Add y-labels to right subplot too
+    ax_counts.set_yticklabels(classes, fontsize=MEDIUM_FONT_SIZE)
+    ax_counts.set_xlabel('Entity Count (log scale)', fontsize=MEDIUM_FONT_SIZE, fontweight='bold')
+    ax_counts.set_ylabel('Named Entity Class', fontsize=MEDIUM_FONT_SIZE, fontweight='bold')
+    ax_counts.set_title('B: Distribution by Count (Errors First)', fontsize=LARGE_FONT_SIZE, fontweight='bold')
 
     # Generate appropriate log ticks based on data range
     max_count = max(total_counts)
     magnitude = int(np.log10(max_count)) + 1
     log_count_ticks = [10**i for i in range(0, magnitude)]
     ax_counts.set_xticks(log_count_ticks)
-    ax_counts.set_xticklabels([format_count(x) for x in log_count_ticks])
+    ax_counts.set_xticklabels([format_count(x) for x in log_count_ticks], fontsize=SMALL_FONT_SIZE)
     ax_counts.grid(True, axis='x', linestyle='--', alpha=0.7)
 
     # Apply background highlighting for specific class labels
     for i, tl in enumerate(ax_percentages.get_yticklabels()):
+        txt = tl.get_text()
+        if txt == 'PNM':
+            tl.set_backgroundcolor(NODE_COLOR_PNM_ONLY_RGB)
+
+        elif txt == 'DIS':
+            tl.set_backgroundcolor(NODE_COLOR_DIS_ONLY_RGB)
+
+    # Also apply highlighting to right subplot labels
+    for i, tl in enumerate(ax_counts.get_yticklabels()):
         txt = tl.get_text()
         if txt == 'PNM':
             tl.set_backgroundcolor(NODE_COLOR_PNM_ONLY_RGB)
@@ -177,26 +214,12 @@ def plot_stacked_bar(entity_stats):
         Line2D([0], [0], color=colors['ambig'], lw=8, label='Ambiguous')
     ]
 
-    # Add class highlighting to legend
-    for cls, color in highlight_colors.items():
-        legend_elements.append(
-            Line2D([0], [0], marker='s', color='white', markerfacecolor=color,
-                   markersize=15, label=f'{cls} Class')
-        )
-
     fig.legend(handles=legend_elements, loc='upper center', ncol=5, frameon=True,
-            bbox_to_anchor=(0.5, 0.96), fontsize=12)
+            bbox_to_anchor=(0.8, 0.96), fontsize=MEDIUM_FONT_SIZE)
 
     # Main title - positioned to make room for legend
-    fig.suptitle('Entity Classification Analysis', fontsize=16, y=1.0)
+    fig.suptitle('Entity Classification Analysis', fontsize=TITLE_FONT_SIZE, fontweight='bold', y=1.0)
 
-    # # Add annotation explaining the visualization
-    # fig.text(0.5, 0.01,
-    #         "Note: Both plots use logarithmic scale. A: percentages with valid first. B: counts with errors first.",
-    #         ha="center", fontsize=10, style='italic')
 
-    # Fine-tune layout
-    plt.tight_layout(rect=[0, 0.03, 1, 0.90])  # Make room for shared legend and annotation
-    plt.subplots_adjust(wspace=0.05)  # Reduce space between subplots
 
     plt.show()
