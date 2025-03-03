@@ -449,24 +449,26 @@ class DBStatistics:
         Also collects the fq of the named entity from the named_entities table.
         """
         self.logger.info("Counting named entity error frequencies...")
-        self.cursor.execute(
-            """
+        self.cursor.execute(f"""--sql
             SELECT
-                ne.named_entity,
-                ec.error_id,
+                {NE_CLASS} as {NE_CLASS.lower()},
+                {ERROR_ID} as {ERROR_ID.lower()},
                 COUNT(*) as error_count
-            FROM entity_occurrences ec
-            JOIN named_entities ne ON ec.entity_id = ne.id
-            WHERE ec.error_id IS NOT NULL
-            GROUP BY ne.named_entity, ec.error_id
-            ORDER BY ne.named_entity, error_count DESC
+            FROM {VIEW_NE_COMP}
+            WHERE {ERROR_ID} IS NOT NULL
+            GROUP BY {ERROR_ID}, {NE_CLASS}
+            ORDER BY error_count DESC
             """
         )
         error_counts = self.cursor.fetchall()
         error_df = DataFrame(
-            error_counts, columns=["named_entity", "error_id", "error_count"]
+            error_counts, columns=["named_entity_class", "error_id", "error_count"]
         )
+
+
+        self.logger.info(f"Counted named entity errors: {len(error_df)} records found.")
         return error_df
+
 
     def results_entity_occurrence_errors(self) -> DataFrame:
         """
@@ -478,22 +480,29 @@ class DBStatistics:
         error_df = self.count_named_entity_errors()
 
         # Fetch fq data from named_entities table
-        self.cursor.execute("SELECT named_entity, fq FROM named_entities")
-        fq_data = self.cursor.fetchall()
-        fq_df = DataFrame(fq_data, columns=["named_entity", "fq"])
+        dis_fq = self.named_entities_count("DIS", include_errors=True, include_overlaps=True)
+        pnm_fq = self.named_entities_count("PNM", include_errors=True, include_overlaps=True)
+
+        fq_data = [
+            ("DIS", dis_fq),
+            ("PNM", pnm_fq),
+        ]
+
+        # as a dictionary to be imported into the DataFrame
+        fq_df = DataFrame(fq_data, columns=["named_entity_class", "fq"])
 
         # Pivot the error DataFrame to have error_ids as columns
         pivot_df = error_df.pivot(
-            index="named_entity", columns="error_id", values="error_count"
+            index="named_entity_class", columns="error_id", values="error_count"
         ).fillna(0).astype(int)
         pivot_df.reset_index(inplace=True)
 
         # Merge with fq data
-        result_df = pivot_df.merge(fq_df, on="named_entity", how="left")
+        result_df = pivot_df.merge(fq_df, on="named_entity_class", how="left")
 
         # Reorder columns to place 'fq' right after 'named_entity'
-        error_id_columns = [col for col in pivot_df.columns if col != "named_entity"]
-        columns_order = ["named_entity", "fq"] + error_id_columns
+        error_id_columns = [col for col in pivot_df.columns if col != "named_entity_class"]
+        columns_order = ["named_entity_class", "fq"] + error_id_columns
         result_df = result_df[columns_order]
 
         return result_df
