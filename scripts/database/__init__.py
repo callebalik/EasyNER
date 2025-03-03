@@ -19,16 +19,18 @@ from .data_model.sent import Sentence
 from .db_data_exchanger import DBDataExchanger
 from .db_main import EasyNerDBHandler
 from .analysis.analyzer import DataAnalyzer
-from .db_statistics import DBStatistics
+from .statistics.db_statistics import DBStatistics
 
 __all__ = [
     'EasyNerDBHandler',
-    'DBStatistics', 
+    'DBStatistics',
     'DBDataExchanger',
     'CacheManager'
 ]
 
 import logging
+from flask import Flask
+from .routes import init_routes
 
 class DatabaseSystem:
     """Single entry point to the database module."""
@@ -67,4 +69,20 @@ class DatabaseSystem:
         self.cleanup_manager.stop_scheduler()
         self.db_manager.close_connection()
         self.core_logger.info("Database system shutdown.")
+
+def create_app():
+    # """Create and configure the Flask application."""
+    # app = Flask(__name__)
+
+    # # Initialize routes and error handlers
+    # app = init_routes(app)
+
+    # return app
+
+    import logging
+    logging.warning("create_app() in __init__.py is deprecated. Use db_server.py instead.")
+    return None
+
+# Create the application instance
+# app = create_app()
 

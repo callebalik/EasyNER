@@ -7,6 +7,22 @@ from ..db_statistics import DBStatistics
 from ..db_server import get_db_easyner_context_connection
 import pandas as pd
 import plotly.graph_objects as go
+from ...statistics.color_scheme import (
+    NODE_COLOR_TOTAL_DOCUMENTS,
+    NODE_COLOR_WITH_ENTITIES,
+    NODE_COLOR_WITHOUT_ENTITIES,
+    NODE_COLOR_DIS_ONLY,
+    NODE_COLOR_PNM_ONLY,
+    NODE_COLOR_BOTH_DIS_PNM,
+    NODE_COLOR_DEFAULT,
+    LINK_COLOR_TOTAL_TO_WITH_ENTITIES,
+    LINK_COLOR_TOTAL_TO_WITHOUT_ENTITIES,
+    LINK_COLOR_WITH_ENTITIES_TO_DIS_ONLY,
+    LINK_COLOR_WITH_ENTITIES_TO_BOTH,
+    LINK_COLOR_WITH_ENTITIES_TO_PNM_ONLY,
+    LINK_COLOR_TOTAL_TO_PNM_ONLY,
+    LINK_COLOR_DEFAULT
+)
 
 class Flowchart:
     """
@@ -401,4 +417,178 @@ class Flowchart:
               <p>{str(e)}</p>
             </div>
             """
+
+    def render_sankey_diagram(self) -> go.Figure:
+        """
+        Render the Sankey diagram using the color scheme module variables.
+
+        Returns:
+            go.Figure: Plotly Figure object representing the Sankey diagram
+        """
+        # Get Sankey data and layered DataFrame
+        sankey_data = self.get_sankey_data()
+        layered_df = self.create_sankey_layers_dataframe()
+
+        # Get unique node names
+        unique_nodes = list(set(sankey_data['source'] + sankey_data['target']))
+        node_to_idx = {node: i for i, node in enumerate(unique_nodes)}
+
+        # Convert sources and targets to indices
+        source_idx = [node_to_idx[s] for s in sankey_data['source']]
+        target_idx = [node_to_idx[t] for t in sankey_data['target']]
+
+        # Define node positions and colors
+        x_positions = []
+        y_positions = []
+        node_colors = []
+        node_labels = []
+
+        # Calculate positions for each node
+        for node in unique_nodes:
+            node_info = layered_df[layered_df['node_name'] == node]
+
+            if node_info.empty:
+                # Fallback for unexpected nodes
+                x_positions.append(0.5)
+                y_positions.append(0.5)
+                node_colors.append(NODE_COLOR_DEFAULT)
+                node_labels.append(node)
+                continue
+
+            layer = node_info['layer'].iloc[0]
+
+            # X position based on layer
+            x_pos = 0.1 if layer == 1 else (0.5 if layer == 2 else 0.9)
+
+            # Y position based on position within layer
+            layer_nodes = layered_df[layered_df['layer'] == layer]['node_name'].tolist()
+            node_idx = layer_nodes.index(node)
+            layer_size = len(layer_nodes)
+
+            # Calculate y position with spacing
+            if layer_size == 1:
+                y_pos = 0.5
+            else:
+                spacing = 0.8 / (layer_size - 1) if layer_size > 1 else 0
+                y_pos = 0.1 + (node_idx * spacing)
+
+            # Set node color
+            if node == "Total Documents":
+                node_colors.append(NODE_COLOR_TOTAL_DOCUMENTS)
+            elif node == "Documents with Named Entities":
+                node_colors.append(NODE_COLOR_WITH_ENTITIES)
+            elif node == "Documents without Named Entities":
+                node_colors.append(NODE_COLOR_WITHOUT_ENTITIES)
+            elif node == "DIS Only":
+                node_colors.append(NODE_COLOR_DIS_ONLY)
+            elif node == "PNM Only":
+                node_colors.append(NODE_COLOR_PNM_ONLY)
+            elif node == "Both DIS and PNM":
+                node_colors.append(NODE_COLOR_BOTH_DIS_PNM)
+            else:
+                node_colors.append(NODE_COLOR_DEFAULT)
+
+            count = node_info['count'].iloc[0]
+            percentage = node_info['percentage'].iloc[0]
+            label = f"{node}<br>{count:,} ({percentage:.1f}%)"
+            node_labels.append(label)
+
+            x_positions.append(x_pos)
+            y_positions.append(y_pos)
+
+        # Prepare custom link colors
+        link_colors = []
+        for src, tgt in zip(sankey_data['source'], sankey_data['target']):
+            if src == "Total Documents" and tgt == "Documents with Named Entities":
+                link_colors.append(LINK_COLOR_TOTAL_TO_WITH_ENTITIES)
+            elif src == "Total Documents" and tgt == "Documents without Named Entities":
+                link_colors.append(LINK_COLOR_TOTAL_TO_WITHOUT_ENTITIES)
+            elif src == "Total Documents" and tgt == "PNM Only":
+                link_colors.append(LINK_COLOR_TOTAL_TO_PNM_ONLY)
+            elif tgt == "DIS Only":
+                link_colors.append(LINK_COLOR_WITH_ENTITIES_TO_DIS_ONLY)
+            elif tgt == "Both DIS and PNM":
+                link_colors.append(LINK_COLOR_WITH_ENTITIES_TO_BOTH)
+            elif tgt == "PNM Only":
+                link_colors.append(LINK_COLOR_WITH_ENTITIES_TO_PNM_ONLY)
+            else:
+                link_colors.append(LINK_COLOR_DEFAULT)
+
+        # Create Sankey diagram with invisible internal labels
+        fig = go.Figure(data=[go.Sankey(
+            textfont=dict(color="rgba(0,0,0,0)", size=1),  # Hide internal labels
+            node=dict(
+                pad=15,
+                thickness=20,
+                line=dict(color="black", width=0.5),
+                label=node_labels,
+                x=x_positions,
+                y=y_positions,
+                color=node_colors
+            ),
+            link=dict(
+                source=source_idx,
+                target=target_idx,
+                value=sankey_data['value'],
+                color=link_colors
+            )
+        )])
+
+        # Add layer labels at the top of the diagram
+        layer_labels = {
+            1: "Documents",
+            2: "Named Entity Distribution",
+            3: "Named Entity Subdivision"
+        }
+
+        for layer, label in layer_labels.items():
+            x_pos = 0.1 if layer == 1 else (0.5 if layer == 2 else 0.9)
+            fig.add_annotation(
+                x=x_pos,
+                y=1.05,  # Position above the chart
+                text=f"<b>{label}</b>",
+                showarrow=False,
+                font=dict(size=14),
+                align="center",
+                xanchor="center",
+                yanchor="bottom"
+            )
+
+        # Add external labels with counts and percentages
+        for i, node in enumerate(unique_nodes):
+            node_info = layered_df[layered_df['node_name'] == node]
+
+            if not node_info.empty:
+                count = node_info['count'].iloc[0]
+                percentage = node_info['percentage'].iloc[0]
+                layer = node_info['layer'].iloc[0]
+
+                # Position annotation based on layer
+                x_offset = -0.05 if layer == 1 else (0 if layer == 2 else 0.05)
+
+                # Create text with node name, count and percentage
+                text = f"<b>{node}</b><br>{count:,} ({percentage:.1f}%)"
+
+                # Add annotation
+                fig.add_annotation(
+                    x=x_positions[i] + x_offset,
+                    y=y_positions[i],
+                    text=text,
+                    showarrow=False,
+                    font=dict(size=12),
+                    align="center" if layer == 2 else ("right" if layer == 1 else "left"),
+                    xanchor="center" if layer == 2 else ("right" if layer == 1 else "left")
+                )
+
+        # Set layout properties
+        fig.update_layout(
+            title_text="Document Distribution by Named Entity Classes",
+            font=dict(size=14, family="Arial"),
+            paper_bgcolor='white',
+            height=600,
+            width=900,
+            margin=dict(l=50, r=50, t=50, b=50)
+        )
+
+        return fig
 
