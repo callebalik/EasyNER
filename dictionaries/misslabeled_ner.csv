@@ -51,3 +51,6 @@ DIS,house loss, MISLAB
 DIS,terrorism, MISLAB
 PNM,showers,AMBIG
 PNM,fog,AMBIG
+DIS,fog,AMBIG
+PNM,high temperature,AMBIG
+PNM,high temperatures,AMBIG
