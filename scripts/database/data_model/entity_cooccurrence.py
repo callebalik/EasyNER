@@ -1,9 +1,25 @@
 # entity_cooccurrence_module.py
+import os
+import tempfile
+import subprocess
+import pandas as pd
+from dataclasses import dataclass
 import sqlite3
 import time
-
+import logging
+from typing import Any, Dict, Optional, List
 from scripts.database.core.db_engine import ReaderWriterPair
 from .schema import *
+from ..db_main import (
+    BaseComponent,
+    EasyNerDBHandler,
+    db_error_handler,
+    get_dedicated_connection,
+)
+
+logger = logging.getLogger("EasyNer")
+
+
 @dataclass
 class NormallizedNamedEntity:
     """Statistics for an entity in a co-occurrence relationship.
