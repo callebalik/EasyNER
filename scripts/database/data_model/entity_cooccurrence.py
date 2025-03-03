@@ -1032,6 +1032,37 @@ class Aggregator(BaseComponent):
             )
             raise
 
+
+class Statistics(BaseComponent):
+    """
+    Statistics module class, to be integrated into DatabaseSystem.
+    """
+
+    @property
+    def self_reference_count(self):
+        """
+        Get the number of self-references in the co-occurrence
+        table.
+        """
+        return self.cursor.execute(
+            f"SELECT COUNT(*) FROM {TABLE_COOCCURRENCES} WHERE {E1_ID} = {E2_ID}"
+        ).fetchone()[0]
+
+    def duplicate_pairs(self) -> list:
+        """
+        Check for duplicate entity pairs in the co-occurrence table.
+
+        Returns:
+            list: List of tuples ({E1_ID}, {E2_ID}, count) for pairs with duplicates
+        """
+        query = f"""
+            SELECT {E1_ID}, {E2_ID}, COUNT(*) as cnt
+            FROM {TABLE_COOCCURRENCES}
+            GROUP BY {E1_ID}, {E2_ID}
+            HAVING cnt > 1
+        """
+        return self.cursor.execute(query).fetchall()
+
         """
         Aggregates entity co-occurrences.
         Accessed via db_system.entity_cooccurrence.co_aggregate_old()
