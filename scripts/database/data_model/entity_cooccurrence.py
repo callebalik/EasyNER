@@ -48,7 +48,7 @@ class SchemaManager(BaseComponent):
 
         self.cursor.execute(f"DROP VIEW IF EXISTS view_eco_deprecated")
         self.conn.commit()
-            # Add view for deprecated co-occurrence aggregated table with normalized text
+        # Add view for deprecated co-occurrence aggregated table with normalized text
         self.stmt_view_eco_deprecated = f"""--sql
         CREATE VIEW IF NOT EXISTS view_eco_deprecated AS
         SELECT
@@ -71,7 +71,6 @@ class SchemaManager(BaseComponent):
         CREATE VIEW IF NOT EXISTS view_deprecated_pnm_dis AS
         SELECT
             ...
-            ...
         """
 
         # Drop existing view if it exists
@@ -81,6 +80,7 @@ class SchemaManager(BaseComponent):
         self.cursor.execute(self.stmt_view_eco_deprecated)
         self.conn.commit()
         self.logger.info("Views created successfully.")
+
 
 class Analysis(BaseComponent):
     """
@@ -93,6 +93,7 @@ class Analysis(BaseComponent):
     3.
 
     """
+
     def record_all_entity_cooccurrences_multithreaded(
         self, level: str = "document", batch_size=20000, num_reader_threads=32
     ) -> bool:
