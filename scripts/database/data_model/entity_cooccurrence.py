@@ -960,6 +960,78 @@ class Aggregator(BaseComponent):
             validation_result["success"] = False
             validation_result["message"] = f"Validation failed: {e}"
             return validation_result
+    def update_unique_document_counts(self):
+
+        self.logger.info("Updating unique document counts and frequencies...")
+
+        query_with_view = f"""--sql
+        UPDATE {TABLE_CO_AGGR}
+        SET fq_document_level = aggregated_stats.fq_document_level,
+            fq_sentence_level = aggregated_stats.fq_sentence_level,
+            uniq_docs = aggregated_stats.uniq_docs
+        FROM (
+            SELECT
+                vcs.{E1_NORM_ID},
+                vcs.{E2_NORM_ID},
+                COUNT(*) AS {FQ_DOCUMENT_LEVEL},
+                SUM(CASE WHEN vcs.sent_idx_1 = vcs.sent_idx_2 THEN 1 ELSE 0 END) AS fq_sentence_level,
+                COUNT(DISTINCT vcs.doc_id) AS uniq_docs
+            FROM {VIEW_COOCCURRENCES}_stats vcs
+            GROUP BY vcs.{E1_NORM_ID}, vcs.{E2_NORM_ID}
+        ) AS aggregated_stats
+        WHERE co_aggregated.{E1_ID} = aggregated_stats.{E1_NORM_ID}
+            AND co_aggregated.{E2_ID} = aggregated_stats.{E2_NORM_ID};
+        """
+
+        query_without_view = f"""--sql
+        UPDATE {TABLE_CO_AGGR}
+        SET fq_document_level = aggregated_stats.fq_document_level,
+            fq_sentence_level = aggregated_stats.fq_sentence_level,
+            uniq_docs = aggregated_stats.uniq_docs
+        FROM (
+            SELECT
+                CASE
+                    WHEN ne1.{NE_NORM_ID} < ne2.{NE_NORM_ID} THEN ne1.{NE_NORM_ID}
+                    ELSE ne2.{NE_NORM_ID}
+                END AS e1_norm_id,
+                CASE
+                    WHEN ne1.{NE_NORM_ID} < ne2.{NE_NORM_ID} THEN ne2.{NE_NORM_ID}
+                    ELSE ne1.{NE_NORM_ID}
+                END AS e2_norm_id,
+                COUNT(*) AS fq_document_level,
+                SUM(CASE WHEN ne1.{SENT_IDX} = ne2.{SENT_IDX} THEN 1 ELSE 0 END) AS fq_sentence_level,
+                COUNT(DISTINCT ne1.{DOC_ID}) AS uniq_docs
+            FROM {TABLE_COOCCURRENCES} co
+            JOIN {TABLE_NE} ne1 ON co.{E1_ID} = ne1.{NE_PRIMARY_ID} -- get the raw entity data 1
+            JOIN {TABLE_NE} ne2 ON co.{E2_ID} = ne2.{NE_PRIMARY_ID} -- get the raw entity data 2
+            GROUP BY e1_norm_id, e2_norm_id -- Group by canonicalized normalized IDs
+        ) AS aggregated_stats
+        WHERE {TABLE_CO_AGGR}.{E1_ID} = aggregated_stats.e1_norm_id
+            AND {TABLE_CO_AGGR}.{E2_ID} = aggregated_stats.e2_norm_id;
+        """
+
+        query = query_without_view
+
+        try:
+            self.log_query_plan(query)
+            self.cursor.execute(query)
+            self.conn.commit()
+            self.logger.info(
+                "Unique document counts and frequencies updated successfully."
+            )
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(
+                f"Error updating unique document counts and frequencies: {e}"
+            )
+            raise
+        except KeyboardInterrupt:
+            self.conn.rollback()
+            self.logger.error(
+                "Unique document counts and frequencies update cancelled."
+            )
+            raise
+
         """
         Aggregates entity co-occurrences.
         Accessed via db_system.entity_cooccurrence.co_aggregate_old()
