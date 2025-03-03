@@ -1551,6 +1551,7 @@ class Tests(BaseComponent):
         self.schema_manager = SchemaManager(db_system_instance)
         self.analysis = Analysis(db_system_instance)
         self.statistics = Statistics(db_system_instance)
+self.aggregator = Aggregator(db_system_instance)
 
         # Tests component requires both db_handler and statistics component
         self.tests = Tests(db_system_instance, self.statistics)
