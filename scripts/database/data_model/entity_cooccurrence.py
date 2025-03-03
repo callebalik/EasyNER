@@ -242,7 +242,13 @@ class Analysis(BaseComponent):
             self.logger.error(f"Error counting entity co-occurrences: {e}")
             return False
 
-    def record_dis_pnm(self, batch_size=500000, num_reader_threads=32, writer_chunking=200, max_queue_size=1000) -> bool:
+    def record_dis_pnm(
+        self,
+        batch_size=500000,
+        num_reader_threads=32,
+        writer_chunking=200,
+        max_queue_size=1000,
+    ) -> bool:
         """
         Record all disease-phenomena (DIS-PNM) co-occurrences within documents into TABLE_DIS_PNM.
         Uses multithreaded processing with batched document approach.
@@ -270,22 +276,27 @@ class Analysis(BaseComponent):
             self.logger.warning(f"Table {TABLE_DIS_PNM} not accessible")
 
         # Composite index for disease entities filtering (NE_CLASS_ID=1)
-        idx_ne_disease = Index(TABLE_NE, [CLASS_ID, DOC_ID, NE_NORM_ID],
+        idx_ne_disease = Index(
+            TABLE_NE,
+            [CLASS_ID, DOC_ID, NE_NORM_ID],
                             where=f"{CLASS_ID}=1 AND {NE_NORM_ID} IS NOT NULL",
-                            logger=self.logger)
-
+            logger=self.logger,
+        )
 
         # Composite index for protein/molecule entities filtering (NE_CLASS_ID=2)
-        idx_ne_pnm = Index(TABLE_NE, [CLASS_ID, DOC_ID, NE_NORM_ID],
+        idx_ne_pnm = Index(
+            TABLE_NE,
+            [CLASS_ID, DOC_ID, NE_NORM_ID],
                         where=f"{CLASS_ID}=2 AND {NE_NORM_ID} IS NOT NULL",
-                        logger=self.logger)
+            logger=self.logger,
+        )
 
         # Index for joining dis_entities and pnm_entities on DOC_ID
         idx_ne_doc_id = Index(TABLE_NE, [DOC_ID], logger=self.logger)
 
         any_index_created = False
         for idx in [idx_ne_disease, idx_ne_pnm, idx_ne_doc_id]:
-            if idx.create_if_not_exists(self.cursor):
+            if (idx.create_if_not_exists(self.cursor)):
                 any_index_created = True
 
         if any_index_created:
@@ -347,7 +358,11 @@ class Analysis(BaseComponent):
 
             try:
                 # For query plan logging
-                self.log_query_plan(reader_query_fn().replace(':limit', '1000').replace(':offset', '100'))
+                self.log_query_plan(
+reader_query_fn()
+.replace(":limit", "1000")
+.replace(":offset", "100")
+)
             except Exception as e:
                 self.logger.error(f"Error creating reader query: {e}")
                 raise
@@ -359,11 +374,15 @@ class Analysis(BaseComponent):
 
             writer_sql = f"""--sql
                     INSERT INTO {TABLE_DIS_PNM} ({E1_ID}, {E2_ID})
-                    VALUES (?, ?)
+                cursor.executemany(
+                    writer_sql, batch
+                )  # Commits are handled by the ReaderWriterPair
                 """
             def write_function(batch, cursor, conn):
                 """Write DIS-PNM co-occurrences to database"""
-                cursor.executemany(writer_sql, batch) # Commits are handled by the ReaderWriterPair
+            self.logger.info(
+                f"Total documents to process for DIS-PNM co-occurrences: {total_count:,}"
+            )
 
             # Get total document count - Filtering out already processed documents is done in the reader query. We process all documents, even if some might have been processed before.
             # Not the most efficient, but ensures that all documents are processed for now.
@@ -380,20 +399,28 @@ class Analysis(BaseComponent):
                 write_function=write_function,
                 num_reader_threads=num_reader_threads,
                 logger=self.logger,
-                max_queue_size=max_queue_size,
+            self.logger.info(
+                "Starting ReaderWriterPair for DIS-PNM co-occurrence extraction"
+            )
                 profiling_writer_enabled=False,
                 profiling_reader_enabled=False,
-                writer_batch_chunking=writer_chunking,
+            count = self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_DIS_PNM}"
+            ).fetchone()[0]
                 total_rows=total_count,
                 process_title="DIS-PNM co-occurrence extraction"
             )
 
-            self.logger.info("Starting ReaderWriterPair for DIS-PNM co-occurrence extraction")
+            self.logger.info(
+                "Starting ReaderWriterPair for DIS-PNM co-occurrence extraction"
+            )
             rw_pair.run()
             self.logger.info("DIS-PNM co-occurrence extraction completed successfully")
 
             # Count and log results
-            count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DIS_PNM}").fetchone()[0]
+            count = self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_DIS_PNM}"
+            ).fetchone()[0]
             self.logger.info(f"Total DIS-PNM co-occurrences recorded: {count:,}")
 
             return True
@@ -413,28 +440,37 @@ class Analysis(BaseComponent):
 
         try:
             # Check for duplicate pairs
-            duplicate_count = self.cursor.execute(f"""--sql
+            duplicate_count = self.cursor.execute(
+                f"""--sql
                 SELECT COUNT(*) FROM (
                     SELECT {E1_ID}, {E2_ID}, COUNT(*) as cnt
                     FROM {TABLE_DIS_PNM}
                     GROUP BY {E1_ID}, {E2_ID}
                     HAVING cnt > 1
                 )
-            """).fetchone()[0]
+            """
+            ).fetchone()[0]
 
             if duplicate_count > 0:
-                self.logger.error(f"Found {duplicate_count} duplicate DIS-PNM co-occurrences!")
+                self.logger.error(
+                    f"Found {duplicate_count} duplicate DIS-PNM co-occurrences!"
+                )
 
             # Check for missing entity references
-            invalid_refs = self.cursor.execute(f"""--sql
+            invalid_refs = self.cursor.execute(
+                f"""--sql
                 SELECT COUNT(*) FROM {TABLE_DIS_PNM} dp
                 LEFT JOIN {TABLE_NE} ne1 ON dp.{E1_ID} = ne1.{NE_PRIMARY_ID}
                 LEFT JOIN {TABLE_NE} ne2 ON dp.{E2_ID} = ne2.{NE_PRIMARY_ID}
                 WHERE ne1.{NE_PRIMARY_ID} IS NULL OR ne2.{NE_PRIMARY_ID} IS NULL
-            """).fetchone()[0]
+            """
+            ).fetchone()[0]
+            ).fetchone()[0]
 
             if invalid_refs > 0:
-                self.logger.error(f"Found {invalid_refs} DIS-PNM co-occurrences with invalid entity references!")
+                self.logger.error(
+                    f"Found {invalid_refs} DIS-PNM co-occurrences with invalid entity references!"
+                )
 
             return duplicate_count == 0 and invalid_refs == 0
 
