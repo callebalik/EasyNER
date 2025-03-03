@@ -1,6 +1,7 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-from .      schema import *
+from .schema import *
+import logging
 
 @dataclass
 class NamedEntity:
@@ -206,3 +207,6 @@ class Document:
 
         html += "</tbody></table>"
         return html
+
+
+
