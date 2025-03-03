@@ -1724,3 +1724,148 @@ self.aggregator = Aggregator(db_system_instance)
 
 
 
+    def get_cooccurrences(
+        self,
+        # Entity filters
+        e1_norm_id: Optional[int] = None,
+        e2_norm_id: Optional[int] = None,
+        e1_txt_norm_like: Optional[str] = None,
+        e2_txt_norm_like: Optional[str] = None,
+        # Metric ranges
+        min_npmi: Optional[float] = None,
+        max_npmi: Optional[float] = None,
+        min_pmi: Optional[float] = None,
+        max_pmi: Optional[float] = None,
+        min_fq_doc_level: Optional[int] = None,
+        max_fq_doc_level: Optional[int] = None,
+        # Pagination
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str = "npmi",
+    ) -> list[Cooccurrence]:
+        """
+        Get co-occurrences from the database with explicit filter parameters.
+
+        Args:
+            e1_norm_id: Filter by entity 1 normalized ID
+            e2_norm_id: Filter by entity 2 normalized ID
+            e1_txt_like: Filter entity 1 text (supports SQL LIKE patterns)
+            e2_txt_like: Filter entity 2 text (supports SQL LIKE patterns)
+            min_npmi: Minimum normalized PMI value
+            max_npmi: Maximum normalized PMI value
+            min_pmi: Minimum PMI value
+            max_pmi: Maximum PMI value
+            min_fq_doc_level: Minimum document frequency
+            max_fq_doc_level: Maximum document frequency
+            limit: Maximum number of results to return
+            offset: Number of results to skip
+
+        Returns:
+            list[Cooccurrence]: List of co-occurrence objects
+        """
+        conditions = []
+        params = []
+
+        logger = self.logger
+
+        # Log the query parameters for debugging
+        logger.debug(
+            f"Getting cooccurrences with:"
+            f"\n e1_norm_id={e1_norm_id}, e2_norm_id={e2_norm_id}, \n"
+            f"e1_txt_like={e1_txt_norm_like}, e2_txt_like={e2_txt_norm_like}, \n"
+            f"min_npmi={min_npmi}, max_npmi={max_npmi}, min_pmi={min_pmi}, max_pmi={max_pmi}, \n"
+            f"min_fq_doc_level={min_fq_doc_level}, max_fq_doc_level={max_fq_doc_level}, \n"
+            f"limit={limit}, offset={offset}"
+        )
+
+        # Build query directly from parameters
+        query = f"SELECT * FROM {VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY}"
+
+        # Entity filters
+        if e1_norm_id is not None:
+            conditions.append("e1_norm_id = ?")
+            params.append(e1_norm_id)
+
+        if e2_norm_id is not None:
+            conditions.append("e2_norm_id = ?")
+            params.append(e2_norm_id)
+
+        if e1_txt_norm_like is not None and e1_txt_norm_like.strip():
+            conditions.append("e1_txt_norm LIKE ?")
+            params.append(e1_txt_norm_like)
+
+        if e2_txt_norm_like is not None and e2_txt_norm_like.strip():
+            conditions.append("e2_txt_norm LIKE ?")
+            params.append(e2_txt_norm_like)
+
+        # Metric range filters
+        if min_npmi is not None:
+            conditions.append("npmi >= ?")
+            params.append(min_npmi)
+
+        if max_npmi is not None:
+            conditions.append("npmi <= ?")
+            params.append(max_npmi)
+
+        if min_pmi is not None:
+            conditions.append("pmi >= ?")
+            params.append(min_pmi)
+
+        if max_pmi is not None:
+            conditions.append("pmi <= ?")
+            params.append(max_pmi)
+
+        if min_fq_doc_level is not None:
+            conditions.append("fq_doc_level >= ?")
+            params.append(min_fq_doc_level)
+
+        if max_fq_doc_level is not None:
+            conditions.append("fq_doc_level <= ?")
+            params.append(max_fq_doc_level)
+
+        # Add WHERE clause if we have conditions
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        # Add order by (default to ordering by NPMI if available, fallback to PMI or frequency)
+        query += f" ORDER BY {order_by} DESC, fq_doc_level DESC"
+
+        # Add limit and offset
+        query += f" LIMIT {limit} OFFSET {offset}"
+
+        self._db.logger.debug(
+            f"Query: {query.splitlines()[0]}... "
+            f"\nParams: {params}")
+
+        query_with_param_replace = query
+        for param in params:
+            query_with_param_replace = query_with_param_replace.replace("?", str(param), 1)
+        self._db.logger.debug(
+            f"Query with replaced params:\n"
+            f"{query_with_param_replace.splitlines()[0]}"
+        )
+
+        # Get connection and cursor from the database handler
+        cursor = self._db.cursor
+        original_factory = None
+
+        try:
+            # Save the original row factory
+            original_factory = cursor.row_factory
+
+            # Configure row factory to create Cooccurrence objects
+            cursor.row_factory = Cooccurrence.row_factory
+
+            # Execute query and fetch results
+            cursor.execute(query, params)
+            results = cursor.fetchall()
+
+            return [r for r in results if r is not None]
+
+        except Exception as e:
+            self._db.logger.error(f"Error fetching cooccurrences: {e}", exc_info=True)
+            return []
+        finally:
+            # Restore original row factory, safely handling the case where it wasn't yet set
+            if original_factory is not None:
+                cursor.row_factory = original_factory
