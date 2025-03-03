@@ -43,4 +43,10 @@ PNM,fire,AMBIG
 PNM,gloves,AMBIG
 DIS,forest degradation,MISLAB
 DIS,disaster,MISLAB
+DIS,disasters, AMBIG
 PNM,swell,AMBIG
+PNM,low-pressure system, AMBIG
+PNM,high-pressure system, AMBIG
+DIS,house loss, MISLAB
+DIS,terrorism, MISLAB
+PNM,showers,AMBIG
