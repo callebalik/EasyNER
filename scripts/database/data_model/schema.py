@@ -115,7 +115,7 @@ schema_create_table_sentences = f"""--sql
                     {SENT_IDX} INTEGER,
                     {TXT} TEXT,
                     {WORD_COUNT} INTEGER,
-{TOKEN_COUNT} INTEGER,
+                    {TOKEN_COUNT} INTEGER,
                     {ALPHA_COUNT} INTEGER,
                     PRIMARY KEY ({DOC_ID}, {SENT_IDX}),
                     FOREIGN KEY ({DOC_ID}) REFERENCES {TABLE_DOCS} ({DOC_ID})
@@ -268,7 +268,7 @@ class View:
                 print(f"View {self.name} already exists.")
         else:
             cursor.execute(f"CREATE VIEW IF NOT EXISTS {self.name} AS {self.stmt}")
-if logger:
+            if logger:
                 logger.info(f"Created view {self.name}.")
             else:
                 print(f"Created view {self.name}.")
@@ -293,14 +293,14 @@ if logger:
         try:
             self.drop(cursor)
             self.create_if_not_exists(cursor)
-logger.info(f"Refreshed view {self.name}.") if logger else print(
+            logger.info(f"Refreshed view {self.name}.") if logger else print(
                 f"Refreshed view {self.name}."
             )
         except Exception as e:
-if logger:
+            if logger:
                 logger.error(f"Failed to refresh view {self.name}: {e}")
             else:
-            print(f"Failed to refresh view {self.name}: {e}")
+                print(f"Failed to refresh view {self.name}: {e}")
 
     def __repr__(self) -> str:
         return self.name
