@@ -115,115 +115,122 @@ class Analysis(BaseComponent):
         and allows for parallel processing of entity co-occurrences.
         """
         try:
-        if level not in ["document", "sentence"]:
-            raise ValueError("Level must be either 'document' or 'sentence'")
+            if level not in ["document", "sentence"]:
+                raise ValueError("Level must be either 'document' or 'sentence'")
 
-        def reader_query_fn(level):  # Define reader_query as a function
-            return f"""--sql
-                    WITH document_batch AS (
-                        SELECT d.id AS doc_id
-                        FROM {TABLE_DOCS} d
-                        ORDER BY d.id
-                        LIMIT :limit OFFSET :offset
-                    ),
-                    doc_entities AS (
-                        SELECT
-                            ne.id,
-                            ne.{DOC_ID},
+            def reader_query_fn(level):  # Define reader_query as a function
+                return f"""--sql
+                        WITH document_batch AS (
+                            SELECT d.id AS doc_id
+                            FROM {TABLE_DOCS} d
+                            ORDER BY d.id
+                            LIMIT :limit OFFSET :offset
+                        ),
+                        doc_entities AS (
+                            SELECT
+                                ne.id,
+                                ne.{DOC_ID},
                                     ne.{SENT_IDX},
-                            ne.{NE_NORM_ID}
-                        FROM {TABLE_NE} ne
-                        WHERE ne.{DOC_ID} IN (SELECT doc_id FROM document_batch)
-                    ),
-                    distinct_pairs AS (
-                        SELECT DISTINCT
-                            e1.id AS {E1_ID},
-                            e2.id AS {E2_ID}
-                        FROM doc_entities e1
-                        JOIN doc_entities e2 ON
-                            e1.document_id = e2.document_id AND
-                            e1.id < e2.id AND -- Ensure canonical order and avoid self-joins
-                            e1.{NE_NORM_ID} IS NOT NULL AND
-                            e2.{NE_NORM_ID} IS NOT NULL -- This should filter out any entities with error codes or overlap as they do not have normalized IDs
+                                ne.{NE_NORM_ID}
+                            FROM {TABLE_NE} ne
+                            WHERE ne.{DOC_ID} IN (SELECT doc_id FROM document_batch)
+                        ),
+                        distinct_pairs AS (
+                            SELECT DISTINCT
+                                e1.id AS {E1_ID},
+                                e2.id AS {E2_ID}
+                            FROM doc_entities e1
+                            JOIN doc_entities e2 ON
+                                e1.document_id = e2.document_id AND
+                                e1.id < e2.id AND -- Ensure canonical order and avoid self-joins
+                                e1.{NE_NORM_ID} IS NOT NULL AND
+                                e2.{NE_NORM_ID} IS NOT NULL -- This should filter out any entities with error codes or overlap as they do not have normalized IDs
                                     {"AND ABS(e1." + {SENT_IDX} + "- e2." + {SENT_IDX} + ") <= 5" if level == "sentence" else ""}
-                        WHERE NOT EXISTS ( -- Do not include existing co-occurrences
-                            SELECT 1
-                            FROM {TABLE_COOCCURRENCES} ec
+                            WHERE NOT EXISTS ( -- Do not include existing co-occurrences
+                                SELECT 1
+                                FROM {TABLE_COOCCURRENCES} ec
                                 WHERE ec.{E1_ID} = e1.id AND ec.{E2_ID} = e2.id
+                            )
                         )
-                    )
-                    SELECT -- Return the final distinct pair
+                        SELECT -- Return the final distinct pair
                             p.{E1_ID},
                             p.{E2_ID}
                                 {", (SELECT ABS(e1." + {SENT_IDX} + " - e2." + {SENT_IDX} + ") FROM doc_entities e1 JOIN doc_entities e2 ON e1.id = p.{E1_ID} AND e2.id = p.{E2_ID}) AS sentence_distance" if level == "sentence" else ""}
-                    FROM distinct_pairs p
+                        FROM distinct_pairs p
                 """
 
-
-        try:
-            # For query plan logging, provide sample values
-            query_with_params = reader_query_fn(level).replace(':limit', '1000').replace(':offset','100')  # Use sample values
-            self.log_query_plan(query_with_params)
-        except Exception as e:
-            self.logger.error(f"Error creating reader query: {e}")
-            raise
-
-        def cooccurrence_process_function(batch, conn_params):
-            """Processes a batch of entity co-occurrence data."""
-            return batch  # For now, minimal processing, it done database side - just pass the batch through
-
-        def cooccurrence_write_function(batch, cursor, conn, logger):
-            """Writes a batch of entity co-occurrences to the database using executemany."""
-            logger.info(f"Writing batch of {len(batch)} co-occurrences to the database.")
-            sql = f"""--sql
-                        INSERT INTO {TABLE_COOCCURRENCES} ({E1_ID}, {E2_ID} {", sentence_distance" if level == "sentence" else ""})
-                    VALUES (?, ? {", ?" if level == "sentence" else ""})
-                """
             try:
-                cursor.executemany(
-                    sql, batch
-                )  # Directly use the batch from reader as it's pre-formatted
+                # For query plan logging, provide sample values
+                query_with_params = (
+                    reader_query_fn(level)
+                    .replace(":limit", "1000")
+                    .replace(":offset", "100")
+                )  # Use sample values
+                self.log_query_plan(query_with_params)
             except Exception as e:
-                conn.rollback()  # Rollback transaction on error for the current batch
-                print(
-                    f"Error in write_function with : {e}. Transaction rolled back for current batch."
+                self.logger.error(f"Error creating reader query: {e}")
+                raise
+
+            def cooccurrence_process_function(batch, conn_params):
+                """Processes a batch of entity co-occurrence data."""
+                return batch  # For now, minimal processing, it done database side - just pass the batch through
+
+            def cooccurrence_write_function(batch, cursor, conn, logger):
+                """Writes a batch of entity co-occurrences to the database using executemany."""
+                logger.info(
+                    f"Writing batch of {len(batch)} co-occurrences to the database."
                 )
-                return False  # Indicate failure (optional error handling)
-            return True  # Indicate success (optional success indication)
+                sql = f"""--sql
+                        INSERT INTO {TABLE_COOCCURRENCES} ({E1_ID}, {E2_ID} {", sentence_distance" if level == "sentence" else ""})
+                        VALUES (?, ? {", ?" if level == "sentence" else ""})
+                    """
+                try:
+                    cursor.executemany(
+                        sql, batch
+                    )  # Directly use the batch from reader as it's pre-formatted
+                except Exception as e:
+                    conn.rollback()  # Rollback transaction on error for the current batch
+                    print(
+                        f"Error in write_function with : {e}. Transaction rolled back for current batch."
+                    )
+                    return False  # Indicate failure (optional error handling)
+                return True  # Indicate success (optional success indication)
 
-        # --- COUNT QUERY TO GET ACCURATE total_count ---
-        # count_query = "SELECT COUNT(*) FROM (" + reader_query_fn(level) + ")"
-        # self.cursor.execute(count_query)
-        # total_count = self.cursor.fetchone()[0]
-        total_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}").fetchone()[0]
+            # --- COUNT QUERY TO GET ACCURATE total_count ---
+            # count_query = "SELECT COUNT(*) FROM (" + reader_query_fn(level) + ")"
+            # self.cursor.execute(count_query)
+            # total_count = self.cursor.fetchone()[0]
+            total_count = self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_DOCS}"
+            ).fetchone()[0]
 
-        self.logger.info(
-            f"Total documents to process for co-occurrences: {total_count:,}"
-        )
+            self.logger.info(
+                f"Total documents to process for co-occurrences: {total_count:,}"
+            )
 
-        rw_pair = ReaderWriterPair(
-            conn_params=self.conn_params_dict,
-            reader_query=reader_query_fn(level),  # Pass reader query function
-            batch_size=batch_size,
-            process_function=cooccurrence_process_function,
-            write_function=cooccurrence_write_function,
-            num_reader_threads=num_reader_threads,
-            logger=self.logger,
-            max_queue_size=500,
-            profiling_writer_enabled=True,
-            profiling_reader_enabled=True,
-            writer_batch_chunking=4,
-            total_rows=total_count,  # Use the accurate count
-            process_title=f"Co-occurrence counting at {level} level",
-        )
+            rw_pair = ReaderWriterPair(
+                conn_params=self.conn_params_dict,
+                reader_query=reader_query_fn(level),  # Pass reader query function
+                batch_size=batch_size,
+                process_function=cooccurrence_process_function,
+                write_function=cooccurrence_write_function,
+                num_reader_threads=num_reader_threads,
+                logger=self.logger,
+                max_queue_size=500,
+                profiling_writer_enabled=True,
+                profiling_reader_enabled=True,
+                writer_batch_chunking=4,
+                total_rows=total_count,  # Use the accurate count
+                process_title=f"Co-occurrence counting at {level} level",
+            )
             try:
-        self.logger.info(
-            f"Starting ReaderWriterPair to count entity co-occurrences at {level} level."
-        )
-        rw_pair.run()
-        self.logger.info(
-            f"ReaderWriterPair process finished for {level} level co-occurrence counting."
-        )
+                self.logger.info(
+                    f"Starting ReaderWriterPair to count entity co-occurrences at {level} level."
+                )
+                rw_pair.run()
+                self.logger.info(
+                    f"ReaderWriterPair process finished for {level} level co-occurrence counting."
+                )
 
                 return True
 
