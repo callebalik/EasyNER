@@ -185,7 +185,7 @@ class DBStatistics:
                     sample = self.cursor.fetchone()
                     print(f"  Sample: {sample}")
 
-    @cached(ttl_seconds=150, prefix="stats.named_entities_count")
+    @cached(ttl_seconds=2150, prefix="stats.named_entities_count")
     def named_entities_count(self, ne_class: str = None, include_errors: bool = False, include_ambiguous: bool = False, include_overlaps: bool = False):
         """Get the total number of entity occurrences in the database."""
         try:
