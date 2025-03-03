@@ -2,16 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
-from .color_scheme import (
-    AMBIGUOUS_COLOR_RGB,
-    MISLABELED_COLOR_RGB,
-    NODE_COLOR_DEFAULT_RGB,
-    NODE_COLOR_DIS_ONLY_RGB,
-    NODE_COLOR_PNM_ONLY_RGB,
-    ERROR_COLORS_RGB,
-    DIS_HIGHLIGHT_COLORS,
-    PNM_HIGHLIGHT_COLORS
-)
+from .color_scheme import *
 
 
 class EntityDistributionPlotter:
@@ -62,7 +53,7 @@ class EntityDistributionPlotter:
 
         # Define color scheme
         self.colors = {
-            'valid': NODE_COLOR_DEFAULT_RGB,  # Default gray color for valid entities
+            'valid': NODE_COLOR_VALID_RGB,  # Default gray color for valid entities
             'mislab': MISLABELED_COLOR_RGB,   # Use mislabeled error color
             'ambig': AMBIGUOUS_COLOR_RGB      # Use ambiguous error color
         }
@@ -109,21 +100,25 @@ class EntityDistributionPlotter:
         mislab_log = np.array([max(m, self.EPSILON) for m in self.mislab_percentages])
         ambig_log = np.array([max(a, self.EPSILON) for a in self.ambig_percentages])
 
-        # Plot stacked percentage bars with errors first (ambig, mislab, valid)
-        self.ax_percentages.barh(self.y_pos, ambig_log, self.BAR_HEIGHT, color=self.colors['ambig'], label='Ambiguous')
+        self.valid_log = valid_log
+        self.mislab_log = mislab_log
+        self.ambig_log = ambig_log
+
+        # Plot stacked percentage bars with errors first (mislab, ambig, valid)
+        self.ax_percentages.barh(self.y_pos, mislab_log, self.BAR_HEIGHT, color=self.colors['mislab'], label='Mislabeled')
         self.ax_percentages.barh(
             self.y_pos,
-            mislab_log,
+            ambig_log,
             self.BAR_HEIGHT,
-            left=ambig_log,
-            color=self.colors['mislab'],
-            label='Mislabeled'
+            left=mislab_log,
+            color=self.colors['ambig'],
+            label='Ambiguous'
         )
         self.ax_percentages.barh(
             self.y_pos,
             valid_log,
             self.BAR_HEIGHT,
-            left=ambig_log + mislab_log,
+            left=mislab_log + ambig_log,
             color=self.colors['valid'],
             label='Valid'
         )
@@ -134,17 +129,16 @@ class EntityDistributionPlotter:
         # Customize percentage subplot
         self.ax_percentages.set_yticks(self.y_pos)
         self.ax_percentages.set_yticklabels(self.classes, fontsize=self.MEDIUM_FONT_SIZE)
-        self.ax_percentages.set_xlabel('Percentage (%) - Log Scale', fontsize=self.MEDIUM_FONT_SIZE, fontweight='bold')
+        self.ax_percentages.set_xlabel('Percentage of named entity (%) - Log Scale', fontsize=self.SMALL_FONT_SIZE, fontweight='bold')
         self.ax_percentages.set_ylabel('Named Entity Class', fontsize=self.MEDIUM_FONT_SIZE, fontweight='bold')
-        self.ax_percentages.set_title('A: Distribution by Percentage (Errors First)', fontsize=self.LARGE_FONT_SIZE, fontweight='bold')
+        self.ax_percentages.set_title('A: Distribution by Percentage', fontsize=self.LARGE_FONT_SIZE, fontweight='bold')
 
         # Configure x-ticks for percentage subplot - Fixed start at 0.001%
-        log_percentage_ticks = [0.001, 0.01, 0.1, 1, 10, 100]
+        # log_percentage_ticks = [0.001, 0.01, 0.1, 1, 10, 100]
         # self.ax_percentages.set_xticks(log_percentage_ticks)
         # self.ax_percentages.set_xticklabels([f'{x}%' for x in log_percentage_ticks], fontsize=self.SMALL_FONT_SIZE)
         # Explicitly set the x-axis limits to match the desired range
-        self.ax_percentages.set_xlim(0.0008, 110)  # Slightly wider than ticks for visual padding
-
+        self.ax_percentages.set_xlim(0.008, 300)  # Slightly wider than ticks for visual
 
         self.ax_percentages.grid(True, axis='x', linestyle='--', alpha=0.7)
 
@@ -153,13 +147,13 @@ class EntityDistributionPlotter:
         for i, (ambig, mislab, valid) in enumerate(zip(self.ambig_percentages, self.mislab_percentages, self.valid_percentages)):
             # Ambiguous segment
             if ambig > 0.01:
-                log_mid_point = np.log10(self.EPSILON + ambig/2) if ambig > 0 else 0
+                log_mid_point = np.log10(mislab + self.EPSILON + ambig/2) * 0.1 if ambig > 0 else 0
                 self.ax_percentages.text(10**log_mid_point, i, f'{ambig:.2f}%', ha='center', va='center',
                                     fontweight='bold', color='black', fontsize=self.SMALL_FONT_SIZE)
 
             # Mislabeled segment
-            if mislab > 0.01:
-                mid_point_orig = ambig + mislab/2
+            if mislab > 0.001:
+                mid_point_orig = mislab/2 * 1.1
                 log_mid_point = np.log10(mid_point_orig)
                 self.ax_percentages.text(10**log_mid_point, i, f'{mislab:.2f}%', ha='center', va='center',
                                     fontweight='bold', color='white' if mislab > 5 else 'black',
@@ -168,8 +162,14 @@ class EntityDistributionPlotter:
             # Valid segment
             if valid > 0.5:  # Only show if enough space
                 mid_point_orig = ambig + mislab + valid/2
-                log_mid_point = np.log10(mid_point_orig)
-                self.ax_percentages.text(10**log_mid_point, i, f'{valid:.1f}%', ha='center', va='center',
+                if mid_point_orig > 70:
+                    log_mid_point = np.log10(mid_point_orig) * 1.15
+                    self.ax_percentages.text(10**log_mid_point, i, f'{valid:.1f}%', ha='center', va='center',
+                                    fontweight='bold', color='black',
+                                    fontsize=self.SMALL_FONT_SIZE)
+                else:
+                    log_mid_point = np.log10(mid_point_orig) * 0.2
+                    self.ax_percentages.text(10**log_mid_point, i, f'{valid:.1f}%', ha='center', va='center',
                                     fontweight='bold', color='black' if valid > 20 else 'white',
                                     fontsize=self.SMALL_FONT_SIZE)
 
@@ -184,20 +184,20 @@ class EntityDistributionPlotter:
         valid_counts_log = np.array([max(v, 1) for v in self.valid_counts])
 
         # Plot stacked count bars with errors first ordering
-        self.ax_counts.barh(self.y_pos, ambig_counts_log, self.BAR_HEIGHT, color=self.colors['ambig'], label='Ambiguous')
+        self.ax_counts.barh(self.y_pos, mislab_counts_log, self.BAR_HEIGHT, color=self.colors['mislab'], label='Mislabeled')
         self.ax_counts.barh(
             self.y_pos,
-            mislab_counts_log,
+            ambig_counts_log,
             self.BAR_HEIGHT,
-            left=ambig_counts_log,
-            color=self.colors['mislab'],
-            label='Mislabeled'
+            left=mislab_counts_log,
+            color=self.colors['ambig'],
+            label='Ambiguous'
         )
         self.ax_counts.barh(
             self.y_pos,
             valid_counts_log,
             self.BAR_HEIGHT,
-            left=ambig_counts_log + mislab_counts_log,
+            left=mislab_counts_log + ambig_counts_log,
             color=self.colors['valid'],
             label='Valid'
         )
@@ -208,9 +208,9 @@ class EntityDistributionPlotter:
         # Customize counts subplot
         self.ax_counts.set_yticks(self.y_pos)
         self.ax_counts.set_yticklabels(self.classes, fontsize=self.MEDIUM_FONT_SIZE)
-        self.ax_counts.set_xlabel('Entity Count (log scale)', fontsize=self.MEDIUM_FONT_SIZE, fontweight='bold')
-        self.ax_counts.set_ylabel('Named Entity Class', fontsize=self.MEDIUM_FONT_SIZE, fontweight='bold')
-        self.ax_counts.set_title('B: Distribution by Count (Errors First)', fontsize=self.LARGE_FONT_SIZE, fontweight='bold')
+        self.ax_counts.set_xlabel('Entity Count - Log scale', fontsize=self.SMALL_FONT_SIZE, fontweight='bold')
+        self.ax_counts.set_ylabel('Named Entity Class', fontsize=self.SMALL_FONT_SIZE, fontweight='bold')
+        self.ax_counts.set_title('B: Distribution by Count', fontsize=self.LARGE_FONT_SIZE, fontweight='bold')
 
         # Generate appropriate log ticks based on data range
         max_count = max(self.total_counts)
@@ -225,13 +225,13 @@ class EntityDistributionPlotter:
         for i, (ambig, mislab, valid) in enumerate(zip(self.ambig_counts, self.mislab_counts, self.valid_counts)):
             # Ambiguous segment
             if ambig > 10:
-                log_mid_point = np.log10(ambig/2 + 1)
+                log_mid_point = np.log10(mislab + self.EPSILON + ambig/2) * 0.7 if ambig > 0 else 0
                 self.ax_counts.text(10**log_mid_point, i, self._format_count(ambig), ha='center', va='center',
                                 fontweight='bold', color='black', fontsize=self.SMALL_FONT_SIZE)
 
             # Mislabeled segment
             if mislab > 10:
-                mid_point_orig = ambig + mislab/2
+                mid_point_orig = mislab/2 * 0.1
                 log_mid_point = np.log10(mid_point_orig)
                 self.ax_counts.text(10**log_mid_point, i, self._format_count(mislab), ha='center', va='center',
                                 fontweight='bold', color='white' if mislab > 1000 else 'black',
@@ -240,9 +240,12 @@ class EntityDistributionPlotter:
             # Valid segment
             if valid > 100:
                 mid_point_orig = ambig + mislab + valid/2
-                log_mid_point = np.log10(mid_point_orig)
+                if mid_point_orig > 10000000:
+                    log_mid_point = np.log10(mid_point_orig) * 0.8
+                else:
+                    log_mid_point = np.log10(mid_point_orig) * 1.1
                 self.ax_counts.text(10**log_mid_point, i, self._format_count(valid), ha='center', va='center',
-                                fontweight='bold', color='white' if valid > 1000000 else 'black',
+                                # fontweight='bold', color='white' if valid > 1000000 else 'black',
                                 fontsize=self.SMALL_FONT_SIZE)
 
     @staticmethod
@@ -279,9 +282,9 @@ class EntityDistributionPlotter:
         """Add shared legend and main title."""
         # Create legend elements
         legend_elements = [
-            Line2D([0], [0], color=self.colors['valid'], lw=8, label='Valid'),
             Line2D([0], [0], color=self.colors['mislab'], lw=8, label='Mislabeled'),
-            Line2D([0], [0], color=self.colors['ambig'], lw=8, label='Ambiguous')
+            Line2D([0], [0], color=self.colors['ambig'], lw=8, label='Ambiguous'),
+            Line2D([0], [0], color=self.colors['valid'], lw=8, label='Valid')
         ]
 
         # Add the legend
@@ -294,13 +297,13 @@ class EntityDistributionPlotter:
             fontsize=self.MEDIUM_FONT_SIZE
         )
 
-        # Add main title
-        self.fig.suptitle(
-            'Entity Classification Analysis',
-            fontsize=self.TITLE_FONT_SIZE,
-            fontweight='bold',
-            y=1.0
-        )
+        # # Add main title
+        # self.fig.suptitle(
+        #     'Entity Classification Analysis',
+        #     fontsize=self.TITLE_FONT_SIZE,
+        #     fontweight='bold',
+        #     y=1.0
+        # )
 
     def create_plot(self):
         """Create the complete visualization."""
