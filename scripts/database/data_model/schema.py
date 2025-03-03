@@ -224,22 +224,29 @@ class View:
     'stmt' should only include the SELECT statement.
     """
 
-    def __init__(self, name: str, select_stmt: str, suffix: str = None):
-        self.name = "v_" + name + ("_" + suffix if suffix else "")
+    def __init__(self, main_table: str, select_stmt: str, suffix: str = None, columns: list[str] = None):
+        self.name = "v_" + main_table + ("_" + suffix if suffix else "")
         self.stmt = select_stmt.replace("--sql", "").strip()
+        self.columns = columns
 
     def create_if_not_exists(self, cursor: sqlite3.Cursor, logger: logging.Logger = None) -> bool:
         """Execute the CREATE VIEW IF NOT EXISTS statement for this view."""
-        cursor.execute(f"CREATE VIEW IF NOT EXISTS {self.name} AS {self.stmt};")
-        if self.validate(cursor):
+        # Check if the view already exists
+        cursor.execute(f"SELECT name FROM sqlite_master WHERE type='view' AND name='{self.name}';")
+        if cursor.fetchone():
+            if logger:
+                logger.debug(f"View {self.name} already exists.")
+            else:
+                print(f"View {self.name} already exists.")
+        else:
+            cursor.execute(f"CREATE VIEW IF NOT EXISTS {self.name} AS {self.stmt}")
 if logger:
                 logger.info(f"Created view {self.name}.")
             else:
                 print(f"Created view {self.name}.")
-            return True
-        else:
-            self.drop(cursor)
-            raise Exception(f"View validation of {self.name} failed. Dropping view.")
+
+        if not self.validate(cursor):
+            raise Exception(f"View validation of {self.name} failed.")
 
     def validate(self, cursor: sqlite3.Cursor) -> bool:
         """Validate the view by executing the SELECT statement."""
@@ -272,7 +279,7 @@ if logger:
 
 
 VIEW_NE_PRESENTATION = View(
-    name=TABLE_NE,
+    main_table=TABLE_NE,
     suffix="PRESENTATION",
     select_stmt=f"""--sql
             SELECT
@@ -292,7 +299,7 @@ VIEW_NE_PRESENTATION = View(
 )
 
 VIEW_NE_COMP = View(
-    name=TABLE_NE,
+    main_table=TABLE_NE,
     suffix="COMPILED",
     select_stmt=f"""--sql
             SELECT
@@ -315,7 +322,7 @@ VIEW_NE_COMP = View(
 )
 
 VIEW_NE_VALIDATION_NORMALIZATION = View(
-    name=TABLE_NE,
+    main_table=TABLE_NE,
     suffix="VALIDATION_NORMALIZATION",
     select_stmt=f"""--sql
             SELECT
@@ -337,7 +344,7 @@ VIEW_NE_VALIDATION_NORMALIZATION = View(
 )
 
 VIEW_DIS_PNM_PRESENTATION = View(
-    name=TABLE_DIS_PNM,
+    main_table=TABLE_DIS_PNM,
     suffix="PRESENTATION",
     select_stmt=f"""--sql
             SELECT
@@ -454,7 +461,7 @@ IDX_NE_ERROR_ID_NOT_NULL = Index(TABLE_NE, [ERROR_ID], where=f"{ERROR_ID} IS NOT
 
 
 VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY = View(
-    name=TABLE_DIS_PNM_AGGR,
+    main_table=TABLE_DIS_PNM_AGGR,
     suffix="ROW_FACTORY",
     select_stmt=f"""--sql
             SELECT
