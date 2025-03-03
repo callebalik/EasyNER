@@ -1242,7 +1242,39 @@ class Preprocessor(BaseComponent):
         batch_size: int = 100000,
     ) -> None:
         """
-        Attach error information to the entity_occurrences table. The error information is expected to be in the following format:
+        Attach error information to the entity_occurrences table. IMPORTANT: Trigger somewhat inconsistent db changes.
+        TODO This is duue to develoment setup for now, but should be changed in future
+        Does the following:
+        1. ERROR_ID is attached to NE -> NORM_ID is removed from the specific entity
+        2. Any other entity with the same NORM_ID the NORM_ID is removed
+        3. The normalized entity is removed from NE_AGGR
+        4. Any cooccurrence with the same NORM_ID is removed from COOC
+        -- Trigger to handle cleanup when an error_id is added to a named entity
+            CREATE TRIGGER IF NOT EXISTS trg_ne_error_id_cleanup
+            AFTER UPDATE OF ERROR_ID ON NE
+            WHEN NEW.ERROR_ID IS NOT NULL
+            AND OLD.ERROR_ID IS NULL
+            AND OLD.NE_NORM_ID IS NOT NULL
+            BEGIN
+                -- 1. Delete entries from DIS_PNM that reference the updated entity
+                DELETE FROM DIS_PNM
+                WHERE E1_ID = NEW.NE_ID OR E2_ID = NEW.NE_ID;
+
+                -- 2. Delete entries from DIS_PNM_AGGR that reference the normalized entity
+                DELETE FROM DIS_PNM_AGGR
+                WHERE E1_NORM_ID = OLD.NE_NORM_ID OR E2_NORM_ID = OLD.NE_NORM_ID;
+
+                -- 3. Update ALL NE records (including the current one) to remove references to this normalized entity
+                UPDATE NE
+                SET NE_NORM_ID = NULL
+                WHERE NE_NORM_ID = OLD.NE_NORM_ID;
+
+                -- 4. Remove the normalized entity from NE_AGGR
+                DELETE FROM NE_AGGR
+                WHERE NE_NORM_ID = OLD.NE_NORM_ID;
+            END;
+
+        The error information is expected to be in the following format:
 
         entity_type,entity_text,error_id
         DIS,fires,MISSL
