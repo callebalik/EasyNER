@@ -445,7 +445,7 @@ class EasyNerDBHandler:
     def statistics(self):
         """Get database statistics."""
         if self._statistics is None:
-            from .db_statistics import DBStatistics
+            from .statistics.db_statistics import DBStatistics
             self._statistics = DBStatistics(
                 self._connection, self._cursor, self.logger, self.data_exchanger
             )
@@ -453,7 +453,7 @@ class EasyNerDBHandler:
 
     def _get_statistics(self):
         """Get statistics object for complex operations."""
-        from .db_statistics import DBStatistics
+        from .statistics.db_statistics import DBStatistics
         if self._statistics is None:
             self._statistics = DBStatistics(
                 self._connection, self._cursor, self.logger, self.data_exchanger
@@ -800,7 +800,7 @@ class EasyNerDBHandler:
             # Import component modules
             from .db_data_exchanger import DBDataExchanger
             from .db_data_cleaner import DBDataCleaner
-            from .db_statistics import DBStatistics
+            from .statistics.db_statistics import DBStatistics
             from .data_model.entity_occurrence import EntityOccurrence
             from .data_model.entity_cooccurrence import EntityCooccurrence
 

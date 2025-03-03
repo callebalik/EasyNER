@@ -3,8 +3,7 @@ Get's statistics via DBStatistics
 Data content:
 documenents total -> with and without named entities -> named entity distribution, docs with class 1, docs with class 2, docs with both 1 and 2
 """
-from ..db_statistics import DBStatistics
-from ..db_server import get_db_easyner_context_connection
+from .db_statistics import DBStatistics
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -41,12 +40,18 @@ class Flowchart:
 
         # Collect document counts
         with_entities = stats.documents_with_entities()
+
         without_entities = total_docs - with_entities
-        with_dis = stats.documents_with_entities(included_ne_class_id="DIS")
-        with_pnm = stats.documents_with_entities(included_ne_class_id="PNM")
-        with_dis_and_pnm = stats.get_entity_cooccurrence_count
-        with_dis_only = stats.documents_with_entities(included_ne_class_id="DIS", excluded_ne_class_id="PNM")
-        with_pnm_only = stats.documents_with_entities(included_ne_class_id="PNM", excluded_ne_class_id="DIS")
+        with_dis = stats.documents_with_entities(included_ne_classes=["DIS"])
+        with_pnm = stats.documents_with_entities(included_ne_classes=["PNM"])
+        with_dis_and_pnm = stats.documents_with_entities(included_ne_classes=["DIS", "PNM"])
+        with_dis_only = stats.documents_with_entities(included_ne_classes=["DIS"], excluded_ne_classes=["PNM"])
+        with_pnm_only = stats.documents_with_entities(included_ne_classes=["PNM"], excluded_ne_classes=["DIS"])
+
+        # Validate counts
+        assert total_docs == with_entities + without_entities, "Total documents count mismatch"
+        print(with_entities - with_dis_only - with_dis_and_pnm - with_pnm_only)
+        assert with_entities == with_dis_only + with_dis_and_pnm + with_pnm_only, "With entities count mismatch"
 
         # Create a structured DataFrame
         data = {
@@ -123,14 +128,28 @@ class Flowchart:
             pd.DataFrame: DataFrame with node and layer information for Sankey diagram
         """
         base_df = self.data
-        total_docs = base_df[base_df['category'] == 'Total Documents']['count'].iloc[0]
 
-        # Extract values using more robust DataFrame filtering
-        with_entities = base_df[base_df['category'] == 'Documents with Named Entities']['count'].iloc[0]
-        without_entities = base_df[base_df['category'] == 'Documents without Named Entities']['count'].iloc[0]
-        with_dis_only = base_df[base_df['category'] == 'Documents with DIS only']['count'].iloc[0]
-        with_pnm_only = base_df[base_df['category'] == 'Documents with PNM only']['count'].iloc[0]
-        with_both = base_df[base_df['category'] == 'Documents with both DIS and PNM']['count'].iloc[0]
+        # Extract values using proper column names and safe access patterns
+        def get_count_for_category(category_name):
+            """Helper function to safely extract counts from base DataFrame"""
+            matching_rows = base_df[base_df['category'] == category_name]
+            if matching_rows.empty:
+                print(f"WARNING: Category '{category_name}' not found in data")
+                return 0
+            return matching_rows['count'].iloc[0]
+
+        # Get required counts
+        total_docs = get_count_for_category('Total Documents')
+        with_entities = get_count_for_category('Documents with Named Entities')
+        without_entities = get_count_for_category('Documents without Named Entities')
+        with_dis_only = get_count_for_category('Documents with DIS only')
+        with_pnm_only = get_count_for_category('Documents with PNM only')
+        with_both = get_count_for_category('Documents with both DIS and PNM')
+
+        # Verify data consistency
+        expected_with_entities = with_dis_only + with_pnm_only + with_both
+        if with_entities != expected_with_entities:
+            print(f"WARNING: Documents with entities ({with_entities}) doesn't match sum of entity classes ({expected_with_entities})")
 
         # Create node records: layer, node name, count, percentage
         nodes = [
@@ -233,49 +252,88 @@ class Flowchart:
             "value": []
         }
 
-        # Add connections between layers
+           # Add connections between layers using explicit source relationships
         for _, row in df.iterrows():
             if 'source' in row and pd.notna(row['source']):
-                sankey_data['source'].append(row['source'])
-                sankey_data['target'].append(row['node_name'])
-                sankey_data['value'].append(row['count'])
+                # Find the source node in our DataFrame
+                source_node = row['source']
+                target_node = row['node_name']
+
+                sankey_data['source'].append(source_node)
+                sankey_data['target'].append(target_node)
+                sankey_data['value'].append(row['count'])  # Use 'count' field for value
+
+        # Debug: Print connections to verify correctness
+        print("\nSankey Diagram Connections:")
+        for i, (src, tgt, val) in enumerate(zip(
+                sankey_data['source'],
+                sankey_data['target'],
+                sankey_data['value'])):
+            print(f"  {i+1}. {src} → {tgt}: {val:,}")
 
         return sankey_data
 
-    def get_sankey_diagram(self):
+    def get_sankey_diagram(self) -> go.Figure:
         """
         Generate a Sankey diagram with external labels showing counts and percentages.
+        Uses deterministic node ordering to ensure correct flow connections.
 
         Returns:
-            str: HTML representation of the Sankey diagram
+            go.Figure: Figure object of the Sankey diagram
         """
         try:
             # Get Sankey data and layered DataFrame
             sankey_data = self.get_sankey_data()
             layered_df = self.create_sankey_layers_dataframe()
 
-            # Get unique node names
-            unique_nodes = list(set(sankey_data['source'] + sankey_data['target']))
-            node_to_idx = {node: i for i, node in enumerate(unique_nodes)}
+            # Build ordered node list layer by layer for deterministic ordering
+            ordered_nodes = []
 
-            # Convert sources and targets to indices
+            # Add nodes in layer order (1, 2, 3)
+            for layer in sorted(layered_df['layer'].unique()):
+                # Get nodes in this layer, sorted by their position within layer
+                layer_df = layered_df[layered_df['layer'] == layer]
+                layer_nodes = layer_df['node_name'].tolist()
+                ordered_nodes.extend(layer_nodes)
+
+            # Map nodes to indices in a deterministic order
+            node_to_idx = {node: i for i, node in enumerate(ordered_nodes)}
+
+            # Debug: Print the ordered nodes and their indices
+            print("\nOrdered Node Mapping:")
+            for node, idx in node_to_idx.items():
+                node_info = layered_df[layered_df['node_name'] == node]
+                layer = node_info['layer'].iloc[0] if not node_info.empty else "Unknown"
+                print(f"  {idx}: Layer {layer} - {node}")
+
+            # Convert sources and targets to indices using this ordered mapping
             source_idx = [node_to_idx[s] for s in sankey_data['source']]
             target_idx = [node_to_idx[t] for t in sankey_data['target']]
+
+            # Debug: Print the connections with indices
+            print("\nSankey Connection Indices:")
+            for i, (src, tgt, src_idx, tgt_idx, val) in enumerate(zip(
+                    sankey_data['source'],
+                    sankey_data['target'],
+                    source_idx,
+                    target_idx,
+                    sankey_data['value'])):
+                print(f"  {i+1}. {src} ({src_idx}) → {tgt} ({tgt_idx}): {val:,}")
 
             # Define node positions and colors
             x_positions = []
             y_positions = []
             node_colors = []
 
-            # Color scheme
+            # Color scheme (keeping your existing colors)
             colors = {
                 1: "#1f77b4",  # Blue for Total Documents
                 2: ["#2ca02c", "#d62728"],  # Green for With Entities, Red for Without Entities
                 3: ["#ff7f0e", "#9467bd", "#8c564b"]  # Orange, Purple, Brown for Entity Classes
             }
 
-            # Calculate positions for each node
-            for node in unique_nodes:
+            # Calculate positions for each node in our ordered list
+            for node in ordered_nodes:
                 node_info = layered_df[layered_df['node_name'] == node]
 
                 if node_info.empty:
@@ -295,14 +353,14 @@ class Flowchart:
                 node_idx = layer_nodes.index(node)
                 layer_size = len(layer_nodes)
 
-                # Calculate y position with spacing
+                # Calculate y position with spacing (keep your existing logic)
                 if layer_size == 1:
                     y_pos = 0.5
                 else:
                     spacing = 0.8 / (layer_size - 1) if layer_size > 1 else 0
                     y_pos = 0.1 + (node_idx * spacing)
 
-                # Set node color
+                # Set node color (keep your existing color scheme)
                 if layer == 1:
                     color = colors[1]
                 elif layer == 2:
@@ -321,7 +379,7 @@ class Flowchart:
                     pad=15,
                     thickness=20,
                     line=dict(color="black", width=0.5),
-                    label=unique_nodes,
+                    label=ordered_nodes,  # Use our ordered node list here
                     x=x_positions,
                     y=y_positions,
                     color=node_colors
@@ -334,6 +392,7 @@ class Flowchart:
                 )
             )])
 
+            # The rest of your existing code follows unchanged...
             # Add layer labels at the top of the diagram
             layer_labels = {
                 1: "Documents",
@@ -355,7 +414,8 @@ class Flowchart:
                 )
 
             # Add external labels with counts and percentages
-            for i, node in enumerate(unique_nodes):
+            # Note: We need to iterate through ordered_nodes now, not unique_nodes
+            for i, node in enumerate(ordered_nodes):
                 node_info = layered_df[layered_df['node_name'] == node]
 
                 if not node_info.empty:
@@ -385,20 +445,23 @@ class Flowchart:
                 title_text="Document Distribution by Named Entity Classes",
                 font=dict(size=14, family="Arial"),
                 paper_bgcolor='white',
-                height=600,
-                width=900,
-                margin=dict(l=50, r=50, t=50, b=50)
+                height=1000,
+                width=1000,
+                margin=dict(l=100, r=150, t=50, b=50)
             )
 
-            # Return HTML representation
-            return fig.to_html(include_plotlyjs='cdn', full_html=False)
+            return fig
 
         except Exception as e:
-            # Return error message as HTML
-            return f"""
-            <div class="alert alert-danger">
-              <h4>Error generating Sankey diagram</h4>
-              <p>{str(e)}</p>
-            </div>
-            """
+            # Return error message as figure with text
+            print(f"Error generating Sankey diagram: {str(e)}")
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Error generating Sankey diagram:<br>{str(e)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14, color="red")
+            )
+            return fig
 

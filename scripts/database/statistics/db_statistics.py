@@ -1,17 +1,17 @@
 import pandas as pd
 from pandas import DataFrame
 from matplotlib import pyplot as plt
-from .db_data_exchanger import DBDataExchanger
+from ..db_data_exchanger import DBDataExchanger
 import logging
 import os
 import sqlite3
 import seaborn as sns
-from .data_model.schema import *
+from ..data_model.schema import *
 
 
 # We use this decorator as an instance method of CacheManager
 # So we need to create a cache_manager instance to use its cached decorator
-from .core.cache_singleton import cached
+from ..core.cache_singleton import cached
 
 class DBStatistics:
 
@@ -143,24 +143,89 @@ class DBStatistics:
         return self.cursor.fetchone()[0]
 
     @property
-    @cached(ttl_seconds=3600)
-    def named_entities_count(self, ne_class: str = None):
+    @cached()
+    def total_valid_named_entities(self):
         """
-        Get the total number of entity occurrences in the database matching optional WHERE condition for the named entity class
-
-        Uses cache if available to avoid expensive database query.
-
-        :return: The number of entity occurrences.
+        Get the total number of valid named entities in the database.
+        Uses
+        :return: The number of valid named entities.
         """
-        query = f"SELECT COUNT(*) FROM {TABLE_NE};"
-        if ne_class:
-            class_id = self.data_exchanger.get_named_entity_class_id(ne_class)
-            query += f" WHERE {CLASS_ID}='{ne_class}'"
-
-        self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE};")
+        self.cursor.execute(f"SELECT COUNT(*) FROM {VIEW_NE_CLEAN}")
         return self.cursor.fetchone()[0]
 
+    def debug_database_schema(self):
+        """Examine actual database schema and verify table/column names"""
+        print("\n=== DATABASE SCHEMA DIAGNOSTIC ===")
 
+        # Get list of all tables
+        self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in self.cursor.fetchall()]
+        print(f"Tables in database: {tables}")
+
+        # Check if our expected tables exist
+        expected_tables = [TABLE_NE, TABLE_DOCS, TABLE_NE_CLASS]
+        for table in expected_tables:
+            exists = table in tables
+            print(f"Table '{table}' {'EXISTS' if exists else 'MISSING'}")
+
+            if exists:
+                # Get column names for this table
+                self.cursor.execute(f"PRAGMA table_info({table})")
+                columns = [row[1] for row in self.cursor.fetchall()]
+                print(f"  Columns: {columns}")
+
+                # Check row count
+                self.cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = self.cursor.fetchone()[0]
+                print(f"  Row count: {count}")
+
+                # Sample data if available
+                if count > 0:
+                    self.cursor.execute(f"SELECT * FROM {table} LIMIT 1")
+                    sample = self.cursor.fetchone()
+                    print(f"  Sample: {sample}")
+
+    @cached(ttl_seconds=150, prefix="stats.named_entities_count")
+    def named_entities_count(self, ne_class: str = None, include_errors: bool = False, include_ambiguous: bool = False, include_overlaps: bool = False):
+        """Get the total number of entity occurrences in the database."""
+        try:
+            # Basic query without conditions first
+            query = f"SELECT COUNT(*) FROM {TABLE_NE}"
+
+            conditions = []
+            params = []
+
+            # Add conditions only if needed
+            if ne_class:
+                class_id = self.data_exchanger.get_named_entity_class_id(ne_class)
+                if class_id:
+                    conditions.append(f"{CLASS_ID} = ?")
+                    params.append(class_id)
+
+            if not include_errors:
+                conditions.append(f"{ERROR_ID} IS NULL")
+
+            if not include_overlaps:
+                conditions.append(f"{NE_OVERLAP} IS 0")
+
+            # Add WHERE clause only if we have conditions
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+
+            self.logger.debug(f"Executing named_entities_count query: {query}")
+            self.logger.debug(f"With parameters: {params}")
+
+            if params:
+                self.cursor.execute(query, params)
+            else:
+                self.cursor.execute(query)
+
+            count = self.cursor.fetchone()[0]
+            return count
+
+        except Exception as e:
+            self.logger.error(f"Error in named_entities_count: {e}")
+            return 0
 
     @property
     @cached(ttl_seconds=3600, prefix="stats.entity_cooccurrence_count")
@@ -172,119 +237,149 @@ class DBStatistics:
         :return: The number of entity cooccurrences.
         """
         query = f"""
-        SELECT COUNT(*) FROM {TABLE_DIS_PNM};
+        SELECT COUNT(*) FROM {TABLE_DIS_PNM}
         """
         self.cursor.execute(query)
         return self.cursor.fetchone()[0]
 
     # -------- Data for data flow analysis --------
-    @property
-    @cached(ttl_seconds=3600)
-    def documents_with_entities(self):
+    def documents_with_entities(self, included_ne_classes: list[str] = None, excluded_ne_classes: list[str] = None, include_errors: bool = False, include_ambiguous: bool = False, include_overlaps: bool = False):
+        """
+        Get counts of documents with named entities meeting specified criteria.
+
+        Args:
+            included_ne_classes: List of entity classes that MUST be present in the document
+            excluded_ne_classes: List of entity classes that MUST NOT be present in the document
+            include_errors: Whether to include entities with errors
+            include_ambiguous: Whether to include ambiguous entities
+            include_overlaps: Whether to include overlapping entities
+
+        Returns:
+            int: Count of documents meeting the criteria
+        """
+        # Convert None to empty lists for consistent handling
+        included_ne_classes = included_ne_classes or []
+        excluded_ne_classes = excluded_ne_classes or []
+
+        included_ne_ids = [self.data_exchanger.get_named_entity_class_id(ne_class) for ne_class in included_ne_classes]
+        excluded_ne_ids = [self.data_exchanger.get_named_entity_class_id(ne_class) for ne_class in excluded_ne_classes]
+
+        # Basic case: all documents with any entity
+        if not included_ne_classes and not excluded_ne_classes:
+            query = f"""--sql
+            SELECT COUNT(DISTINCT ne.{DOC_ID})
+            FROM {TABLE_NE} ne
+            WHERE 1=1
+            """
+
+            params = []
+
+            if not include_errors:
+                query += f" AND {ERROR_ID} IS NULL"
+            if not include_overlaps:
+                query += f" AND {NE_OVERLAP} IS 0"
+
+        # Complex case with specific entity class requirements
+        else:
+            query = f"""--sql
+            SELECT COUNT(DISTINCT d.{DOC_ID})
+            FROM {TABLE_DOCS} d
+            """
+            params = []
+
+            # For each included class, add an EXISTS subquery
+            for i, ne_id in enumerate(included_ne_ids):
+                query += f"""
+                {'WHERE' if i == 0 and not params else 'AND'} EXISTS (
+                    SELECT 1 FROM {TABLE_NE} ne{i}
+                    WHERE ne{i}.{DOC_ID} = d.{DOC_ID}
+                    AND ne{i}.{CLASS_ID} = ?
+                """
+
+                if not include_errors:
+                    query += f" AND ne{i}.{ERROR_ID} IS NULL"
+                if not include_overlaps:
+                    query += f" AND ne{i}.{NE_OVERLAP} IS 0"
+
+                query += ")"
+                params.append(ne_id)
+
+            # For each excluded class, add a NOT EXISTS subquery
+            for i, ne_id in enumerate(excluded_ne_ids):
+                query += f"""
+                {'WHERE' if not params else 'AND'} NOT EXISTS (
+                    SELECT 1 FROM {TABLE_NE} ne_ex{i}
+                    WHERE ne_ex{i}.{DOC_ID} = d.{DOC_ID}
+                    AND ne_ex{i}.{CLASS_ID} = ?
+                """
+
+                if not include_errors:
+                    query += f" AND ne_ex{i}.{ERROR_ID} IS NULL"
+                if not include_overlaps:
+                    query += f" AND ne_ex{i}.{NE_OVERLAP} IS 0"
+
+                query += ")"
+                params.append(ne_id)
+
+        try:
+            self.logger.debug(f"Executing query: {query}")
+            self.logger.debug(f"Parameters: {params}")
+            self.cursor.execute(query, params)
+            result = self.cursor.fetchone()
+            count = result[0] if result is not None else 0
+
+            if count == 0:
+                self.logger.warning(
+                    f"No documents with entities found."
+                    f"\n- Total documents: {self.document_count:,}"
+                    f"\n- Total entities in database: {self.named_entities_count}" # Removed :, formatter
+                    f"\n- Query: {query}"
+                    f"\n- Parameters: {params}"
+                )
+
+            return count
+
+        except Exception as e:
+            self.logger.error(f"Error in documents_with_entities: {e}")
+            self.logger.error(f"Failed query: {query}")
+            self.logger.error(f"Parameters: {params}")
+            return 0
+
+    def documents_without_entities(self, ne_class: str = None):
         """
         Get counts of documents with and without named entities.
+        If ne_class is specified, only count documents without that named entity class otherwise passes None to the the method
 
         Returns:
             dict: Document counts with keys 'with_entities', 'without_entities', and 'total'
         """
 
-        # Get documents with at least one entity
-        query = f"""
-        SELECT COUNT(DISTINCT ne.{DOC_ID})
-        FROM {TABLE_NE} ne
-        """
-        self.cursor.execute(query)
+        return self.document_count - self.documents_with_entities(ne_class=ne_class)
 
-        docs_with_entities = self.cursor.fetchone()[0]
-
-        if docs_with_entities is None:
-            self.logger.warning(
-                f"No documents with entities found."
-                f"\n- Total documents: {self.document_count:,}"
-                f"\n- Documents with entities: {docs_with_entities:,}"
-                f"\n- Total entities in database {self.named_entities_count:,}"
-                f"\n---------Query ---------\n{query}"
-            )
-        return docs_with_entities
-
-    @property
-    @cached(ttl_seconds=3600)
-    def documents_without_entities(self):
-        """
-        Get counts of documents with and without named entities.
-
-        Returns:
-            dict: Document counts with keys 'with_entities', 'without_entities', and 'total'
-        """
-        return self.document_count - self.documents_with_entities
-
-    @property
-    def documents_entity_distribution(self) -> dict:
-        """
-        Get distribution of documents with and without named entities.
-
-        Returns:
-            dict: Document counts with keys 'with_entities', 'without_entities', and 'total'
-        """
-        return {
-            'total': self.document_count,
-            'with_entities': self.documents_with_entities,
-            'without_entities': self.documents_without_entities
-        }
-
-    def get_doc_entity_distribution_data_for_sankey(self):
-        """
-        Get data for sankey diagram showing named entity distribution across documents.
-
-        Uses cached data if available to avoid expensive database query.
-
-        Returns:
-            DataFrame: Data for sankey diagram with columns [source, target, value]
-        """
-
-
-        document_entity_counts = self.documents_entity_distribution
-
-        sankey_data = {
-            "source": [],
-            "target": [],
-            "value": []
-        }
-
-
-        sankey_data['source'].append("Total Documents")
-        sankey_data['target'].append("Documents with Named Entities")
-        sankey_data['value'].append(document_entity_counts['with_entities'])
-
-        sankey_data['source'].append("Total Documents")
-        sankey_data['target'].append("Documents without Named Entities")
-        sankey_data['value'].append(document_entity_counts['without_entities'])
-
-
-        print(sankey_data)
-        return sankey_data
-
-    @cached(ttl_seconds=3600)
+    @cached(ttl_seconds=7600)
     def get_entity_class_document_distribution(self):
         """
+        # Todo implement with showing distribution of documents with and without entities and with many entities
         Get distribution of named entity classes across documents.
 
         Returns:
             DataFrame: Distribution with columns [class_name, document_count, percentage]
         """
-        self.cursor.execute(f"""
+        self.cursor.execute(f"""--sql
             SELECT
                 nec.{NE_CLASS},
-                COUNT(DISTINCT s.{DOC_ID}) as document_count
+                COUNT(DISTINCT ne.{DOC_ID}) as document_count
             FROM {TABLE_NE} ne
             JOIN {TABLE_NE_CLASS} nec ON ne.{CLASS_ID} = nec.{CLASS_ID}
-            JOIN sentences s ON ne.{SENT_IDX} = s.{CLASS_ID}
+            JOIN sentences s ON ne.{SENT_IDX} = s.{SENT_IDX}
             GROUP BY nec.{NE_CLASS}
             ORDER BY document_count DESC
         """)
 
         results = self.cursor.fetchall()
         df = pd.DataFrame(results, columns=[NE_CLASS, "document_count"])
+
+                # Add total documents row with class_name None
 
         # Calculate percentage of total documents
         total_docs = self.document_count
