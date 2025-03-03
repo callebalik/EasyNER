@@ -1065,9 +1065,426 @@ class Statistics(BaseComponent):
 
         """
         Aggregates entity co-occurrences.
-        Accessed via db_system.entity_cooccurrence.co_aggregate_old()
+    def calculate_dis_pnm_pmi(self, method: str = "normalized") -> bool:
         """
-class EntityCooccurrence:
+        Calculate Pointwise Mutual Information (PMI) for entity co-occurrences.
+
+        The PMI of a pair of outcomes x and y belonging to discrete random variables X and Y quantifies the discrepancy
+        between the probability of their coincidence given their joint distribution and their individual distributions,
+        assuming independence.
+
+        Mathematical formula: PMI(x, y) = log(P(x, y) / (P(x) * P(y)))
+
+        P(x, y) is the joint probability of x and y = unique document count of x and y / total document count
+        P(x) and P(y) respectively are probability of x = unique document count of x / total document count
+
+        Uses log-transformed PMI for simplicity.
+        -1 to 1: Negative values indicate negative association, positive values indicate positive association.
+        -1 = perfect negative association = Completely disjoint
+        1 = perfect positive association = Always together
+
+        Args:
+            method (str): PMI calculation method. Options:
+                - "logarithmic": Standard PMI using natural logarithm (default)
+                - "normalized": Normalized PMI (NPMI) scaled to [-1,1] range
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        import time
+
+        self.logger.info(
+            f"Calculating {method} PMI for disease-phenomenon co-occurrences..."
+        )
+        start_time = time.time()
+
+        # Initialize transaction flag before try block to avoid UnboundLocalError
+        in_transaction = False
+
+        try:
+            # Check if we need to start a transaction (safely)
+            try:
+                # Some versions of SQLite support this pragma, others don't
+                self.cursor.execute("PRAGMA query_only = 0")  # Ensure write mode
+                in_transaction = (
+                    False  # Simpler approach - just track the transaction we start
+                )
+            except sqlite3.OperationalError:
+                in_transaction = False
+
+            # Start transaction
+            self.cursor.execute("BEGIN TRANSACTION")
+            self.logger.debug("Started new transaction for PMI calculation")
+
+            # Verify the required tables exist
+            if not self.cursor.execute(
+                f"""--sql
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name=?
+                """,
+                (TABLE_DIS_PNM_AGGR,),
+            ).fetchone():
+                self.logger.error(
+                    f"Table {TABLE_DIS_PNM_AGGR} does not exist. Run aggregation first."
+                )
+                self.conn.rollback()
+                return False
+
+            if not self.cursor.execute(
+                f"""--sql
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name=?
+                """,
+                (TABLE_NE_AGGR,),
+            ).fetchone():
+                self.logger.error(
+                    f"Table {TABLE_NE_AGGR} does not exist. Run entity aggregation first."
+                )
+                self.conn.rollback()
+                return False
+
+            # Step 1: Get the total document count for probability calculations
+            try:
+                total_documents = self.cursor.execute(
+                    f"""--sql
+                    SELECT COUNT(*) FROM {TABLE_DOCS}
+                """
+                ).fetchone()[0]
+            except Exception as e:
+                self.logger.error(f"Error getting document count: {e}")
+                self.conn.rollback()
+                return False
+
+            self.logger.info(f"Total documents: {total_documents:,}")
+
+            if total_documents == 0:
+                self.logger.error(
+                    "No documents found in database. Cannot calculate PMI."
+                )
+                self.conn.rollback()
+                return False
+
+            # Step 2: Create necessary columns if they don't exist
+            self.logger.info("Ensuring columns exist for PMI calculation...")
+
+            # Add column for PMI if it doesn't exist
+            try:
+                self.cursor.execute(
+                    f"""--sql
+                    ALTER TABLE {TABLE_DIS_PNM_AGGR}
+                    ADD COLUMN {PMI} REAL
+                """
+                )
+            except sqlite3.OperationalError:
+                # Column already exists, which is fine
+                pass
+
+            # Add column for NPMI if it doesn't exist and we're using normalized method
+            if method == "normalized":
+                try:
+                    self.cursor.execute(
+                        f"""--sql
+                        ALTER TABLE {TABLE_DIS_PNM_AGGR}
+                        ADD COLUMN npmi REAL
+                    """
+                    )
+                except sqlite3.OperationalError:
+                    # Column already exists, which is fine
+                    pass
+
+            # First, clear any existing PMI values to ensure clean calculation
+            self.cursor.execute(
+                f"""--sql
+                UPDATE {TABLE_DIS_PNM_AGGR} SET {PMI} = NULL
+            """
+            )
+
+            if method == "normalized":
+                self.cursor.execute(
+                    f"""--sql
+                    UPDATE {TABLE_DIS_PNM_AGGR} SET npmi = NULL
+                """
+                )
+
+            # Step 3: Calculate PMI directly using NE_AGGR for document counts
+            self.logger.info(
+                f"Calculating {method} PMI values using pre-calculated document frequencies..."
+            )
+
+            # Validate source tables have expected data
+            dis_class_id = self.cursor.execute(
+                f"""--sql
+                SELECT {CLASS_ID} FROM {TABLE_NE_CLASS} WHERE {NE_CLASS} = 'DIS'
+            """
+            ).fetchone()
+
+            pnm_class_id = self.cursor.execute(
+                f"""--sql
+                SELECT {CLASS_ID} FROM {TABLE_NE_CLASS} WHERE {NE_CLASS} = 'PNM'
+            """
+            ).fetchone()
+
+            if not dis_class_id or not pnm_class_id:
+                self.logger.error(
+                    "Missing entity class IDs for DIS or PNM. Check NE_CLASS table."
+                )
+                self.conn.rollback()
+                return False
+
+            # Calculate PMI values
+            pmi_update_query = f"""--sql
+                UPDATE {TABLE_DIS_PNM_AGGR}
+                SET {PMI} = CASE
+                    WHEN (dis_aggr.{UNIQ_DOCS} * pnm_aggr.{UNIQ_DOCS}) > 0
+                    THEN log({TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} * {total_documents} * 1.0 / (dis_aggr.{UNIQ_DOCS} * pnm_aggr.{UNIQ_DOCS}))
+                    ELSE NULL
+                END
+                FROM
+                    {TABLE_NE_AGGR} dis_aggr,
+                    {TABLE_NE_AGGR} pnm_aggr
+                WHERE {TABLE_DIS_PNM_AGGR}.{E1_NORM_ID} = dis_aggr.{NE_NORM_ID}
+                AND {TABLE_DIS_PNM_AGGR}.{E2_NORM_ID} = pnm_aggr.{NE_NORM_ID}
+                AND dis_aggr.{CLASS_ID} = ?
+                AND pnm_aggr.{CLASS_ID} = ?
+            """
+
+            self.cursor.execute(pmi_update_query, (dis_class_id[0], pnm_class_id[0]))
+            rows_updated_pmi = self.cursor.rowcount
+
+            # Check if any PMI values were updated
+            pmi_count = self.cursor.execute(
+                f"""--sql
+                SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR} WHERE {PMI} IS NOT NULL
+            """
+            ).fetchone()[0]
+
+            if pmi_count == 0:
+                self.logger.error(
+                    "No valid PMI values were calculated. Check entity class IDs and joins."
+                )
+
+                # Additional diagnostics
+                dis_count = self.cursor.execute(
+                    f"""--sql
+                    SELECT COUNT(*) FROM {TABLE_NE_AGGR} WHERE {CLASS_ID} = ?
+                """,
+                    (dis_class_id[0],),
+                ).fetchone()[0]
+
+                pnm_count = self.cursor.execute(
+                    f"""--sql
+                    SELECT COUNT(*) FROM {TABLE_NE_AGGR} WHERE {CLASS_ID} = ?
+                """,
+                    (pnm_class_id[0],),
+                ).fetchone()[0]
+
+                total_pairs = self.cursor.execute(
+                    f"""--sql
+                    SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR}
+                """
+                ).fetchone()[0]
+
+                self.logger.error(
+                    f"Diagnostics: DIS entities: {dis_count}, PNM entities: {pnm_count}, Total pairs: {total_pairs}"
+                )
+                self.conn.rollback()
+                return False
+
+            # Step 4: Calculate NPMI if requested
+            if method == "normalized":
+                self.logger.info("Calculating normalized PMI (NPMI) values...")
+
+                # Use a more robust NPMI formula that handles edge cases
+                npmi_update_query = f"""--sql
+                    UPDATE {TABLE_DIS_PNM_AGGR}
+                    SET npmi = CASE
+                        -- Only calculate NPMI when all conditions are met to avoid division by zero
+                        WHEN {PMI} IS NOT NULL
+                             -- Joint probability must not be 1.0 (which makes denominator zero)
+                             AND {TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} < {total_documents}
+                             -- Calculate denominator separately to check for zero
+                             AND -log({TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} * 1.0 / {total_documents}) != 0
+                        THEN {PMI} / (-log({TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} * 1.0 / {total_documents}))
+                        -- Handle special case where joint probability = 1.0 (perfect association)
+                        WHEN {PMI} > 0 AND {TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} = {total_documents}
+                        THEN 1.0
+                        ELSE NULL
+                    END
+                    WHERE {PMI} IS NOT NULL
+                """
+
+                self.cursor.execute(npmi_update_query)
+                rows_updated_npmi = self.cursor.rowcount
+
+                # Verify that NPMI values were calculated
+                npmi_count = self.cursor.execute(
+                    f"""--sql
+                    SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR} WHERE npmi IS NOT NULL
+                """
+                ).fetchone()[0]
+
+                if npmi_count == 0:
+                    self.logger.error(
+                        "NPMI calculation failed - no valid NPMI values found."
+                    )
+
+                    # Additional diagnostics
+                    pmi_stats = self.cursor.execute(
+                        f"""--sql
+                        SELECT
+                            COUNT(*) as total,
+                            AVG({PMI}) as avg_pmi,
+                            MIN({PMI}) as min_pmi,
+                            MAX({PMI}) as max_pmi
+                        FROM {TABLE_DIS_PNM_AGGR}
+                        WHERE {PMI} IS NOT NULL
+                    """
+                    ).fetchone()
+
+                    denominator_zeros = self.cursor.execute(
+                        f"""--sql
+                        SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR}
+                        WHERE {PMI} IS NOT NULL AND -log({UNIQ_DOCS} * 1.0 / {total_documents}) = 0
+                    """
+                    ).fetchone()[0]
+
+                    perfect_matches = self.cursor.execute(
+                        f"""--sql
+                        SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR}
+                        WHERE {UNIQ_DOCS} = {total_documents}
+                    """
+                    ).fetchone()[0]
+
+                    self.logger.error(
+                        f"NPMI calculation diagnostics: PMI values: {pmi_stats[0]}, "
+                        f"Zero denominators: {denominator_zeros}, Perfect matches: {perfect_matches}"
+                    )
+
+                    # Try an alternative approach for NPMI calculation
+                    self.logger.info(
+                        "Attempting alternative NPMI calculation with explicit handling..."
+                    )
+
+                    alt_npmi_query = f"""--sql
+                        UPDATE {TABLE_DIS_PNM_AGGR}
+                        SET npmi = CASE
+                            -- Perfect positive association (PMI > 0 and appears in all documents)
+                            WHEN {PMI} > 0 AND {TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} = {total_documents}
+                            THEN 1.0
+                            -- Perfect negative association (PMI < 0 and never appears together)
+                            WHEN {PMI} < 0 AND {TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} = 0
+                            THEN -1.0
+                            -- Standard case with safeguards
+                            WHEN {PMI} IS NOT NULL
+                                 AND {TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} > 0
+                                 AND {TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} < {total_documents}
+                                 AND ({TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} * 1.0 / {total_documents}) > 0.0000001
+                            THEN {PMI} / (-log({TABLE_DIS_PNM_AGGR}.{UNIQ_DOCS} * 1.0 / {total_documents}))
+                            ELSE NULL
+                        END
+                        WHERE {PMI} IS NOT NULL
+                    """
+
+                    self.cursor.execute(alt_npmi_query)
+
+                    npmi_count = self.cursor.execute(
+                        f"""--sql
+                        SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR} WHERE npmi IS NOT NULL
+                    """
+                    ).fetchone()[0]
+
+                    if npmi_count == 0:
+                        self.logger.error("Alternative NPMI calculation also failed.")
+                        self.conn.rollback()
+                        return False
+                    else:
+                        self.logger.info(
+                            f"Alternative NPMI calculation successful: {npmi_count} values calculated"
+                        )
+                else:
+                    self.logger.info(
+                        f"NPMI calculation successful: {npmi_count} values calculated"
+                    )
+
+            # Create indexes for efficient querying
+            index_pmi = Index(TABLE_DIS_PNM_AGGR, [PMI], logger=self.logger)
+            index_pmi.create_if_not_exists(self.cursor, analyze=True)
+
+            if method == "normalized" and npmi_count > 0:
+                index_npmi = Index(TABLE_DIS_PNM_AGGR, ["npmi"], logger=self.logger)
+                index_npmi.create_if_not_exists(self.cursor, analyze=True)
+
+            # Validate results and log statistics
+            null_pmi_count = self.cursor.execute(
+                f"""--sql
+                SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR} WHERE {PMI} IS NULL
+            """
+            ).fetchone()[0]
+
+            stats = self.cursor.execute(
+                f"""--sql
+                SELECT
+                    COUNT(*) as total,
+                    AVG({PMI}) as avg_pmi,
+                    MIN({PMI}) as min_pmi,
+                    MAX({PMI}) as max_pmi
+                FROM {TABLE_DIS_PNM_AGGR}
+                WHERE {PMI} IS NOT NULL
+            """
+            ).fetchone()
+
+            # Commit the transaction
+            self.conn.commit()
+            self.logger.debug("Committed PMI calculation transaction")
+
+            # Log results
+            elapsed_time = time.time() - start_time
+            self.logger.info(
+                f"PMI calculation completed in {elapsed_time:.2f} seconds for {rows_updated_pmi:,} DIS-PNM pairs. "
+                f"({null_pmi_count:,} pairs with null PMI values)"
+            )
+            self.logger.info(
+                f"PMI statistics: Average: {stats[1]:.4f}, Min: {stats[2]:.4f}, Max: {stats[3]:.4f}"
+            )
+
+            if method == "normalized" and npmi_count > 0:
+                npmi_stats = self.cursor.execute(
+                    f"""--sql
+                    SELECT
+                        COUNT(*) as total,
+                        AVG(npmi) as avg_npmi,
+                        MIN(npmi) as min_npmi,
+                        MAX(npmi) as max_npmi
+                    FROM {TABLE_DIS_PNM_AGGR}
+                    WHERE npmi IS NOT NULL
+                """
+                ).fetchone()
+
+                self.logger.info(
+                    f"NPMI statistics: Total: {npmi_stats[0]:,}, Average: {npmi_stats[1]:.4f}, "
+                    f"Min: {npmi_stats[2]:.4f}, Max: {npmi_stats[3]:.4f}"
+                )
+
+            return True
+
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"SQLite error during PMI calculation: {e}")
+            return False
+        except KeyboardInterrupt:
+            self.conn.rollback()
+            self.logger.warning(
+                "User interrupted PMI calculation. Rolling back changes."
+            )
+            return False
+        except Exception as e:
+            self.conn.rollback()
+            self.logger.error(f"Error during PMI calculation: {e}")
+            return False
+
+        self.logger.info("Calculating DIS-PNM PMI...")
+
+        return True
     """
     Main entrypoint class for Entity Co-occurrence functionality.
     Handles integration of schema management, analysis, statistics, and testing.
