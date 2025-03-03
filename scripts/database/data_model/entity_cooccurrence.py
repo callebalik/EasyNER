@@ -583,6 +583,383 @@ class Aggregator(BaseComponent):
         super().__init__(db_handler)
         VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY.refresh(self.cursor)
 
+    def aggregate_dis_pnm(self, batch_size=50000, overwrite: bool = False) -> dict:
+        """
+        Idempotent aggregation of DIS-PNM co-occurrences into a summary table.
+
+        Aggregates TABLE_DIS_PNM entries by normalized entity IDs, calculating:
+        - Frequency counts (document and sentence level)
+        - Unique document counts
+        - Sentence distance statistics
+
+        Args:
+            batch_size (int): Batch size for processing large datasets
+            overwrite (bool):
+                If True, overwrites existing aggregations;
+                If False, preserves existing aggregations (default)
+
+        Returns:
+            dict: Results of aggregation process or None if failed
+        """
+        self.logger.info("Starting DIS-PNM co-occurrence aggregation...")
+        start_time = time.time()
+
+        try:
+            # Start transaction for atomicity
+            self.cursor.execute("BEGIN TRANSACTION")
+
+            if not self.cursor.execute(
+                f"""--sql
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name=?
+                """,
+                (TABLE_DIS_PNM,),
+            ).fetchone():
+                self.logger.error(
+                    f"Table {TABLE_DIS_PNM} does not exist. Aborting aggregation."
+                )
+                return None
+
+            if not self.cursor.execute(
+                f"""--sql
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name=?
+                """,
+                (TABLE_DIS_PNM_AGGR,),
+            ).fetchone():
+                try:
+                    self.cursor.execute(SCHEMA_TABLE_DIS_PNM_AGGR)
+                    self.conn.commit()
+                    self.logger.info(
+                        f"Created table {TABLE_DIS_PNM_AGGR} for aggregation"
+                    )
+                except sqlite3.Error as e:
+                    self.conn.rollback()
+                    self.logger.error(f"Error creating table {TABLE_DIS_PNM_AGGR}: {e}")
+                    return None
+
+            # Step 1: Prepare and validate input data
+            stats = self._analyze_dis_pnm_for_aggregation()
+            if stats["valid_pairs"] == 0:
+                self.logger.warning(
+                    "No valid DIS-PNM co-occurrences found for aggregation. Skipping process."
+                )
+                self.conn.rollback()
+                return None
+
+            # Step 2: Perform co-occurrence aggregation
+            if (
+                stats["unique_combinations"] == stats["existing_aggregations"]
+                and not overwrite
+            ):
+                self.logger.info(
+                    "All DIS-PNM combinations are already aggregated. Skipping aggregation."
+                )
+                aggregation_result = {
+                    "aggregated_rows": stats["existing_aggregations"],
+                    "processing_time": 0,
+                }
+            else:
+                aggregation_result = self._perform_dis_pnm_aggregation(overwrite)
+
+            # Step 3: Create supporting indexes
+            self._create_dis_pnm_aggr_indexes()
+
+            # Step 4: Validate results
+            validation_result = self._validate_dis_pnm_aggregation()
+
+            if validation_result["success"]:
+                # Commit all changes
+                self.conn.commit()
+                elapsed_time = time.time() - start_time
+                self.logger.info(
+                    f"DIS-PNM aggregation completed successfully in {elapsed_time:.2f} seconds"
+                )
+                return {
+                    "pairs_processed": stats["valid_pairs"],
+                    "unique_aggregations": aggregation_result["aggregated_rows"],
+                    "validation": validation_result,
+                    "processing_time": elapsed_time,
+                }
+            else:
+                self.logger.error(
+                    f"DIS-PNM aggregation validation failed: {validation_result['message']}"
+                )
+                self.conn.rollback()
+                return None
+
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            error_msg = f"SQLite error during DIS-PNM aggregation: {e}"
+            self.logger.error(error_msg)
+            raise
+        except KeyboardInterrupt:
+            self.conn.rollback()
+            self.logger.warning("User interrupted. Rolling back changes.")
+            raise
+        except Exception as e:
+            self.conn.rollback()
+            error_msg = f"Error during DIS-PNM aggregation: {e}"
+            self.logger.error(error_msg)
+            raise
+
+    def _analyze_dis_pnm_for_aggregation(self):
+        """
+        Analyzes DIS-PNM co-occurrence data to determine aggregation scope
+        and creates necessary indexes for efficient processing.
+
+        Returns:
+            dict: Statistics about the co-occurrences to be processed
+        """
+        self.logger.info("Analyzing DIS-PNM co-occurrence data...")
+
+        # Create necessary indexes for efficient aggregation
+        self.logger.info("Creating supporting indexes for aggregation...")
+        e1_index = Index(TABLE_DIS_PNM, [E1_ID], logger=self.logger)
+        e1_index.create_if_not_exists(self.cursor)
+
+        e2_index = Index(TABLE_DIS_PNM, [E2_ID], logger=self.logger)
+        e2_index.create_if_not_exists(self.cursor)
+
+        # Get basic statistics
+        stats_query = f"""--sql
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN ne1.{NE_NORM_ID} IS NOT NULL AND ne2.{NE_NORM_ID} IS NOT NULL THEN 1 END) as valid_pairs
+            FROM {TABLE_DIS_PNM} dp
+            JOIN {TABLE_NE} ne1 ON dp.{E1_ID} = ne1.{NE_PRIMARY_ID}
+            JOIN {TABLE_NE} ne2 ON dp.{E2_ID} = ne2.{NE_PRIMARY_ID}
+        """
+
+        # Count unique combinations using normalized IDs
+        unique_combos_query = f"""--sql
+            SELECT COUNT(*)
+            FROM (
+                SELECT 1
+                FROM {TABLE_DIS_PNM} dp
+                JOIN {TABLE_NE} ne1 ON dp.{E1_ID} = ne1.{NE_PRIMARY_ID}
+                JOIN {TABLE_NE} ne2 ON dp.{E2_ID} = ne2.{NE_PRIMARY_ID}
+                WHERE ne1.{NE_NORM_ID} IS NOT NULL AND ne2.{NE_NORM_ID} IS NOT NULL
+                GROUP BY ne1.{NE_NORM_ID}, ne2.{NE_NORM_ID}
+            )
+        """
+
+        try:
+            stats = self.cursor.execute(stats_query).fetchone()
+            unique_combinations = self.cursor.execute(unique_combos_query).fetchone()[0]
+
+            # Get existing aggregation count
+            aggr_count = 0
+            try:
+                self.cursor.execute(SCHEMA_TABLE_DIS_PNM_AGGR)
+                aggr_count = self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR}"
+                ).fetchone()[0]
+            except sqlite3.OperationalError:
+                self.logger.info(
+                    f"{TABLE_DIS_PNM_AGGR} table does not exist yet, will be created"
+                )
+
+            stats_dict = {
+                "total_pairs": stats[0],
+                "valid_pairs": stats[1],
+                "unique_combinations": unique_combinations,
+                "existing_aggregations": aggr_count,
+            }
+
+            self.logger.info(
+                f"Found {stats_dict['valid_pairs']:,} valid DIS-PNM co-occurrences out of {stats_dict['total_pairs']:,} total "
+                f"with {stats_dict['unique_combinations']:,} unique combinations "
+                f"({stats_dict['existing_aggregations']:,} existing aggregations)"
+            )
+
+            return stats_dict
+        except Exception as e:
+            self.logger.error(f"Error analyzing DIS-PNM data: {e}")
+            raise
+
+    def _perform_dis_pnm_aggregation(self, overwrite: bool = False):
+        """
+        Performs DIS-PNM co-occurrence aggregation by directly inserting into the aggregation table.
+
+        Args:
+            overwrite (bool): If True, overwrites existing aggregations.
+                              If False, preserves existing aggregations.
+
+        Returns:
+            dict: Results of the aggregation operation
+        """
+        self.logger.info(
+            f"Performing DIS-PNM co-occurrence aggregation (overwrite={overwrite})..."
+        )
+        start = time.time()
+
+        # Choose appropriate insert method based on overwrite flag
+        insert_method = "INSERT OR REPLACE" if overwrite else "INSERT OR IGNORE"
+
+        # Perform aggregation and insert in a single step
+        aggregation_query = f"""--sql
+            {insert_method} INTO {TABLE_DIS_PNM_AGGR}
+            ({E1_NORM_ID}, {E2_NORM_ID}, {FQ_DOCUMENT_LEVEL}, {UNIQ_DOCS}, avg_sentence_distance, min_sentence_distance, max_sentence_distance)
+            SELECT
+                ne1.{NE_NORM_ID} as {E1_NORM_ID},
+                ne2.{NE_NORM_ID} as {E2_NORM_ID},
+                COUNT(*) as {FQ_DOCUMENT_LEVEL},
+                COUNT(DISTINCT ne1.{DOC_ID}) as {UNIQ_DOCS},
+                AVG(dp.{SENT_DIST}) as avg_sentence_distance,
+                MIN(dp.{SENT_DIST}) as min_sentence_distance,
+                MAX(dp.{SENT_DIST}) as max_sentence_distance
+            FROM {TABLE_DIS_PNM} dp
+            JOIN {TABLE_NE} ne1 ON dp.{E1_ID} = ne1.{NE_PRIMARY_ID}
+            JOIN {TABLE_NE} ne2 ON dp.{E2_ID} = ne2.{NE_PRIMARY_ID}
+            WHERE ne1.{NE_NORM_ID} IS NOT NULL AND ne2.{NE_NORM_ID} IS NOT NULL
+            GROUP BY ne1.{NE_NORM_ID}, ne2.{NE_NORM_ID}
+        """
+
+        self.cursor.execute(aggregation_query)
+
+        # Get number of rows in the aggregation table
+        rows_aggregated = self.cursor.execute(
+            f"SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR}"
+        ).fetchone()[0]
+
+        duration = time.time() - start
+        self.logger.info(
+            f"DIS-PNM co-occurrence aggregation completed in {duration:.2f} seconds: {rows_aggregated} unique pairs"
+        )
+
+        return {"aggregated_rows": rows_aggregated, "processing_time": duration}
+
+    def _create_dis_pnm_aggr_indexes(self):
+        """
+        Creates indexes to optimize queries on aggregated DIS-PNM co-occurrence data.
+        """
+        self.logger.info("Creating supporting indexes for DIS-PNM aggregation...")
+
+        # Index on normalized disease IDs for faster lookups
+        index_dis = Index(TABLE_DIS_PNM_AGGR, [E1_NORM_ID], logger=self.logger)
+        index_dis.create_if_not_exists(self.cursor, analyze=True)
+
+        # Index on normalized protein/molecule IDs for faster lookups
+        index_pnm = Index(TABLE_DIS_PNM_AGGR, [E2_NORM_ID], logger=self.logger)
+        index_pnm.create_if_not_exists(self.cursor, analyze=True)
+
+        # Index on frequency for common sorting operations
+        index_freq = Index(TABLE_DIS_PNM_AGGR, [FQ_DOCUMENT_LEVEL], logger=self.logger)
+        index_freq.create_if_not_exists(self.cursor, analyze=True)
+
+    def _validate_dis_pnm_aggregation(self):
+        """
+        Validates DIS-PNM co-occurrence aggregation results by checking:
+        1. All unique combinations are aggregated
+        2. Sample validation of frequency counts
+
+        Returns:
+            dict: Validation results with success flag and details
+        """
+        self.logger.info("Validating DIS-PNM aggregation results...")
+        validation_result = {"success": True, "checks": {}}
+
+        try:
+            # Check 1: Verify all unique combinations are aggregated
+            unique_combinations_query = f"""--sql
+                SELECT COUNT(*)
+                FROM (
+                    SELECT DISTINCT ne1.{NE_NORM_ID}, ne2.{NE_NORM_ID}
+                    FROM {TABLE_DIS_PNM} dp
+                    JOIN {TABLE_NE} ne1 ON dp.{E1_ID} = ne1.{NE_PRIMARY_ID}
+                    JOIN {TABLE_NE} ne2 ON dp.{E2_ID} = ne2.{NE_PRIMARY_ID}
+                    WHERE ne1.{NE_NORM_ID} IS NOT NULL AND ne2.{NE_NORM_ID} IS NOT NULL
+                )
+            """
+            unique_count = self.cursor.execute(unique_combinations_query).fetchone()[0]
+
+            aggregated_count = self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_DIS_PNM_AGGR}"
+            ).fetchone()[0]
+
+            validation_result["checks"]["unique_combinations"] = unique_count
+            validation_result["checks"]["aggregated_combinations"] = aggregated_count
+
+            if unique_count != aggregated_count:
+                validation_result["success"] = False
+                validation_result["message"] = (
+                    f"Validation failed: {aggregated_count} of {unique_count} unique combinations were aggregated"
+                )
+                return validation_result
+
+            # Check 2: Verify sample of frequency counts
+            sample_size = min(
+                1000, max(100, int(aggregated_count * 0.05))
+            )  # Sample 5% or at least 100, max 1000
+
+            self.logger.info(
+                f"Validating counts using {sample_size} sample aggregations..."
+            )
+
+            # Select sample of aggregated pairs
+            sample_query = f"""--sql
+                SELECT {E1_NORM_ID}, {E2_NORM_ID}, {FQ_DOCUMENT_LEVEL}
+                FROM {TABLE_DIS_PNM_AGGR}
+                ORDER BY RANDOM()
+                LIMIT {sample_size}
+            """
+            sample_rows = self.cursor.execute(sample_query).fetchall()
+
+            # Validate the sample against raw data
+            mismatches = 0
+            for row in sample_rows:
+                dis_id, pnm_id, agg_freq = row
+
+                # Get actual frequency from raw data
+                actual_freq_query = f"""--sql
+                    SELECT COUNT(*)
+                    FROM {TABLE_DIS_PNM} dp
+                    JOIN {TABLE_NE} ne1 ON dp.{E1_ID} = ne1.{NE_PRIMARY_ID}
+                    JOIN {TABLE_NE} ne2 ON dp.{E2_ID} = ne2.{NE_PRIMARY_ID}
+                    WHERE ne1.{NE_NORM_ID} = ? AND ne2.{NE_NORM_ID} = ?
+                """
+                actual_freq = self.cursor.execute(
+                    actual_freq_query, (dis_id, pnm_id)
+                ).fetchone()[0]
+
+                if actual_freq != agg_freq:
+                    mismatches += 1
+                    if (
+                        mismatches <= 5
+                    ):  # Log only first 5 mismatches to avoid overwhelming logs
+                        self.logger.warning(
+                            f"Frequency mismatch for DIS-PNM pair ({dis_id}, {pnm_id}): "
+                            f"aggregated={agg_freq}, actual={actual_freq}"
+                        )
+
+            validation_result["checks"]["sample_size"] = sample_size
+            validation_result["checks"]["frequency_mismatches"] = mismatches
+
+            if mismatches > 0:
+                mismatch_percentage = (mismatches / sample_size) * 100
+                validation_result["success"] = (
+                    mismatch_percentage < 1
+                )  # Allow up to 1% error rate
+                validation_result["message"] = (
+                    f"Found {mismatches} frequency mismatches ({mismatch_percentage:.2f}%) in sample of {sample_size}"
+                )
+                if validation_result["success"]:
+                    self.logger.warning(
+                        validation_result["message"] + " - within acceptable threshold"
+                    )
+                else:
+                    self.logger.error(
+                        validation_result["message"] + " - exceeds acceptable threshold"
+                    )
+
+            return validation_result
+
+        except Exception as e:
+            self.logger.error(f"Error validating DIS-PNM aggregation: {e}")
+            validation_result["success"] = False
+            validation_result["message"] = f"Validation failed: {e}"
+            return validation_result
         """
         Aggregates entity co-occurrences.
         Accessed via db_system.entity_cooccurrence.co_aggregate_old()
