@@ -63,10 +63,10 @@ class EasyNerDBHandler:
         self._data_exchanger = None
         self._from_pool = from_pool
 
-        # Set default log file paths (will be properly set later for non-pool connections)
-        self.log_file = "pooled_connection.log"  # Default value for pooled connections
-        self.error_log_file = "pooled_connection.err"
-        self.debug_log_file = "pooled_connection.debug.log"
+        # # Set default log file paths (will be properly set later for non-pool connections)
+        # self.log_file = "pooled_connection.log"  # Default value for pooled connections
+        # self.error_log_file = "pooled_connection.err"
+        # self.debug_log_file = "pooled_connection.debug.log"
 
         # Load config and setup paths first
         self.config = self._load_config(config_path)
@@ -766,7 +766,7 @@ class EasyNerDBHandler:
         for handler in self.logger.handlers[:]:
             self.logger.removeHandler(handler)
 
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
         # Get absolute path of the database file parent directory
         db_parent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -793,7 +793,7 @@ class EasyNerDBHandler:
             # Create file handler for logging
         try:
             log_file_handler = logging.FileHandler(self.log_file, mode='w')
-            log_file_handler.setLevel(logging.INFO)
+            log_file_handler.setLevel(logging.DEBUG)
             file_formatter = logging.Formatter(
                 "%(asctime)s - [%(threadName)s] - %(levelname)s - %(message)s"
             )
