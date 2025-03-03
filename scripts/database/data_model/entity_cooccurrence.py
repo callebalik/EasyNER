@@ -431,7 +431,7 @@ class Analysis(BaseComponent):
         idx_ne_disease = Index(
             TABLE_NE,
             [CLASS_ID, DOC_ID, NE_NORM_ID],
-                            where=f"{CLASS_ID}=1 AND {NE_NORM_ID} IS NOT NULL",
+            where=f"{CLASS_ID}=1 AND {NE_NORM_ID} IS NOT NULL",
             logger=self.logger,
         )
 
@@ -439,7 +439,7 @@ class Analysis(BaseComponent):
         idx_ne_pnm = Index(
             TABLE_NE,
             [CLASS_ID, DOC_ID, NE_NORM_ID],
-                        where=f"{CLASS_ID}=2 AND {NE_NORM_ID} IS NOT NULL",
+            where=f"{CLASS_ID}=2 AND {NE_NORM_ID} IS NOT NULL",
             logger=self.logger,
         )
 
@@ -511,10 +511,10 @@ class Analysis(BaseComponent):
             try:
                 # For query plan logging
                 self.log_query_plan(
-reader_query_fn()
-.replace(":limit", "1000")
-.replace(":offset", "100")
-)
+                    reader_query_fn()
+                    .replace(":limit", "1000")
+                    .replace(":offset", "100")
+                )
             except Exception as e:
                 self.logger.error(f"Error creating reader query: {e}")
                 raise
@@ -1691,19 +1691,24 @@ class Tests(BaseComponent):
         self.conn.commit()
         self.logger.info("Self-references removed.")
 
+
+class EntityCooccurrence:
     """
     Main entrypoint class for Entity Co-occurrence functionality.
     Handles integration of schema management, analysis, statistics, and testing.
     """
+
     def __init__(self, db_system_instance: EasyNerDBHandler):
         # Store direct reference to database handler
         self._db = db_system_instance
+        self.logger = logging.getLogger("EasyNerDB")
+        self.logger.info("Initializing EntityCooccurrenceManager...")
 
         # Create component instances with proper initialization
         self.schema_manager = SchemaManager(db_system_instance)
         self.analysis = Analysis(db_system_instance)
         self.statistics = Statistics(db_system_instance)
-self.aggregator = Aggregator(db_system_instance)
+        self.aggregator = Aggregator(db_system_instance)
 
         # Tests component requires both db_handler and statistics component
         self.tests = Tests(db_system_instance, self.statistics)
@@ -1738,6 +1743,8 @@ self.aggregator = Aggregator(db_system_instance)
         max_pmi: Optional[float] = None,
         min_fq_doc_level: Optional[int] = None,
         max_fq_doc_level: Optional[int] = None,
+        min_uniq_docs: Optional[int] = None,
+        max_uniq_docs: Optional[int] = None,
         # Pagination
         limit: int = 100,
         offset: int = 0,
@@ -1757,6 +1764,8 @@ self.aggregator = Aggregator(db_system_instance)
             max_pmi: Maximum PMI value
             min_fq_doc_level: Minimum document frequency
             max_fq_doc_level: Maximum document frequency
+            min_uniq_docs: Minimum unique document count
+            max_uniq_docs: Maximum unique document count
             limit: Maximum number of results to return
             offset: Number of results to skip
 
@@ -1822,6 +1831,13 @@ self.aggregator = Aggregator(db_system_instance)
         if max_fq_doc_level is not None:
             conditions.append("fq_doc_level <= ?")
             params.append(max_fq_doc_level)
+
+        if min_uniq_docs is not None:
+            conditions.append("uniq_docs >= ?")
+            params.append(min_uniq_docs)
+        if max_uniq_docs is not None:
+            conditions.append("uniq_docs <= ?")
+            params.append(max_uniq_docs)
 
         # Add WHERE clause if we have conditions
         if conditions:
