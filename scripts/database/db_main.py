@@ -99,43 +99,6 @@ class EasyNerDBHandler:
             # Initialize components
             self._initialize_components()
 
-            # Log and print connection info
-            try:
-                from scripts.utils.log_formatter import TableFormatter
-
-                log_config = {
-                    'Database': self.name,
-                    'Path': self.db_path,
-                    'Path source': self.path_source,
-                    'Main log (INFO)': self.log_file,
-                    'Error log (ERRORS only)': self.error_log_file,
-                    'Debug log (FULL DEBUG)': self.debug_log_file,
-                    'Row-factory': self.cursor.row_factory,
-                    'Journal Mode': self._get_pragma_value("journal_mode"),
-                    'Busy Timeout': self._get_pragma_value("busy_timeout"),
-                    'Synchronous': self._get_pragma_value("synchronous"),
-                    'Foreign keys': self._get_pragma_value("foreign_keys"),
-                    'Journal size limit': self._get_pragma_value("journal_size_limit"),
-                    'Max parameter count': self._get_pragma_value("max_variable_number"),
-                    'Environment settings': self.cache_manager.get_global("environment_settings"),
-                    'Mapped I/O (> 1 -> True)': self._get_pragma_value("mmap_size"),
-                }
-
-                table = TableFormatter.format_table(log_config, title="Database connection initialized")
-                self.logger.info(f"\n{table}")
-                print(table)
-            except ImportError:
-                # Fallback to standard logging if TableFormatter is not available
-                self.logger.info(
-                    f"Logging system initialized - DB: {self.name}"
-                    f"\n Main log - (INFO): {self.log_file}"
-                    f"\n Path: {self.db_path}"
-                    f"\n Path source: {self.path_source}"
-                    f"\n Error log - (ONLY ERRORS) - Resets: {self.error_log_file}"
-                    f"\n Debug log - (FULL DEBUG LOG): {self.debug_log_file}"
-                )
-
-
     def _init_cache_minimal(self):
         """Initialize the cache table for pooled connections."""
         try:
@@ -194,12 +157,6 @@ class EasyNerDBHandler:
             # Create cursor
             self._cursor = self._connection.cursor()
 
-            # Set up pragmas for better performance
-            self._setup_pragmas()
-
-            # Initialize cache for database settings
-            self._initialize_cache()
-
             # Set up database tables if needed
             self._setup_tables()
 
@@ -218,24 +175,6 @@ class EasyNerDBHandler:
         except Exception as e:
             self.logger.error(f"Failed to connect to database at {db_path}: {e}")
             raise
-
-    def _setup_pragmas(self):
-        """Set up SQLite pragmas for better performance and safety."""
-        try:
-            # Set busy timeout to wait for locks
-            self._connection.execute("PRAGMA busy_timeout = 5000")
-
-            # Enable WAL mode for better concurrency
-            self._connection.execute("PRAGMA journal_mode = WAL")
-
-            # Set synchronous mode to FULL for better data integrity
-            self._connection.execute("PRAGMA synchronous = 2")
-
-            # Turn off foreign keys for performance (we handle manually)
-            self._connection.execute("PRAGMA foreign_keys = 0")
-
-        except sqlite3.Error as e:
-            self.logger.error(f"Error setting pragmas: {e}")
 
     def _initialize_cache(self):
         """Initialize cache table for storing metadata."""
@@ -258,73 +197,10 @@ class EasyNerDBHandler:
             self.logger.error(f"Error initializing cache: {e}")
 
     def _setup_tables(self):
-        """Set up essential database tables."""
-        try:
-            # Get the list of tables
-            tables = self._connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-            self._tables = {"tables": [table[0] for table in tables]}
-
-        except sqlite3.Error as e:
-            self.logger.error(f"Error setting up tables: {e}")
+        pass
 
     def _setup_views(self):
-        """Set up and refresh views."""
-        try:
-            # Create v_NE_COMPILED view if it doesn't exist
-            self._connection.execute("""
-                CREATE VIEW IF NOT EXISTS v_NE_COMPILED AS
-                SELECT
-                    ne.ID as NE_ID,
-                    ne.DOC_ID,
-                    ne.CLASS_ID,
-                    ne.VALUE as NE_VAL,
-                    ne.CHAR_SPAN_START,
-                    ne.CHAR_SPAN_END,
-                    ne.SENT_ID,
-                    ne.WORD_COUNT,
-                    ne.NE_NORM_ID,
-                    ne.OVERLAP,
-                    cl.NE_CLASS,
-                    CASE WHEN ne.ERROR_ID IS NOT NULL THEN er.ERROR_DESC ELSE NULL END as ERROR_DESC
-                FROM entity_occurrences ne
-                LEFT JOIN ne_class cl ON ne.CLASS_ID = cl.CLASS_ID
-                LEFT JOIN ne_error er ON ne.ERROR_ID = er.ERROR_ID
-            """)
-            self.logger.info("Created view v_NE_COMPILED.")
-
-            # Refresh views by querying them
-            self._connection.execute("SELECT COUNT(*) FROM v_NE_COMPILED")
-            self.logger.info("Refreshed view v_NE_COMPILED.")
-
-            # Create DIS-PNM view
-            self._connection.execute("""
-                CREATE VIEW IF NOT EXISTS v_DIS_PNM_AGGR_ROW_FACTORY AS
-                SELECT
-                    co.ID as CO_ID,
-                    co.E1_ID,
-                    co.E2_ID,
-                    e1.VALUE as E1_VALUE,
-                    e2.VALUE as E2_VALUE,
-                    c1.NE_CLASS as E1_CLASS,
-                    c2.NE_CLASS as E2_CLASS,
-                    co.DOC_ID,
-                    co.DOC_LEVEL_FREQ,
-                    co.SENT_LEVEL_FREQ,
-                    co.E1_ID_NORMALIZED,
-                    co.E2_ID_NORMALIZED
-                FROM entity_cooccurrences_summary co
-                JOIN entity_occurrences e1 ON co.E1_ID = e1.ID
-                JOIN entity_occurrences e2 ON co.E2_ID = e2.ID
-                JOIN ne_class c1 ON e1.CLASS_ID = c1.CLASS_ID
-                JOIN ne_class c2 ON e2.CLASS_ID = c2.CLASS_ID
-                WHERE c1.NE_CLASS IN ('DISEASE', 'DISEASE_GROUP') AND c2.NE_CLASS = 'PHENOMENA'
-            """)
-            self._connection.execute("SELECT COUNT(*) FROM v_DIS_PNM_AGGR_ROW_FACTORY")
-            self.logger.info("Refreshed view v_DIS_PNM_AGGR_ROW_FACTORY.")
-
-        except sqlite3.Error as e:
-            self.logger.error(f"Error setting up views: {e}")
+        pass
 
     def _log_connection_info(self, db_path, path_source):
         """Log detailed information about the database connection."""
