@@ -223,6 +223,26 @@ SCHEMA_TABLE_COOCCURRENCES_AGGR = f"""--sql
         FOREIGN KEY ({E2_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NE_NORM_ID})
     )
 """
+TABLE_DIS_PNM_AGGR = "DIS_PNM_AGGR"
+SCHEMA_TABLE_DIS_PNM_AGGR = f"""--sql
+    CREATE TABLE IF NOT EXISTS {TABLE_DIS_PNM_AGGR} (
+        {CO_AGGR_ID} INTEGER PRIMARY KEY AUTOINCREMENT,
+        {E1_NORM_ID} INTEGER NOT NULL,
+        {E2_NORM_ID} INTEGER NOT NULL,
+        {FQ_DOCUMENT_LEVEL} INTEGER DEFAULT NULL,
+        {FQ_SENTENCE_LEVEL} INTEGER DEFAULT NULL,
+        {UNIQ_DOCS} INTEGER DEFAULT NULL,
+        {PMI} REAL DEFAULT NULL,
+        {NPMI} REAL DEFAULT NULL,
+        avg_sentence_distance REAL DEFAULT NULL,  -- Added DEFAULT NULL for consistency
+        min_sentence_distance REAL DEFAULT NULL, -- Added DEFAULT NULL for consistency
+        max_sentence_distance REAL DEFAULT NULL, -- Changed INTEGER to REAL for consistency
+        UNIQUE ({E1_NORM_ID}, {E2_NORM_ID}),
+        FOREIGN KEY ({E1_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NE_NORM_ID}),
+        FOREIGN KEY ({E2_NORM_ID}) REFERENCES {TABLE_NE_AGGR}({NE_NORM_ID})
+    )
+    """
+
 # ----------------------
 # Views
 # ----------------------
