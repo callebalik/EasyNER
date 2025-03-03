@@ -371,24 +371,24 @@ reader_query_fn()
                 """Pass through the batch - processing done in SQL"""
                 return batch
 
-
             writer_sql = f"""--sql
                     INSERT INTO {TABLE_DIS_PNM} ({E1_ID}, {E2_ID})
+                    VALUES (?, ?)
+                """
+
+            def write_function(batch, cursor, conn):
+                """Write DIS-PNM co-occurrences to database"""
                 cursor.executemany(
                     writer_sql, batch
                 )  # Commits are handled by the ReaderWriterPair
-                """
-            def write_function(batch, cursor, conn):
-                """Write DIS-PNM co-occurrences to database"""
-            self.logger.info(
-                f"Total documents to process for DIS-PNM co-occurrences: {total_count:,}"
-            )
 
             # Get total document count - Filtering out already processed documents is done in the reader query. We process all documents, even if some might have been processed before.
             # Not the most efficient, but ensures that all documents are processed for now.
 
             total_count = self.db.statistics.document_count
-            self.logger.info(f"Total documents to process for DIS-PNM co-occurrences: {total_count:,}")
+            self.logger.info(
+                f"Total documents to process for DIS-PNM co-occurrences: {total_count:,}"
+            )
 
             # Create and run the reader-writer pair
             rw_pair = ReaderWriterPair(
@@ -399,16 +399,12 @@ reader_query_fn()
                 write_function=write_function,
                 num_reader_threads=num_reader_threads,
                 logger=self.logger,
-            self.logger.info(
-                "Starting ReaderWriterPair for DIS-PNM co-occurrence extraction"
-            )
+                max_queue_size=max_queue_size,
                 profiling_writer_enabled=False,
                 profiling_reader_enabled=False,
-            count = self.cursor.execute(
-                f"SELECT COUNT(*) FROM {TABLE_DIS_PNM}"
-            ).fetchone()[0]
+                writer_batch_chunking=writer_chunking,
                 total_rows=total_count,
-                process_title="DIS-PNM co-occurrence extraction"
+                process_title="DIS-PNM co-occurrence extraction",
             )
 
             self.logger.info(
@@ -464,7 +460,6 @@ reader_query_fn()
                 LEFT JOIN {TABLE_NE} ne2 ON dp.{E2_ID} = ne2.{NE_PRIMARY_ID}
                 WHERE ne1.{NE_PRIMARY_ID} IS NULL OR ne2.{NE_PRIMARY_ID} IS NULL
             """
-            ).fetchone()[0]
             ).fetchone()[0]
 
             if invalid_refs > 0:
