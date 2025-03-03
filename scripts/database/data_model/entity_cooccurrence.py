@@ -1485,6 +1485,60 @@ class Statistics(BaseComponent):
         self.logger.info("Calculating DIS-PNM PMI...")
 
         return True
+class Tests(BaseComponent):
+    def __init__(self, db_handler: EasyNerDBHandler, statistics: Statistics):
+        """
+        Initialize Tests component with proper dependencies.
+
+        Args:
+            db_handler: Database handler providing connection and logging
+            statistics: Statistics component for entity statistics
+        """
+        # Initialize base component resources
+        super().__init__(db_handler)
+
+        # Store reference to statistics component
+        self.statistics = statistics
+
+    def test_raw_cooccurences(self):
+        """
+        Run the test suite for the EntityCooccurence class.
+        """
+        self.has_self_references()
+        self.has_duplicates()
+
+    def has_self_references(self):
+        """
+        Check if the co-occurrence table has self-references.
+        """
+        if self.stats.self_reference_count:
+            self.logger.info("Co-occurrence table has self-references.")
+            self.remove_self_references()
+        else:
+            self.logger.info("Co-occurrence table has no self-references.")
+
+    def has_duplicates(self):
+        if self.stats.duplicate_pairs():
+            self.logger.error("Co-occurrence table has duplicate pairs!")
+        else:
+            self.logger.info("Co-occurrence table has no duplicate pairs.")
+
+    def remove_self_references(self):
+        """
+        Remove self-references from the co-occurrence table.
+        """
+        total_count = self.cursor.execute(
+            f"SELECT COUNT(*) FROM {TABLE_COOCCURRENCES} WHERE {E1_ID} = {E2_ID}"
+        ).fetchone()[0]
+        self.logger.info(
+            f"Removing {total_count} self-references from co-occurrence table..."
+        )
+        self.cursor.execute(
+            f"DELETE FROM {TABLE_COOCCURRENCES} WHERE {E1_ID} = {E2_ID}"
+        )
+        self.conn.commit()
+        self.logger.info("Self-references removed.")
+
     """
     Main entrypoint class for Entity Co-occurrence functionality.
     Handles integration of schema management, analysis, statistics, and testing.
