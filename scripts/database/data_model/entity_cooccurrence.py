@@ -4,8 +4,144 @@ import time
 
 from scripts.database.core.db_engine import ReaderWriterPair
 from .schema import *
-import logging
-from ..db_main import BaseComponent, EasyNerDBHandler, db_error_handler
+@dataclass
+class NormallizedNamedEntity:
+    """Statistics for an entity in a co-occurrence relationship.
+    """
+
+    txt: str
+    norm_id: Optional[int] = None
+    fq: Optional[int] = None
+    uniq_docs: Optional[int] = None
+    ne_class: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization or API responses."""
+        return {
+            NE_NORM_ID: self.norm_id,
+            TXT: self.txt,
+            NE_CLASS: self.ne_class,
+            FQ: self.fq,
+            UNIQ_DOCS: self.uniq_docs,
+        }
+
+@dataclass
+class Cooccurrence:
+    """Represents a disease-phenomenon co-occurrence relationship.
+    Encapsulates all metrics and data for analyzing and visualizing
+    entity co-occurrence relationships in Sankey diagrams.
+    """
+
+    # Required parameters
+    e1: NormallizedNamedEntity
+    e2: NormallizedNamedEntity
+
+    __row_factory_source__: View = VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY
+    __columns__ = __row_factory_source__.columns
+    __table__: str = TABLE_CO_AGGR  # TODO Should clarify usage between aggregated and raw since cooccurrence is ambigous
+
+
+
+    # Optional parameters
+    co_aggr_id: Optional[int] = None
+
+    # Co-occurrence metrics
+    fq_doc_level: Optional[int] = None
+    fq_sent_level: Optional[int] = None
+    uniq_docs: Optional[int] = None
+
+    # Association metrics
+    pmi: Optional[float] = None
+    npmi: Optional[float] = None
+
+    # Distance metrics
+    avg_sent_dist: Optional[float] = None # TODO Currently inccorect types in table
+    min_sent_dist: Optional[int] = None
+    max_sent_dist: Optional[int] = None
+
+    @classmethod
+    def row_factory(cls, cursor: sqlite3.Cursor, row: sqlite3.Row
+    ) -> "Cooccurrence":
+        """SQLite row factory to create Cooccurrence objects from query results.
+        Args:
+            cursor: SQLite cursor that executed the query
+            row: Raw database result row
+        Returns:
+            Cooccurrence object populated from row data
+        """
+        # Create dictionary from row
+        field_dict = {col[0]: row[i] for i, col in enumerate(cursor.description)}
+
+        # Add verbose logging to identify fields
+        logger = logging.getLogger("EasyNer")
+        logger.debug(f"Creating cooccurrence from fields: {field_dict.keys()}")
+        # print(field_dict)
+
+        try:
+            entity1 = NormallizedNamedEntity(
+                norm_id=field_dict.get("e1_norm_id"),
+                txt=field_dict.get("e1_txt_norm"),  # Match the actual column name from view
+                fq=field_dict.get("e1_fq"),
+                uniq_docs=field_dict.get("e1_uniq_docs"),
+                ne_class="DIS"  # Disease entities are always class DIS
+            )
+
+            entity2 = NormallizedNamedEntity(
+                norm_id=field_dict.get("e2_norm_id"),
+                txt=field_dict.get("e2_txt_norm"),  # Match the actual column name from view
+                fq=field_dict.get("e2_fq"),
+                uniq_docs=field_dict.get("e2_uniq_docs"),
+                ne_class="PNM"  # Phenomenon entities are always class PNM
+            )
+        except AttributeError as e:
+            logger.error(f"Error creating entities of cooccurrence: {e}", exc_info=True)
+            return None
+        except Exception as e:
+            logger.error(f"Error creating entities of cooccurrence: {e}", exc_info=True)
+            return None
+
+        # Create Cooccurrence object
+        try:
+            return cls(
+                # Required parameters
+                e1=entity1,
+                e2=entity2,
+                # Optional parameters
+                co_aggr_id=field_dict.get("co_aggr_id"),
+                fq_doc_level=field_dict.get("fq_doc_level"),
+                fq_sent_level=field_dict.get("fq_sent_level"),
+                uniq_docs=field_dict.get("uniq_docs"),
+                pmi=field_dict.get("pmi"),
+                npmi=field_dict.get("npmi"),
+                avg_sent_dist=field_dict.get("avg_sent_dist"),
+                min_sent_dist=field_dict.get("min_sent_dist"),
+                max_sent_dist=field_dict.get("max_sent_dist"),
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating cooccurrence with parameters: e1_norm_id={field_dict.get('e1_norm_id')}, "
+                f"e2_norm_id={field_dict.get('e2_norm_id')}, e1_txt_norm={field_dict.get('e1_txt_norm')}, "
+                f"e2_txt_norm={field_dict.get('e2_txt_norm')}",
+                exc_info=True,
+            )
+            logger.error(f"Exception: {e}", exc_info=True)
+            return None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization or API responses."""
+        return {
+            "co_aggr_id": self.co_aggr_id,
+            "entity1": self.e1.to_dict() if self.e1 else None,
+            "entity2": self.e2.to_dict() if self.e2 else None,
+            "fq_doc_level": self.fq_doc_level,
+            "fq_sent_level": self.fq_sent_level,
+            "uniq_docs": self.uniq_docs,
+            "pmi": self.pmi,
+            "npmi": self.npmi,
+            "avg_sent_dist": self.avg_sent_dist,
+            "min_sent_dist": self.min_sent_dist,
+            "max_sent_dist": self.max_sent_dist
+        }
 
 class SchemaManager(BaseComponent):
 
