@@ -48,8 +48,8 @@ DOC_COUNT = "DOC_COUNT"  # Document count column name
 SENT_DIST = "SENT_DISTANCE"  # Sentence distance column name
 
 CO_AGGR_ID = "CO_AGGR_ID"  # Aggregated ID column name
-NE1 = "NE1"
-NE2 = "NE2"
+E1 = "E1"
+E2 = "E2"
 E1_ID = "E1_ID"
 E2_ID = "E2_ID"
 E1_NORM_ID = "E1_NORM_ID"
@@ -57,13 +57,21 @@ E2_NORM_ID = "E2_NORM_ID"
 E1_CLASS_ID = "E1_CLASS_ID"
 E2_CLASS_ID = "E2_CLASS_ID"
 
-AVG_SENT_DIST = "avg_sentence_distance"
-MIN_SENT_DIST = "min_sentence_distance"
-MAX_SENT_DIST = "max_sentence_distance"
+# TODO I've missmatched, so to not break old tables I'll the old names for now
 
+MAX_SENT_DIST = "max_sentence_distance"
+MIN_SENT_DIST = "min_sentence_distance"
+AVG_SENT_DIST = "avg_sentence_distance"
+MAX_SENT_DIST_MIGRATION = "max_sent_dist"
+MIN_SENT_DIST_MIGRATION = "min_sent_dist"
+AVG_SENT_DIST_MIGRATION = "avg_sent_dist"
 
 FQ_DOCUMENT_LEVEL = "FQ_DOCUMENT_LEVEL"
+FQ_DOCUMENT_LEVEL_MIGRATION = "fq_doc_level"
+
+
 FQ_SENTENCE_LEVEL = "FQ_SENTENCE_LEVEL"
+FQ_SENTENCE_LEVEL_MIGRATION = "fq_sent_level"
 UNIQ_DOCS = "UNIQ_DOCS"
 PMI = "PMI"
 NPMI = "NPMI"
@@ -463,31 +471,50 @@ IDX_NE_ERROR_ID_NOT_NULL = Index(TABLE_NE, [ERROR_ID], where=f"{ERROR_ID} IS NOT
 VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY = View(
     main_table=TABLE_DIS_PNM_AGGR,
     suffix="ROW_FACTORY",
+    columns=[
+        E1_NORM_ID.lower(),
+        E2_NORM_ID.lower(),
+        E1.lower() + "_" + TXT_NORM.lower(),
+        E2.lower() + "_" + TXT_NORM.lower(),
+        FQ_DOCUMENT_LEVEL_MIGRATION.lower(),
+        FQ_SENTENCE_LEVEL_MIGRATION.lower(),
+        UNIQ_DOCS.lower(),
+        PMI.lower(),
+        NPMI.lower(),
+        AVG_SENT_DIST_MIGRATION.lower(),
+        MIN_SENT_DIST_MIGRATION.lower(),
+        MAX_SENT_DIST_MIGRATION.lower(),
+        E1.lower() + "_" + FQ.lower(),
+        E2.lower() + "_" + FQ.lower(),
+        E1.lower() + "_" + UNIQ_DOCS.lower(),
+        E2.lower() + "_" + UNIQ_DOCS.lower(),
+    ],
     select_stmt=f"""--sql
             SELECT
-                    co.{E1_NORM_ID},
-                    co.{E2_NORM_ID},
-                    ne1.{TXT_NORM} as DIS, -- only variables with non generic names
-                    ne2.{TXT_NORM} as PNM, -- only variables with non generic names
-                    -- ne1.{NE_CLASS} as {NE1 + "_" + NE_CLASS}, remove untill migration to non specific use for aggregate co table without classes
-                    -- ne2.{NE_CLASS} as {NE2 + "_" + NE_CLASS},
-                    co.{FQ_DOCUMENT_LEVEL} as {FQ_DOCUMENT_LEVEL},
-                    co.{FQ_SENTENCE_LEVEL} as {FQ_SENTENCE_LEVEL},
-                    co.{UNIQ_DOCS} as {UNIQ_DOCS},
-                    co.{PMI} as {PMI},
-                    co.{NPMI} as {NPMI},
-                    co.{AVG_SENT_DIST} as {AVG_SENT_DIST},
-                    co.{MIN_SENT_DIST} as {MIN_SENT_DIST},
-                    co.{MAX_SENT_DIST} as {MAX_SENT_DIST},
-                    ne1.{FQ} as {NE1 + "_" + FQ},
-                    ne2.{FQ} as {NE2 + "_" + FQ},
-                    ne1.{UNIQ_DOCS}  as {NE1 + "_" + UNIQ_DOCS},
-                    ne2.{UNIQ_DOCS} as {NE2 + "_" + UNIQ_DOCS}
+                    co.{E1_NORM_ID} as {E1_NORM_ID.lower()},
+                    co.{E2_NORM_ID} as {E2_NORM_ID.lower()},
+                    ne1.{TXT_NORM} as {E1.lower() + "_" + TXT_NORM.lower()}, -- only variables with non generic names
+                    ne2.{TXT_NORM} as {E2.lower() + "_" + TXT_NORM.lower()}, -- only variables with non generic names
+                    -- ne1.{NE_CLASS} as {E1.lower() + "_" + NE_CLASS.lower()}, remove until migration to non specific use for aggregate co table without classes
+                    -- ne2.{NE_CLASS} as {E2.lower() + "_" + NE_CLASS.lower()},
+                    co.{FQ_DOCUMENT_LEVEL} as {FQ_DOCUMENT_LEVEL_MIGRATION.lower()},
+                    co.{FQ_SENTENCE_LEVEL} as {FQ_SENTENCE_LEVEL_MIGRATION.lower()},
+                    co.{UNIQ_DOCS} as {UNIQ_DOCS.lower()},
+                    co.{PMI} as {PMI.lower()},
+                    co.{NPMI} as {NPMI.lower()},
+                    co.{AVG_SENT_DIST} as {AVG_SENT_DIST_MIGRATION.lower()},
+                    co.{MIN_SENT_DIST} as {MIN_SENT_DIST_MIGRATION.lower()},
+                    co.{MAX_SENT_DIST} as {MAX_SENT_DIST_MIGRATION.lower()},
+                    ne1.{FQ} as {E1.lower() + "_" + FQ.lower()},
+                    ne2.{FQ} as {E2.lower() + "_" + FQ.lower()},
+                    ne1.{UNIQ_DOCS}  as {E1.lower() + "_" + UNIQ_DOCS.lower()},
+                    ne2.{UNIQ_DOCS} as {E2.lower() + "_" + UNIQ_DOCS.lower()}
                 FROM
                     {TABLE_DIS_PNM_AGGR} co
                 JOIN {TABLE_NE_AGGR} ne1 ON co.{E1_NORM_ID} = ne1.{NE_NORM_ID}
                 JOIN {TABLE_NE_AGGR} ne2 ON co.{E2_NORM_ID} = ne2.{NE_NORM_ID}
             """,
+
 )
 
 
