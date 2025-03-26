@@ -10,7 +10,6 @@ from ..core.db_engine import ReaderWriterPair
 import pandas as pd
 from .schema import *
 
-
 class EntityOccurrence:
     def __init__(self, conn, cursor, logger, log_query_plan, conn_params_dict):
         self.conn = conn
@@ -22,40 +21,40 @@ class EntityOccurrence:
         self.stmt_table_ne = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_NE} (
                     id INTEGER PRIMARY KEY,
-                    {COL_NE_TXT} TEXT,
-                    {COL_NE_ERROR_ID} VARCHAR(20),
-                    {COL_NE_CLASS_ID} INTEGER,
-                    {COL_NE_DOC_ID} INTEGER,
-                    {COL_NE_SENT_IDX} INTEGER,
-                    {COL_NE_AGGREGATED_ID} INTEGER,
-                    {COL_NE_OVERLAP} BOOLEAN,
-                    {COL_NE_SPAN_START} INTEGER,
-                    {COL_NE_SPAN_END} INTEGER,
-                    FOREIGN KEY ({COL_NE_DOC_ID}) REFERENCES {TABLE_DOCS} (id),
-                    FOREIGN KEY ({COL_NE_DOC_ID},{COL_NE_SENT_IDX}) REFERENCES {TABLE_SENTENCES} ({COL_NE_DOC_ID},{COL_NE_SENT_IDX}),
-                    FOREIGN KEY ({COL_NE_CLASS_ID}) REFERENCES {TABLE_NE_CLASS} (id),
-                    FOREIGN KEY ({COL_NE_AGGREGATED_ID}) REFERENCES {TABLE_NE_AGGR} ({COL_NE_AGGREGATED_ID}),
-                    FOREIGN KEY ({COL_NE_ERROR_ID}) REFERENCES {TABLE_ERROR} ({COL_NE_ERROR_ID})
+                    {TXT} TEXT,
+                    {ERROR_ID} VARCHAR(20),
+                    {CLASS_ID} INTEGER,
+                    {DOC_ID} INTEGER,
+                    {SENT_IDX} INTEGER,
+                    {NE_NORM_ID} INTEGER,
+                    {NE_OVERLAP} BOOLEAN,
+                    {SPAN_START} INTEGER,
+                    {SPAN_END} INTEGER,
+                    FOREIGN KEY ({DOC_ID}) REFERENCES {TABLE_DOCS} (id),
+                    FOREIGN KEY ({DOC_ID},{SENT_IDX}) REFERENCES {TABLE_SENTENCES} ({DOC_ID},{SENT_IDX}),
+                    FOREIGN KEY ({CLASS_ID}) REFERENCES {TABLE_NE_CLASS} (id),
+                    FOREIGN KEY ({NE_NORM_ID}) REFERENCES {TABLE_NE_AGGR} ({NE_NORM_ID}),
+                    FOREIGN KEY ({ERROR_ID}) REFERENCES {TABLE_NE_ERROR} ({ERROR_ID})
                 );
                 """
 
         self.stmt_table_ne_aggregated = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_NE_AGGR} (
-                    {COL_NE_NORM_ID} INTEGER PRIMARY KEY,
-                    {COL_NE_CLASS_ID} INTEGER,
-                    {COL_NE_TXT_NORM} TEXT,
-                    UNIQUE ({COL_NE_TXT_NORM}, {COL_NE_CLASS_ID}) -- Probably not needed
+                    {NE_NORM_ID} INTEGER PRIMARY KEY,
+                    {CLASS_ID} INTEGER,
+                    {TXT_NORM} TEXT,
+                    UNIQUE ({TXT_NORM}, {CLASS_ID}) -- Probably not needed
                 );
                 """
 
         self.stmt_table_ne_lookup = f"""--sql
                 CREATE TABLE IF NOT EXISTS {TABLE_NE_LOOKUP} (
                     id INTEGER PRIMARY KEY, -- 1:1 relation with {TABLE_NE}
-                    {COL_NE_CLASS_ID} INTEGER,
-                    {COL_NE_TXT_NORM} TEXT,
-                    {COL_NE_NORM_ID} INTEGER,
+                    {CLASS_ID} INTEGER,
+                    {TXT_NORM} TEXT,
+                    {NE_NORM_ID} INTEGER,
                     FOREIGN KEY (id) REFERENCES {TABLE_NE} (id),
-                    FOREIGN KEY ({COL_NE_NORM_ID}) REFERENCES {TABLE_NE_AGGR} ({COL_NE_NORM_ID})
+                    FOREIGN KEY ({NE_NORM_ID}) REFERENCES {TABLE_NE_AGGR} ({NE_NORM_ID})
                     )"""
 
     def create_entity_occurrences_table(self):
@@ -188,15 +187,15 @@ class EntityOccurrence:
             self.logger.info(f"Created {TABLE_NE_LOOKUP} table")
 
             stmt_populate_lookup_table = f"""--sql
-                INSERT INTO {TABLE_NE_LOOKUP} (id, {COL_NE_CLASS_ID}, {COL_NE_TXT_NORM})
+                INSERT INTO {TABLE_NE_LOOKUP} (id, {CLASS_ID}, {TXT_NORM})
                 SELECT
                     id,
-                    {COL_NE_CLASS_ID},
-                    LOWER({COL_NE_TXT}) as {COL_NE_TXT_NORM}
+                    {CLASS_ID},
+                    LOWER({TXT}) as {TXT_NORM}
                 FROM {TABLE_NE}
-                WHERE {COL_NE_ERROR_ID} IS NULL
-                AND {COL_NE_OVERLAP} IS FALSE
-                AND {COL_NE_TXT} IS NOT NULL
+                WHERE {ERROR_ID} IS NULL
+                AND {NE_OVERLAP} IS FALSE
+                AND {TXT} IS NOT NULL
                 ORDER BY id
                 """
 
@@ -295,7 +294,7 @@ class EntityOccurrence:
     def _normalize_entity_text_column(
         self,
         table_name: str = TABLE_NE_LOOKUP,
-        column_name: str = COL_NE_TXT_NORM,
+        column_name: str = TXT_NORM,
         batch_size: int = 100000,
         offset: int = 0,
     ):
@@ -456,10 +455,10 @@ class EntityOccurrence:
 
         # Define Reader query to get distinct normalized texts (moved inside function)
         reader_query_norm_txt = f"""--sql
-            SELECT {COL_NE_TXT_NORM}, {COL_NE_CLASS_ID}
-            FROM (SELECT DISTINCT {COL_NE_TXT_NORM}, {COL_NE_CLASS_ID} FROM {TABLE_NE_LOOKUP}
-                {"WHERE " + COL_NE_NORM_ID + " IS NULL" if not overwrite else ""})
-            ORDER BY {COL_NE_TXT_NORM}
+            SELECT {TXT_NORM}, {CLASS_ID}
+            FROM (SELECT DISTINCT {TXT_NORM}, {CLASS_ID} FROM {TABLE_NE_LOOKUP}
+                {"WHERE " + NE_NORM_ID + " IS NULL" if not overwrite else ""})
+            ORDER BY {TXT_NORM}
         """
 
         # total_count = self.cursor.execute(
@@ -487,7 +486,7 @@ class EntityOccurrence:
             self.logger.info(f"Creating index {index} on {TABLE_NE_LOOKUP}")
             self.cursor.execute(
                 f"""
-                CREATE INDEX IF NOT EXISTS {index} ON {TABLE_NE_LOOKUP} ({COL_NE_TXT_NORM}, {COL_NE_CLASS_ID})"""
+                CREATE INDEX IF NOT EXISTS {index} ON {TABLE_NE_LOOKUP} ({TXT_NORM}, {CLASS_ID})"""
             )
             self.logger.info(
                 f"Index {index} created on {TABLE_NE_LOOKUP}, running ANALYZE"
@@ -504,7 +503,7 @@ class EntityOccurrence:
         def write_function_norm_txt(batch, cursor, conn):
             """Write function to insert normalized texts into eo_normalized table."""
             insert_sql = f"""
-                INSERT OR IGNORE INTO {eo_aggregated_table_name} ({COL_NE_TXT_NORM}, {COL_NE_CLASS_ID}) VALUES (?, ?)
+                INSERT OR IGNORE INTO {eo_aggregated_table_name} ({TXT_NORM}, {CLASS_ID}) VALUES (?, ?)
             """
             cursor.executemany(insert_sql, batch)
 
@@ -544,18 +543,18 @@ class EntityOccurrence:
             """
         )
         columns = self.cursor.fetchall()
-        norm_id_exists = any(column[1] == f"{COL_NE_NORM_ID}" for column in columns)
+        norm_id_exists = any(column[1] == f"{NE_NORM_ID}" for column in columns)
         if not norm_id_exists:
             self.cursor.execute(
                 f"""--sql
                 ALTER TABLE {target_table}
-                ADD COLUMN {COL_NE_NORM_ID} INTEGER;
+                ADD COLUMN {NE_NORM_ID} INTEGER;
                 """
             )
 
         # Create index for faster processing of entity_occurrences
-        index = f"idx_{target_table}_{COL_NE_NORM_ID}"
-        self.cursor.execute(f"""CREATE INDEX IF NOT EXISTS {index} ON {target_table} ({COL_NE_NORM_ID})""")
+        index = f"idx_{target_table}_{NE_NORM_ID}"
+        self.cursor.execute(f"""CREATE INDEX IF NOT EXISTS {index} ON {target_table} ({NE_NORM_ID})""")
         self.cursor.execute(f"ANALYZE {target_table}")
 
         # Check if index with the same name exists on the table
@@ -566,7 +565,7 @@ class EntityOccurrence:
             # Define Reader query for eo_lookup backreference with both txt_norm and entity_class_id matching
             reader_query_eo_lookup_backref = f"""--sql
                 SELECT
-                    eoa.{COL_NE_NORM_ID},
+                    eoa.{NE_NORM_ID},
                     e.id
                 FROM
                     {TABLE_NE} AS e
@@ -577,12 +576,12 @@ class EntityOccurrence:
                 JOIN
                     {TABLE_NE_AGGR} AS eoa
                 ON
-                    eol.{COL_NE_TXT_NORM} = eoa.{COL_NE_TXT_NORM}
-                    AND eol.{COL_NE_CLASS_ID} = eoa.{COL_NE_CLASS_ID}
+                    eol.{TXT_NORM} = eoa.{TXT_NORM}
+                    AND eol.{CLASS_ID} = eoa.{CLASS_ID}
                 WHERE
                     e.error_id IS NULL
                     AND e.overlap IS FALSE
-                    {"AND e." + COL_NE_NORM_ID + " IS NULL" if not overwrite else ""}
+                    {"AND e." + NE_NORM_ID + " IS NULL" if not overwrite else ""}
                 ORDER BY
                     e.id
                 LIMIT :limit OFFSET :offset;
@@ -596,12 +595,12 @@ class EntityOccurrence:
                 WHERE
                     error_id IS NULL
                     AND overlap IS FALSE
-                    {"AND " + COL_NE_NORM_ID + " IS NULL" if not overwrite else ""}
+                    {"AND " + NE_NORM_ID + " IS NULL" if not overwrite else ""}
 
                 """
             ).fetchone()[0]
 
-            self.logger.info(f"Updating {COL_NE_NORM_ID} references for {total_records} records in {target_table}")
+            self.logger.info(f"Updating {NE_NORM_ID} references for {total_records} records in {target_table}")
 
             # Process function to get the entity ID pairs
             def process_function_eo_lookup_backref(batch, conn_params):
@@ -611,7 +610,7 @@ class EntityOccurrence:
             def write_function_eo_lookup_backref(batch, cursor, conn):
                 update_sql = f"""
                     UPDATE {target_table}
-                    SET {COL_NE_NORM_ID} = ?
+                    SET {NE_NORM_ID} = ?
                     WHERE id = ?
                 """
                 cursor.executemany(update_sql, batch)
@@ -651,18 +650,18 @@ class EntityOccurrence:
                 CREATE VIEW IF NOT EXISTS {VIEW_NE} AS
                 SELECT
                     eo.id,
-                    eo.{COL_NE_TXT},
-                    nea.{COL_NE_TXT_NORM},
-                    error_code.{COL_NE_ERROR_ID},
+                    eo.{TXT},
+                    nea.{TXT_NORM},
+                    error_code.{ERROR_ID},
                     doc.title as document_title,
-                    eo.{COL_NE_DOC_ID},
+                    eo.{DOC_ID},
                     nea.uniq_documents
                 FROM
                     {TABLE_NE} eo
-                JOIN named_entities ne ON eo.{COL_NE_CLASS_ID} = ne.id
-                JOIN documents doc ON eo.{COL_NE_DOC_ID} = doc.id
-                LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.id
-                LEFT JOIN {TABLE_ERROR} error_code ON eo.{COL_NE_ERROR_ID} = {TABLE_ERROR}.error_id;
+                JOIN named_entities ne ON eo.{CLASS_ID} = ne.id
+                JOIN documents doc ON eo.{DOC_ID} = doc.id
+                LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{NE_NORM_ID} = nea.id
+                LEFT JOIN {TABLE_NE_ERROR} error_code ON eo.{ERROR_ID} = {TABLE_NE_ERROR}.error_id;
             """
 
             self.cursor.execute(view_sql)
@@ -687,20 +686,20 @@ class EntityOccurrence:
                 CREATE VIEW IF NOT EXISTS {VIEW_NE}_comp_txt AS
                 SELECT
                     eo.id as NE_ID,
-                    eo.{COL_NE_TXT} as NE_TEXT,
+                    eo.{TXT} as NE_TEXT,
                     eol.id as LOOKUP_ID,
-                    eol.{COL_NE_TXT_NORM} as LOOKUP_TEXT,
-                    eo.{COL_NE_NORM_ID} as NORM_ID,
-                    nea.{COL_NE_NORM_ID} as AGGR_ID,
-                    nea.{COL_NE_TXT_NORM} as AGGR_TEXT,
+                    eol.{TXT_NORM} as LOOKUP_TEXT,
+                    eo.{NE_NORM_ID} as NORM_ID,
+                    nea.{NE_NORM_ID} as AGGR_ID,
+                    nea.{TXT_NORM} as AGGR_TEXT,
                     doc.title as DOC_TITLE,
-                    eo.{COL_NE_DOC_ID} as DOC_ID
+                    eo.{DOC_ID} as DOC_ID
                 FROM
                     {TABLE_NE} eo
-                JOIN {TABLE_NE_CLASS} ne ON eo.{COL_NE_CLASS_ID} = ne.id
-                JOIN {TABLE_DOCS} doc ON eo.{COL_NE_DOC_ID} = doc.id
+                JOIN {TABLE_NE_CLASS} ne ON eo.{CLASS_ID} = ne.id
+                JOIN {TABLE_DOCS} doc ON eo.{DOC_ID} = doc.id
                 LEFT JOIN {TABLE_NE_LOOKUP} eol ON eo.id = eol.id
-                LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{NE_NORM_ID} = nea.{NE_NORM_ID}
             """
 
             self.cursor.execute(view_sql)
@@ -725,17 +724,17 @@ class EntityOccurrence:
                 CREATE VIEW IF NOT EXISTS {VIEW_NE_RAW} AS
                 SELECT
                     eo.id,
-                    eo.{COL_NE_TXT},
-                    nea.{COL_NE_TXT_NORM},
-                    nec.{COL_NE_CLASS_NAME},
-                    error_code.{COL_NE_ERROR_ID},
+                    eo.{TXT},
+                    nea.{TXT_NORM},
+                    nec.{NE_CLASS},
+                    error_code.{ERROR_ID},
                     doc.title as document_title,
-                    eo.{COL_NE_DOC_ID}
+                    eo.{DOC_ID}
                 FROM
                     {TABLE_NE} eo
-                JOIN {TABLE_NE_CLASS} nec ON eo.{COL_NE_CLASS_ID} = nec.id
-                JOIN documents doc ON eo.{COL_NE_DOC_ID} = doc.id
-                LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                JOIN {TABLE_NE_CLASS} nec ON eo.{CLASS_ID} = nec.id
+                JOIN documents doc ON eo.{DOC_ID} = doc.id
+                LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{NE_NORM_ID} = nea.{NE_NORM_ID}
             """
 
             print(view_sql)
@@ -761,22 +760,22 @@ class EntityOccurrence:
                     CREATE VIEW IF NOT EXISTS {VIEW_NE_COMP}  AS
                     SELECT
                         eo.id as NE_ID,
-                        eo.{COL_NE_TXT} as TXT,
-                        nec.{COL_NE_CLASS_NAME} as NE_CLASS,
-                        nea.{COL_NE_NORM_ID} as AGGR_ID,
-                        nea.{COL_NE_TXT_NORM} as TXT_NORM,
+                        eo.{TXT} as TXT,
+                        nec.{NE_CLASS} as NE_CLASS,
+                        nea.{NE_NORM_ID} as AGGR_ID,
+                        nea.{TXT_NORM} as TXT_NORM,
                         nea.fq as FQ,
                         nea.doc_count as DOC_COUNT,
                         doc.title as DOC_TITLE,
-                        eo.{COL_NE_DOC_ID} as DOC_ID,
-                        eo.{COL_NE_SENT_IDX} as SENT_IDX,
-                        eo.{COL_NE_SPAN_START} as SPAN_START,
-                        eo.{COL_NE_SPAN_END} as SPAN_END
+                        eo.{DOC_ID} as DOC_ID,
+                        eo.{SENT_IDX} as SENT_IDX,
+                        eo.{SPAN_START} as SPAN_START,
+                        eo.{SPAN_END} as SPAN_END
                     FROM
                         {TABLE_NE} eo
-                    JOIN {TABLE_NE_CLASS} nec ON eo.{COL_NE_CLASS_ID} = nec.id
-                    JOIN {TABLE_DOCS} doc ON eo.{COL_NE_DOC_ID} = doc.id
-                    LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                    JOIN {TABLE_NE_CLASS} nec ON eo.{CLASS_ID} = nec.id
+                    JOIN {TABLE_DOCS} doc ON eo.{DOC_ID} = doc.id
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{NE_NORM_ID} = nea.{NE_NORM_ID}
                 """
 
             self.cursor.execute(view_sql)
@@ -800,14 +799,14 @@ class EntityOccurrence:
                     CREATE VIEW IF NOT EXISTS {VIEW_NE_STATS}  AS
                     SELECT
                         eo.id as NE_ID,
-                        eo.{COL_NE_CLASS_ID} as CLASS_ID,
-                        eo.{COL_NE_NORM_ID} as AGGR_ID,
-                        eo.{COL_NE_DOC_ID} as DOC_ID,
-                        eo.{COL_NE_SENT_IDX} as SENT_IDX,
-                        nea.{COL_NE_DOC_COUNT} as DOC_COUNT
+                        eo.{CLASS_ID} as CLASS_ID,
+                        eo.{NE_NORM_ID} as AGGR_ID,
+                        eo.{DOC_ID} as DOC_ID,
+                        eo.{SENT_IDX} as SENT_IDX,
+                        nea.{DOC_COUNT} as DOC_COUNT
                     FROM
                         {TABLE_NE} eo
-                    LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{NE_NORM_ID} = nea.{NE_NORM_ID}
                 """
 
             self.log_query_plan(view_sql)
@@ -833,16 +832,16 @@ class EntityOccurrence:
                     CREATE VIEW IF NOT EXISTS {VIEW_ERROR_LOOKUP_INSPECTION}  AS
                     SELECT
                         eo.id as NE_ID,
-                        eo.{COL_NE_TXT} as TXT,
-                        nea.{COL_NE_TXT_NORM} as TXT_NORM,
-                        eo.{COL_NE_ERROR_ID} as ERROR_ID,
-                        eo.{COL_NE_OVERLAP} as OVERLAP,
-                        eo.{COL_NE_NORM_ID} as NORM_ID
+                        eo.{TXT} as TXT,
+                        nea.{TXT_NORM} as TXT_NORM,
+                        eo.{ERROR_ID} as ERROR_ID,
+                        eo.{NE_OVERLAP} as OVERLAP,
+                        eo.{NE_NORM_ID} as NORM_ID
                     FROM
                         {TABLE_NE} eo
-                    LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
-                    WHERE eo.{COL_NE_NORM_ID} IS NOT NULL
-                    AND (eo.{COL_NE_ERROR_ID} IS NOT NULL OR eo.{COL_NE_OVERLAP} = TRUE)
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eo.{NE_NORM_ID} = nea.{NE_NORM_ID}
+                    WHERE eo.{NE_NORM_ID} IS NOT NULL
+                    AND (eo.{ERROR_ID} IS NOT NULL OR eo.{NE_OVERLAP} = TRUE)
                 """
 
             self.cursor.execute(view_sql)
@@ -862,17 +861,17 @@ class EntityOccurrence:
                     CREATE VIEW IF NOT EXISTS {VIEW_UNBACKPOPULATED}  AS
                     SELECT
                         eo.id as NE_ID,
-                        eo.{COL_NE_TXT} as TXT,
-                        eol.{COL_NE_TXT_NORM} as TXT_LOOKUP,
-                        nea.{COL_NE_TXT_NORM} as TXT_NORM,
-                        eo.{COL_NE_ERROR_ID} as ERROR_ID,
-                        eo.{COL_NE_OVERLAP} as OVERLAP,
-                        eo.{COL_NE_NORM_ID} as NORM_ID
+                        eo.{TXT} as TXT,
+                        eol.{TXT_NORM} as TXT_LOOKUP,
+                        nea.{TXT_NORM} as TXT_NORM,
+                        eo.{ERROR_ID} as ERROR_ID,
+                        eo.{NE_OVERLAP} as OVERLAP,
+                        eo.{NE_NORM_ID} as NORM_ID
                     FROM
                         {TABLE_NE} eo
                     LEFT JOIN {TABLE_NE_LOOKUP} eol ON eo.id = eol.id
-                    LEFT JOIN {TABLE_NE_AGGR} nea ON eol.{COL_NE_AGGREGATED_ID} = nea.{COL_NE_NORM_ID}
-                    WHERE eo.{COL_NE_NORM_ID} IS NULL AND (eo.{COL_NE_ERROR_ID} IS NULL AND eo.{COL_NE_OVERLAP} = FALSE)
+                    LEFT JOIN {TABLE_NE_AGGR} nea ON eol.{NE_NORM_ID} = nea.{NE_NORM_ID}
+                    WHERE eo.{NE_NORM_ID} IS NULL AND (eo.{ERROR_ID} IS NULL AND eo.{NE_OVERLAP} = FALSE)
                 """
 
             self.cursor.execute(view_sql)
@@ -898,17 +897,22 @@ class EntityOccurrence:
 
                 # Index on eo.document_id
                 self.cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id ON {TABLE_NE}({COL_NE_DOC_ID});
+                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id ON {TABLE_NE}({DOC_ID});
+                """)
+
+                # Covering index for doc_id and aggrgated_id
+                self.cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id_aggr_id ON {TABLE_NE}({DOC_ID}, {NE_NORM_ID});
                 """)
 
                 # Covering index on TABLE_NE_AGGR
                 self.cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_nea_norm_id_doc_id ON {TABLE_NE_AGGR}({COL_NE_NORM_ID});
+                    CREATE INDEX IF NOT EXISTS idx_nea_norm_id_doc_id ON {TABLE_NE_AGGR}({NE_NORM_ID});
                 """)
 
-                # Index on TABLE_NE_LOOKUP.id
+                # Covering index on TABLE_NE_AGGR for doc_count
                 self.cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_eol_id ON {TABLE_NE_LOOKUP}(id);
+                    CREATE INDEX IF NOT EXISTS idx_nea_doc_count ON {TABLE_NE_AGGR}(doc_count);
                 """)
 
                 self.conn.commit()
@@ -922,15 +926,18 @@ class EntityOccurrence:
             stats_sql = f"""--sql
                 SELECT
                     AGGR_ID,
-                    COUNT(*) AS {COL_NE_FQ},
-                    COUNT(DISTINCT DOC_ID) AS {COL_NE_DOC_COUNT}
+                    COUNT(*) AS {FQ},
+                    COUNT(DISTINCT DOC_ID) AS {DOC_COUNT}
                 FROM
                     {VIEW_NE_COMP}
                 WHERE
                     AGGR_ID IS NOT NULL -- This already has filtered out Errors and Overlaps for which the AGGR id is NULL
+                    AND doc_count = 0
                 GROUP BY
-                    AGGR_ID
-                LIMIT 100
+                    AGGR_ID -- this is already separated by class_id, so no need to group by class_id
+                ORDER BY
+                    NE_ID -- This is unique for each entity so will enshure correct ordering
+                LIMIT 100 OFFSET 0;
             """
 
             self.log_query_plan(stats_sql)
@@ -964,17 +971,17 @@ class EntityOccurrence:
 
                 # Index on eo.document_id
                 self.cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id ON {TABLE_NE}({COL_NE_DOC_ID});
+                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id ON {TABLE_NE}({DOC_ID});
                 """)
 
                 # Covering index for doc_id and aggrgated_id
                 self.cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id_aggr_id ON {TABLE_NE}({COL_NE_DOC_ID}, {COL_NE_AGGREGATED_ID});
+                    CREATE INDEX IF NOT EXISTS idx_eo_doc_id_aggr_id ON {TABLE_NE}({DOC_ID}, {NE_NORM_ID});
                 """)
 
                 # Covering index on TABLE_NE_AGGR
                 self.cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_nea_norm_id_doc_id ON {TABLE_NE_AGGR}({COL_NE_NORM_ID});
+                    CREATE INDEX IF NOT EXISTS idx_nea_norm_id_doc_id ON {TABLE_NE_AGGR}({NE_NORM_ID});
                 """)
 
                 # Covering index on TABLE_NE_AGGR for doc_count
@@ -1015,8 +1022,8 @@ class EntityOccurrence:
 
         reader_query_stats = f"""
             SELECT
-                COUNT(*) AS {COL_NE_FQ},
-                COUNT(DISTINCT DOC_ID) AS {COL_NE_DOC_COUNT},
+                COUNT(*) AS {FQ},
+                COUNT(DISTINCT DOC_ID) AS {DOC_COUNT},
                 AGGR_ID
             FROM
                 {VIEW_NE_STATS}
@@ -1042,7 +1049,7 @@ class EntityOccurrence:
                 UPDATE {TABLE_NE_AGGR}
                 SET fq = ?,
                     doc_count = ?
-                WHERE {COL_NE_NORM_ID} = ?
+                WHERE {NE_NORM_ID} = ?
             """
             cursor.executemany(update_sql, batch)
 
@@ -1063,8 +1070,6 @@ class EntityOccurrence:
 
         self.logger.info("Aggregated entity statistics calculated and updated.")
 
-
-
     def calc_intra_doc_fq(self) -> None:
         """
         For each entity, calculate the frequency of the entity within each document.
@@ -1078,20 +1083,20 @@ class EntityOccurrence:
                 WITH doc_entity_counts AS (
                     SELECT
                         document_id,
-                        summary_id,
+                        {COL_NE_NORM_ID},
                         COUNT(*) as freq
                     FROM entity_occurrences
-                    WHERE summary_id IS NOT NULL
-                    GROUP BY document_id, summary_id
+                    WHERE {COL_NE_NORM_ID} IS NOT NULL
+                    GROUP BY document_id, {COL_NE_NORM_ID}
                 )
                 UPDATE entity_occurrences
                 SET intra_doc_fq = (
                     SELECT freq
                     FROM doc_entity_counts
                     WHERE doc_entity_counts.document_id = entity_occurrences.document_id
-                    AND doc_entity_counts.summary_id = entity_occurrences.summary_id
+                    AND doc_entity_counts.{COL_NE_NORM_ID} = entity_occurrences.{COL_NE_NORM_ID}
                 )
-                WHERE summary_id IS NOT NULL
+                WHERE {COL_NE_NORM_ID} IS NOT NULL
             """
             )
 
@@ -1101,7 +1106,7 @@ class EntityOccurrence:
                 SELECT
                     COUNT(*) as total_entities,
                     COUNT(DISTINCT document_id) as unique_documents,
-                    COUNT(DISTINCT summary_id) as unique_entities,
+                    COUNT(DISTINCT {COL_NE_NORM_ID}) as unique_entities,
                     AVG(intra_doc_fq) as avg_frequency,
                     MAX(intra_doc_fq) as max_frequency
                 FROM entity_occurrences
@@ -1138,26 +1143,26 @@ class EntityOccurrence:
             normalization_query = f"""
                 WITH duplicates AS (
                     SELECT
-                        {COL_NE_TXT_NORM},
-                        {COL_NE_CLASS_ID},
-                        COUNT(DISTINCT {COL_NE_NORM_ID}) as norm_id_count
+                        {TXT_NORM},
+                        {CLASS_ID},
+                        COUNT(DISTINCT {NE_NORM_ID}) as norm_id_count
                     FROM {TABLE_NE_LOOKUP}
-                    WHERE {COL_NE_NORM_ID} IS NOT NULL
-                    GROUP BY {COL_NE_TXT_NORM}, {COL_NE_CLASS_ID}
+                    WHERE {NE_NORM_ID} IS NOT NULL
+                    GROUP BY {TXT_NORM}, {CLASS_ID}
                     HAVING norm_id_count > 1
                 )
                 SELECT
                     l.id,
-                    l.{COL_NE_TXT},
-                    l.{COL_NE_TXT_NORM},
-                    l.{COL_NE_CLASS_ID},
-                    l.{COL_NE_NORM_ID},
-                    l.{COL_NE_DOC_ID}
+                    l.{TXT},
+                    l.{TXT_NORM},
+                    l.{CLASS_ID},
+                    l.{NE_NORM_ID},
+                    l.{DOC_ID}
                 FROM {TABLE_NE_LOOKUP} l
                 JOIN duplicates d ON
-                    l.{COL_NE_TXT_NORM} = d.{COL_NE_TXT_NORM}
-                    AND l.{COL_NE_CLASS_ID} = d.{COL_NE_CLASS_ID}
-                ORDER BY l.{COL_NE_TXT_NORM}, l.{COL_NE_CLASS_ID}, l.{COL_NE_NORM_ID}
+                    l.{TXT_NORM} = d.{TXT_NORM}
+                    AND l.{CLASS_ID} = d.{CLASS_ID}
+                ORDER BY l.{TXT_NORM}, l.{CLASS_ID}, l.{NE_NORM_ID}
                 LIMIT 100
             """
 
@@ -1179,20 +1184,20 @@ class EntityOccurrence:
             reference_query = f"""
                 SELECT
                     l.id,
-                    l.{COL_NE_TXT},
-                    l.{COL_NE_TXT_NORM},
-                    a.{COL_NE_TXT_NORM} as agg_txt_norm,
-                    l.{COL_NE_CLASS_ID},
-                    a.{COL_NE_CLASS_ID} as agg_class_id,
-                    l.{COL_NE_DOC_ID}
+                    l.{TXT},
+                    l.{TXT_NORM},
+                    a.{TXT_NORM} as agg_txt_norm,
+                    l.{CLASS_ID},
+                    a.{CLASS_ID} as agg_class_id,
+                    l.{DOC_ID}
                 FROM {TABLE_NE_LOOKUP} l
                 LEFT JOIN {TABLE_NE_AGGR} a ON
-                    l.{COL_NE_NORM_ID} = a.{COL_NE_NORM_ID}
+                    l.{NE_NORM_ID} = a.{NE_NORM_ID}
                 WHERE
-                    l.{COL_NE_NORM_ID} IS NOT NULL
+                    l.{NE_NORM_ID} IS NOT NULL
                     AND (
-                        l.{COL_NE_TXT_NORM} != a.{COL_NE_TXT_NORM}
-                        OR l.{COL_NE_CLASS_ID} != a.{COL_NE_CLASS_ID}
+                        l.{TXT_NORM} != a.{TXT_NORM}
+                        OR l.{CLASS_ID} != a.{CLASS_ID}
                     )
                 LIMIT 100
             """
@@ -1380,19 +1385,19 @@ class EntityCooccurence:
             CREATE TEMPORARY TABLE tmp_cooccurrences AS
             WITH normalized_pairs AS (
                 SELECT
-                    CASE WHEN eo1.{COL_NE_NORM_ID} <= eo2.{COL_NE_NORM_ID}
-                        THEN eo1.{COL_NE_NORM_ID}
-                        ELSE eo2.{COL_NE_NORM_ID} END AS e1_id_normalized,
-                    CASE WHEN eo1.{COL_NE_NORM_ID} <= eo2.{COL_NE_NORM_ID}
-                        THEN eo2.{COL_NE_NORM_ID}
-                        ELSE eo1.{COL_NE_NORM_ID} END AS e2_id_normalized,
+                    CASE WHEN eo1.{NE_NORM_ID} <= eo2.{NE_NORM_ID}
+                        THEN eo1.{NE_NORM_ID}
+                        ELSE eo2.{NE_NORM_ID} END AS e1_id_normalized,
+                    CASE WHEN eo1.{NE_NORM_ID} <= eo2.{NE_NORM_ID}
+                        THEN eo2.{NE_NORM_ID}
+                        ELSE eo1.{NE_NORM_ID} END AS e2_id_normalized,
                     eo1.document_id,
                     CASE WHEN eo1.sentence_index = eo2.sentence_index THEN 1 ELSE 0 END as same_sentence
                 FROM entity_cooccurrences ec
                 JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
                 JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
-                WHERE eo1.{COL_NE_NORM_ID} IS NOT NULL
-                AND eo2.{COL_NE_NORM_ID} IS NOT NULL
+                WHERE eo1.{NE_NORM_ID} IS NOT NULL
+                AND eo2.{NE_NORM_ID} IS NOT NULL
                 AND eo1.document_id = eo2.document_id  -- Ensure same document
                 {"AND eo1.error_id IS NULL" if ignore_entities_with_error_codes else ""}
                 {"AND eo2.error_id IS NULL" if ignore_entities_with_error_codes else ""}
@@ -1451,12 +1456,12 @@ class EntityCooccurence:
             """Reader query to fetch aggregated co-occurrence data."""
             return f"""--sql
                 SELECT DISTINCT -- Not necessary, but reduces data size passed to reader
-                        CASE WHEN eo1.{COL_NE_NORM_ID} < eo2.{COL_NE_NORM_ID}
-                            THEN eo1.{COL_NE_NORM_ID}
-                            ELSE eo2.{COL_NE_NORM_ID} END AS e1_id,
-                        CASE WHEN eo1.{COL_NE_NORM_ID} < eo2.{COL_NE_NORM_ID}
-                            THEN eo2.{COL_NE_NORM_ID}
-                            ELSE eo1.{COL_NE_NORM_ID} END AS e2_id
+                        CASE WHEN eo1.{NE_NORM_ID} < eo2.{NE_NORM_ID}
+                            THEN eo1.{NE_NORM_ID}
+                            ELSE eo2.{NE_NORM_ID} END AS e1_id,
+                        CASE WHEN eo1.{NE_NORM_ID} < eo2.{NE_NORM_ID}
+                            THEN eo2.{NE_NORM_ID}
+                            ELSE eo1.{NE_NORM_ID} END AS e2_id
                     FROM {TABLE_COOCCURRENCES} ec
                     JOIN {TABLE_NE} eo1 ON ec.e1_id = eo1.id
                     JOIN {TABLE_NE} eo2 ON ec.e2_id = eo2.id
@@ -1503,6 +1508,164 @@ class EntityCooccurence:
         reader_writer_pair.run()
 
         self.logger.info("Cooccurrence aggregation using ReaderWriterPair completed")
+
+
+    def calc_fqs_uniq_doc_count(self):
+        """
+        Calculate frequency and unique document count for each entity co-occurrence pair.
+        Gets a batch of normalized entity pairs from entity_cooccurrences_summary and
+        calculates the frequency and unique document count for each pair by joining with
+        TABLE cooccurences to fetch each cooccurence for the normalized entity pair and then
+        counting the frequencies and unique document count.
+        """
+
+        self.logger.info("Starting calculation of frequency and unique document count...")
+
+        def reader_query():
+            """Reader query to fetch aggregated co-occurrence data with normalized pair batching - INLINED normalized_pairs CTE."""
+            return f"""--sql
+                WITH cooccurrences AS (
+                    SELECT
+                        ne1.{NE_NORM_ID} AS e1_norm_id,
+                        ne2.{NE_NORM_ID} AS e2_norm_id,
+                        ne1.document_id,
+                        CASE WHEN ne1.sentence_index = ne2.sentence_index THEN 1 ELSE 0 END as same_sentence
+                    FROM {TABLE_COOCCURRENCES} AS co
+                    JOIN {TABLE_NE} AS ne1 ON co.e1_id = ne1.id
+                    JOIN {TABLE_NE} AS ne2 ON co.e2_id = ne2.id
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM {TABLE_CO_AGGR} AS coa  -- Inlined normalized_pairs CTE - directly querying TABLE_CO_AGGR
+                        WHERE
+                            CASE WHEN ne1.{NE_NORM_ID} < ne2.{NE_NORM_ID}
+                                THEN ne1.{NE_NORM_ID}
+                                ELSE ne2.{NE_NORM_ID} END = coa.e1_id_normalized
+                        AND
+                            CASE WHEN ne1.{NE_NORM_ID} < ne2.{NE_NORM_ID}
+                                THEN ne2.{NE_NORM_ID}
+                                ELSE ne1.{NE_NORM_ID} END = coa.e2_id_normalized
+                        ORDER BY coa.e1_id_normalized, coa.e2_id_normalized  -- ORDER BY kept for consistency, though might not be strictly needed in EXISTS
+                        LIMIT :limit OFFSET :offset  -- LIMIT/OFFSET kept, but now applied to subquery in EXISTS - review if this is intended
+                    )
+                    AND co.aggr_id IS NULL  -- **FILTER: Only get co-occurrences with aggr_id IS NULL (not yet aggregated)**
+                )
+                SELECT
+                    co.e1_norm_id,
+                    co.e2_norm_id,
+                    COUNT(*) as fq_document_level,
+                    SUM(co.same_sentence) as fq_sentence_level,
+                    COUNT(DISTINCT co.document_id) as uniq_documents
+                FROM cooccurrences co
+                GROUP BY co.e1_norm_id, co.e2_norm_id -- Group by normalized entity pairs
+            """
+
+        self.log_query_plan(reader_query())
+
+        def aggregation_write_function(batch, cursor, conn):
+            """Writes aggregated co-occurrence data to entity_cooccurrences_summary."""
+            sql = f"""--sql
+                UPDATE {TABLE_CO_AGGR}
+                SET fq_document_level = ?,
+                    fq_sentence_level = ?,
+                    uniq_documents = ?
+                WHERE e1_id_normalized = ? AND e2_id_normalized = ?
+            """
+            cursor.executemany(sql, batch)
+
+        rw_pair = ReaderWriterPair(
+            conn_params=self.conn_params_dict,
+            reader_query=reader_query(),
+            process_function=lambda x, y: x,
+            write_function=aggregation_write_function,
+            batch_size=50000,
+            num_reader_threads=16,
+            profiling_reader_enabled=False,
+            profiling_writer_enabled=False,
+            writer_batch_chunking=1,
+            total_rows=self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_COOCCURRENCES} WHERE aggr_id IS NULL"
+            ).fetchone()[0],
+            process_title="Co-occurrence Frequency Calculation",
+            logger=self.logger,
+        )
+
+    def calc_fqs_uniq_doc_count_single_function(self):
+        pass
+
+    def co_aggregate_single_function(self, ignore_entities_with_error_codes: bool = True):
+        """
+        Aggregate entity cooccurrences in a single function call (no batching).
+        """
+
+        self.logger.info("Starting single-function cooccurrence aggregation...")
+
+        ignore_error_code_condition_eo1 = (
+            "AND eo1.error_id IS NULL" if ignore_entities_with_error_codes else ""
+        )
+        ignore_error_code_condition_eo2 = (
+            "AND eo2.error_id IS NULL" if ignore_entities_with_error_codes else ""
+        )
+
+        def reader_query():
+            """Reader query to fetch aggregated co-occurrence data (no limit/offset)."""
+            return f"""--sql
+                WITH normalized_pairs AS (
+                    SELECT
+                        CASE WHEN eo1.{NE_NORM_ID} < eo2.{NE_NORM_ID}
+                            THEN eo1.{NE_NORM_ID}
+                            ELSE eo2.{NE_NORM_ID} END AS e1_id_normalized,
+                        CASE WHEN eo1.{NE_NORM_ID} < eo2.{NE_NORM_ID}
+                            THEN eo2.{NE_NORM_ID}
+                            ELSE eo1.{NE_NORM_ID} END AS e2_id_normalized,
+                        eo1.document_id,
+                        CASE WHEN eo1.sentence_index = eo2.sentence_index THEN 1 ELSE 0 END as same_sentence
+                    FROM entity_cooccurrences ec
+                    JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
+                    JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
+                    WHERE eo1.{NE_NORM_ID} IS NOT NULL
+                    AND eo2.{NE_NORM_ID} IS NOT NULL
+                    AND eo1.document_id = eo2.document_id  -- Ensure same document
+                    {ignore_error_code_condition_eo1}
+                    {ignore_error_code_condition_eo2}
+                )
+                SELECT
+                    e1_id_normalized,
+                    e2_id_normalized,
+                    COUNT(*) as fq_document_level,
+                    SUM(same_sentence) as fq_sentence_level,
+                    COUNT(DISTINCT document_id) as uniq_documents
+                FROM normalized_pairs
+                GROUP BY e1_id_normalized, e2_id_normalized
+            """
+
+        query = reader_query()
+        self.log_query_plan(query)
+
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute(query) # Execute the query
+
+        aggregated_data = cursor.fetchall() # Fetch all results into memory!
+
+        # --- Write function (similar to batched version) ---
+        def aggregation_write_function(batch, cursor_param, conn_param): # Simplified write function
+            """Writes aggregated co-occurrence data to entity_cooccurrences_summary."""
+            sql = f"""--sql
+                INSERT OR REPLACE INTO {TABLE_CO_AGGR}
+                    (e1_id, e2_id, fq_document_level,
+                    fq_sentence_level, uniq_documents)
+                VALUES (?, ?, ?, ?, ?)
+            """
+            cursor_param.executemany(sql, batch)
+
+
+        aggregation_write_function(aggregated_data, cursor, conn) # Write all aggregated data
+
+        conn.commit()
+        conn.close()
+
+        self.logger.info("Single-function cooccurrence aggregation completed")
 
     def co_calc_pmi(self, batch_size=200000) -> None:
         """
@@ -1569,7 +1732,7 @@ class EntityCooccurence:
                 max_queue_size=10,  # Adjust as needed
                 writer_batch_chunking=5,
                 process_title="PMI Calculation",
-                total_count=self.cursor.execute(
+                total_rows=self.cursor.execute(
                     "SELECT COUNT(*) FROM entity_cooccurrences_summary WHERE pmi IS NULL"
                 ).fetchone()[0],
             )
@@ -1611,15 +1774,15 @@ class EntityCooccurence:
                 query = """
                     INSERT OR IGNORE INTO temp_cooc_staging
                     SELECT
-                        MIN(eo1.summary_id, eo2.summary_id),
-                        MAX(eo1.summary_id, eo2.summary_id),
+                        MIN(eo1.{COL_NE_NORM_ID}, eo2.{COL_NE_NORM_ID}),
+                        MAX(eo1.{COL_NE_NORM_ID}, eo2.{COL_NE_NORM_ID}),
                         eo1.document_id,
                         COUNT(ec.e1_id)
                     FROM entity_cooccurrences ec
                     JOIN entity_occurrences eo1 ON ec.e1_id = eo1.id
                     JOIN entity_occurrences eo2 ON ec.e2_id = eo2.id
                     WHERE eo1.document_id = eo2.document_id
-                    GROUP BY MIN(eo1.summary_id, eo2.summary_id), MAX(eo1.summary_id, eo2.summary_id), eo1.document_id
+                    GROUP BY MIN(eo1.{COL_NE_NORM_ID}, eo2.{COL_NE_NORM_ID}), MAX(eo1.{COL_NE_NORM_ID}, eo2.{COL_NE_NORM_ID}), eo1.document_id
                     LIMIT ? OFFSET ?
                 """
                 self.cursor.execute(query, (batch_size, offset))
@@ -1651,7 +1814,7 @@ class EntityCooccurence:
 
             self.logger.info("Summarization complete")
 
-            # Step 3: Batch update summary_id using covering index
+            # Step 3: Batch update {COL_NE_NORM_ID} using covering index
             self.cursor.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_cooc_pair
@@ -1664,11 +1827,11 @@ class EntityCooccurence:
                 self.cursor.execute(
                     f"""
                     UPDATE entity_cooccurrences
-                    SET summary_id = (
+                    SET {NE_NORM_ID} = (
                         SELECT id
                         FROM entity_cooccurrences_summary
-                        WHERE e1_id_normalized = MIN(eo1.summary_id, eo2.summary_id)
-                        AND e2_id_normalized = MAX(eo1.summary_id, eo2.summary_id)
+                        WHERE e1_id_normalized = MIN(eo1.{NE_NORM_ID}, eo2.{NE_NORM_ID})
+                        AND e2_id_normalized = MAX(eo1.{NE_NORM_ID}, eo2.{NE_NORM_ID})
                     )
                     FROM entity_occurrences eo1
                     JOIN entity_occurrences eo2 ON eo2.id = entity_cooccurrences.e2_id
