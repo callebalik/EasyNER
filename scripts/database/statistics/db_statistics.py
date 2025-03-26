@@ -470,6 +470,7 @@ class DBStatistics:
         return error_df
 
 
+    @cached(ttl_seconds=3600)
     def results_entity_occurrence_errors(self) -> DataFrame:
         """
         Aggregates error_df from count_named_entity_errors and combines with the fq count for each named entity from TABLE named_entities
@@ -480,6 +481,8 @@ class DBStatistics:
         error_df = self.count_named_entity_errors()
 
         # Fetch fq data from named_entities table
+        total_fq_dis = self.named_entities_count("DIS", include_errors=False, include_overlaps=False)
+        total_fq_pnm = self.named_entities_count("PNM", include_errors=False, include_overlaps=False)
         dis_fq = self.named_entities_count("DIS", include_errors=True, include_overlaps=True)
         pnm_fq = self.named_entities_count("PNM", include_errors=True, include_overlaps=True)
 
@@ -488,8 +491,16 @@ class DBStatistics:
             ("PNM", pnm_fq),
         ]
 
-        # as a dictionary to be imported into the DataFrame
+        fq_with_errors = [
+            ("DIS", total_fq_dis),
+            ("PNM", total_fq_pnm),
+        ]
         fq_df = DataFrame(fq_data, columns=["named_entity_class", "fq"])
+        fq_with_errors_df = DataFrame(fq_with_errors, columns=["named_entity_class", "fq"])
+
+        # Create DataFrame for fq data including total fq counts with include_errors=True, include_overlaps=True
+        fq_combined_df = pd.concat([fq_df, fq_with_errors_df], ignore_index=True)
+
 
         # Pivot the error DataFrame to have error_ids as columns
         pivot_df = error_df.pivot(
@@ -499,6 +510,13 @@ class DBStatistics:
 
         # Merge with fq data
         result_df = pivot_df.merge(fq_df, on="named_entity_class", how="left")
+        result_df = pivot_df.merge(fq_with_errors_df, on="named_entity_class", how="left", suffixes=("", "_total"))
+
+        # Get overlap counts
+        with_overlap_counts = self.named_entities_count(include_overlaps=True)
+        result_df["overlap_count"] = with_overlap_counts - result_df["fq"]
+        result_df["overlap_count"] = result_df["overlap_count"].clip(lower=0)
+        result_df["overlap_percentage"] = (result_df["overlap_count"] / result_df["fq"] * 100).round(2)
 
         # Reorder columns to place 'fq' right after 'named_entity'
         error_id_columns = [col for col in pivot_df.columns if col != "named_entity_class"]
