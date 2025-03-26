@@ -62,6 +62,7 @@ class EasyNerDBHandler:
         self._statistics = None
         self._data_exchanger = None
         self._from_pool = from_pool
+        self._schema = None
 
         # # Set default log file paths (will be properly set later for non-pool connections)
         # self.log_file = "pooled_connection.log"  # Default value for pooled connections
@@ -72,7 +73,6 @@ class EasyNerDBHandler:
         self.config = self._load_config(config_path)
         self.db_path, self.path_source = self._setup_path(db_path=db_path)
         self.name = os.path.basename(self.db_path)
-
         # For pooled connections, skip some initialization
         if from_pool:
             self._setup_logging()
@@ -283,6 +283,14 @@ class EasyNerDBHandler:
 
         except Exception as e:
             self.logger.error(f"Error logging connection info: {e}")
+
+
+    @property
+    def schema(self):
+        """Get database schema info."""
+        if not self._schema:
+            self._schema = self._connection.execute("SELECT sql FROM sqlite_master").fetchall()
+        return self._schema
 
     @property
     def tables(self):
