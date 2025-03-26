@@ -28,3 +28,31 @@ PNM,stream,AMBIG
 PNM,streams,AMBIG
 DIS,%,MISLAB
 DIS,&,MISLAB
+DIS,fhalp,MISLAB
+DIS,pc - 10,MISLAB
+DIS,smg,MISLAB
+PNM,climate,AMBIG
+DIS,( b,MISLAB
+PNM,smoke,AMBIG
+DIS,nepal earthquake,MISLAB
+PNM,smokes,MISLAB
+PNM,climates,AMBIG
+PNM,ice,AMBIG
+PNM,tumurs,MISLAB
+PNM,fire,AMBIG
+PNM,gloves,AMBIG
+DIS,forest degradation,MISLAB
+DIS,disaster,MISLAB
+DIS,disasters, AMBIG
+PNM,swell,AMBIG
+PNM,low-pressure system, AMBIG
+PNM,low-pressure area,AMBIG
+PNM,high-pressure area,AMBIG
+PNM,high-pressure system, AMBIG
+DIS,house loss, MISLAB
+DIS,terrorism, MISLAB
+PNM,showers,AMBIG
+PNM,fog,AMBIG
+DIS,fog,AMBIG
+PNM,high temperature,AMBIG
+PNM,high temperatures,AMBIG
