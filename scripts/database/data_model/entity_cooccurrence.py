@@ -1112,6 +1112,7 @@ class Aggregator(BaseComponent):
             validation_result["success"] = False
             validation_result["message"] = f"Validation failed: {e}"
             return validation_result
+
     def update_unique_document_counts(self):
 
         self.logger.info("Updating unique document counts and frequencies...")
@@ -1247,8 +1248,8 @@ class Statistics(BaseComponent):
         }
 
         return stats
-        """
-        Aggregates entity co-occurrences.
+
+
     def calculate_dis_pnm_pmi(self, method: str = "normalized") -> bool:
         """
         Calculate Pointwise Mutual Information (PMI) for entity co-occurrences.
