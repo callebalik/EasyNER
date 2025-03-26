@@ -1215,6 +1215,38 @@ class Statistics(BaseComponent):
         """
         return self.cursor.execute(query).fetchall()
 
+    @property
+    def cooccurrence_statistics(self):
+        """Get statistics about co-occurrences"""
+        total_documents = self.cursor.execute(
+            f"SELECT COUNT(*) FROM {TABLE_DOCS}"
+        ).fetchone()[0]
+
+        stats = {
+            "total_documents": total_documents,
+            "pairs_added": self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_COOCCURRENCES}"
+            ).fetchone()[0],
+            "has_duplicates": bool(
+                self.cursor.execute(
+                    f"""
+            SELECT 1 FROM {TABLE_COOCCURRENCES}
+            GROUP BY {E1_ID}, {E2_ID}
+            HAVING COUNT(*) > 1
+            LIMIT 1"""
+                ).fetchone()
+            ),
+            "has_self_refs": bool(
+                self.cursor.execute(
+                    f"""
+            SELECT 1 FROM {TABLE_COOCCURRENCES}
+            WHERE {E1_ID} = {E2_ID}
+            LIMIT 1"""
+                ).fetchone()
+            ),
+        }
+
+        return stats
         """
         Aggregates entity co-occurrences.
     def calculate_dis_pnm_pmi(self, method: str = "normalized") -> bool:
