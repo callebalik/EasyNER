@@ -24,20 +24,19 @@ env:
 	) || ( \
 		echo "Creating conda environment from environment.yml..."; \
 		conda env create -f environment.yml; \
-		echo "Installing spaCy English model..."; \
-		conda run -n $(CONDA_ENV) $(PYTHON) -m spacy download en_core_web_sm; \
-		echo "Environment setup complete." \
+		echo "Conda environment setup complete." \
 	)
 
-save-env:
-	@echo "Saving conda environment to environment.yml..."
-	conda env export --no-builds > environment.yml
-	@echo "Environment saved to environment.yml."
 
 # Complete setup (environment + initial config)
 setup: env
 	@echo "Setting up EasyNER project..."
-	@[ -f $(CONFIG) ] || cp $(TEMPLATE) $(CONFIG)
+	@if not exist $(CONFIG) (
+		@echo "Config file $(CONFIG) not found. Generating template..."
+		$(PYTHON) scripts/config/generator.py --output $(CONFIG)
+	) else (
+		@echo "Config file $(CONFIG) already exists. Skipping generation."
+	)
 	@echo "Setup complete. Edit $(CONFIG) with your specific settings."
 	@echo "Run 'make validate' to ensure your configuration is valid."
 
