@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EasyNER Annotation Schema",
+  "description": "Schema for annotated NER data in EasyNER project",
+  "type": "object",
+  "patternProperties": {
+    "^[0-9]+$": {
+      "type": "object",
+      "description": "Entry identified by a numeric ID",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Title of the document or article"
+        },
+        "sentences": {
+          "type": "array",
+          "description": "List of sentences with their annotations",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The text content of the sentence"
+              },
+              "entities": {
+                "type": "array",
+                "description": "List of entity annotations",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "description": "The text of the entity"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "The entity type/category"
+                    },
+                    "start": {
+                      "type": "integer",
+                      "description": "Start character position of the entity"
+                    },
+                    "end": {
+                      "type": "integer",
+                      "description": "End character position of the entity"
+                    }
+                  },
+                  "required": ["text", "type", "start", "end"]
+                }
+              },
+              "entity_spans": {
+                "type": "array",
+                "description": "Alternative representation of entity spans",
+                "items": {
+                  "type": "array",
+                  "description": "Span information [start, end, type]",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": [
+                    {
+                      "type": "integer",
+                      "description": "Start position"
+                    },
+                    {
+                      "type": "integer",
+                      "description": "End position"
+                    },
+                    {
+                      "type": "string",
+                      "description": "Entity type"
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["text", "entities", "entity_spans"]
+          }
+        }
+      },
+      "required": ["title", "sentences"]
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "21": {
+        "title": "Example Document Title",
+        "sentences": [
+          {
+            "text": "This is a sample sentence with entity.",
+            "entities": [
+              {
+                "text": "entity",
+                "type": "CONCEPT",
+                "start": 28,
+                "end": 34
+              }
+            ],
+            "entity_spans": [[28, 34, "CONCEPT"]]
+          }
+        ]
+      }
+    }
+  ]
+}
