@@ -1,15 +1,16 @@
-import json
-import os
-import gc
-import time
-import subprocess
 import argparse
 import datetime
-from glob import glob
-from pathlib import Path
+import gc
+import json
+import os
+import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
+from glob import glob
 from multiprocessing import cpu_count
+from pathlib import Path
+
+from tqdm import tqdm
 
 # Get system capabilities
 SYSTEM_CPU_COUNT = cpu_count()
