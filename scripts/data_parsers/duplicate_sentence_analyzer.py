@@ -726,8 +726,11 @@ class DuplicateSentenceAnalyzer:
         # Determine output file path
         if not output_path:
             timestamp = self.results["summary"]["timestamp"]
+            # Create results directory if it doesn't exist
+            results_dir = os.path.join(os.getcwd(), "results", "json_diagnostics")
+            os.makedirs(results_dir, exist_ok=True)
             output_path = os.path.join(
-                os.getcwd(), f"duplicate_sentence_analysis_{timestamp}.json"
+                results_dir, f"duplicate_sentence_analysis_{timestamp}.json"
             )
 
         try:
@@ -819,7 +822,13 @@ def main():
         import pstats
         from datetime import datetime
 
-        profile_output = f"duplicate_analyzer_profile_{datetime.now().strftime('%Y%m%d_%H%M%S')}.prof"
+        # Create results directory if it doesn't exist
+        results_dir = os.path.join(os.getcwd(), "results", "json_diagnostics")
+        os.makedirs(results_dir, exist_ok=True)
+        profile_output = os.path.join(
+            results_dir,
+            f"duplicate_analyzer_profile_{datetime.now().strftime('%Y%m%d_%H%M%S')}.prof",
+        )
         print(f"Running with profiler. Results will be saved to {profile_output}")
 
         cProfile.runctx("analyzer.run_analysis()", globals(), locals(), profile_output)
