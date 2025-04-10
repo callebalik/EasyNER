@@ -516,6 +516,65 @@ class JsonDiagnostic:
         for error_type, stats in repair_results["by_error_type"].items():
             print(f"  {error_type}: {stats['fixed']} fixed, {stats['failed']} failed")
 
+    def save_results(
+        self, results, result_type="analysis", output_dir="results/json_diagnostics"
+    ):
+        """
+        Save analysis or repair results to files in the specified directory.
+
+        Args:
+            results: Results data to save (analysis results or repair summary)
+            result_type: Type of results ('analysis' or 'repair')
+            output_dir: Directory to save results to
+
+        Returns:
+            str: Path to the saved file
+        """
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Generate timestamp for filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Create filenames based on result type
+        if result_type == "analysis":
+            detailed_file = os.path.join(
+                output_dir, f"json_analysis_detailed_{timestamp}.json"
+            )
+            summary_file = os.path.join(
+                output_dir, f"json_analysis_summary_{timestamp}.json"
+            )
+
+            # Save detailed analysis results
+            with open(detailed_file, "w", encoding="utf-8") as f:
+                json.dump(results, f, indent=2)
+
+            # Save summary statistics
+            summary = {
+                "timestamp": timestamp,
+                "total_files": len(self.json_files),
+                "error_types": self.error_types,
+                "total_documents": self.total_docs,
+                "documents_with_title": self.docs_with_title,
+            }
+            with open(summary_file, "w", encoding="utf-8") as f:
+                json.dump(summary, f, indent=2)
+
+            return detailed_file
+
+        elif result_type == "repair":
+            repair_file = os.path.join(
+                output_dir, f"json_repair_results_{timestamp}.json"
+            )
+
+            # Save repair results
+            with open(repair_file, "w", encoding="utf-8") as f:
+                json.dump(results, f, indent=2)
+
+            return repair_file
+
+        return None
+
 
 def main():
     """Main entry point for the JSON diagnostics tool."""
@@ -538,6 +597,9 @@ Examples:
 
   # Repair files and save to a different directory
   python json_diagnostics.py repair data/ --output-dir fixed_data/
+
+  # Save analysis results to custom location
+  python json_diagnostics.py analyze data/ --save-results --results-dir my_results
         """,
     )
 
@@ -556,6 +618,14 @@ Examples:
     analyze_parser.add_argument(
         "--sample", action="store_true", help="Show sample errors by type"
     )
+    analyze_parser.add_argument(
+        "--save-results", action="store_true", help="Save analysis results to file"
+    )
+    analyze_parser.add_argument(
+        "--results-dir",
+        default="results/json_diagnostics",
+        help="Directory to save results (default: results/json_diagnostics)",
+    )
 
     # Parser for the 'repair' command
     repair_parser = subparsers.add_parser(
@@ -571,6 +641,16 @@ Examples:
         help="Repair strategy to use",
     )
     repair_parser.add_argument("--output-dir", help="Directory to save repaired files")
+    repair_parser.add_argument(
+        "--save-results",
+        action="store_true",
+        help="Save repair results summary to file",
+    )
+    repair_parser.add_argument(
+        "--results-dir",
+        default="results/json_diagnostics",
+        help="Directory to save results (default: results/json_diagnostics)",
+    )
 
     args = parser.parse_args()
 
@@ -609,6 +689,13 @@ Examples:
             if args.detailed and result.get("sample"):
                 print("\nSample content:")
                 print(result["sample"][:500])
+
+            # Save single file analysis result if requested
+            if args.save_results:
+                results_file = diagnostic.save_results(
+                    [result], "analysis", args.results_dir
+                )
+                print(f"\nResults saved to: {results_file}")
         else:
             # Analyze multiple files
             results = diagnostic.analyze_all_files(detailed=args.detailed)
@@ -616,6 +703,13 @@ Examples:
 
             if args.sample:
                 diagnostic.print_error_samples()
+
+            # Save analysis results if requested
+            if args.save_results:
+                results_file = diagnostic.save_results(
+                    results, "analysis", args.results_dir
+                )
+                print(f"\nResults saved to: {results_file}")
 
     elif args.command == "repair":
         if len(diagnostic.json_files) == 1:
@@ -631,10 +725,34 @@ Examples:
                 diagnostic.json_files[0], output_path, args.strategy
             )
             print(f"\nRepair result: {'✓' if success else '✗'} {message}")
+
+            # Save repair result if requested
+            if args.save_results:
+                repair_result = {
+                    "file": diagnostic.json_files[0],
+                    "success": success,
+                    "message": message,
+                    "error_type": error_type,
+                    "output_path": output_path,
+                }
+                results_file = diagnostic.save_results(
+                    repair_result, "repair", args.results_dir
+                )
+                print(f"\nResults saved to: {results_file}")
         else:
             # Repair multiple files
             repair_results = diagnostic.repair_all_files(args.output_dir, args.strategy)
             diagnostic.print_repair_summary(repair_results)
+
+            # Save repair results if requested
+            if args.save_results:
+                repair_results["source_directory"] = path
+                repair_results["output_directory"] = args.output_dir
+                repair_results["strategy"] = args.strategy
+                results_file = diagnostic.save_results(
+                    repair_results, "repair", args.results_dir
+                )
+                print(f"\nResults saved to: {results_file}")
 
 
 if __name__ == "__main__":
