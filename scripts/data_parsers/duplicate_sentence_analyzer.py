@@ -28,23 +28,23 @@ class DuplicateSentenceAnalyzer:
     """
     Analyzes sentence-level similarity between articles identified as duplicates
     Args:
-        duplicate_report_path (str): Path to the duplicate report JSON file
+        duplicate_report_filepath (str): Path to the duplicate report JSON file
         similarity_threshold (float): Similarity threshold for sentences to be considered matching (0.0-1.0)
-        num_processes (int): Number of parallel processes to use (default: CPU count)
+        max_processes (int): Number of parallel processes to use (default: CPU count)
         verbose (bool): Enable verbose output for debugging
     """
 
     def __init__(
         self,
-        duplicate_report_path,
+        duplicate_report_filepath,
         similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD,
         num_processes=None,
         verbose=False,
     ):
         """Initialize with path to duplicate report and similarity threshold."""
-        self.duplicate_report_path = duplicate_report_path
+        self.duplicate_report_filepath = duplicate_report_filepath
         self.similarity_threshold = similarity_threshold
-        self.num_processes = num_processes or min(
+        self.max_processes = num_processes or min(
             cpu_count(), DEFAULT_MAX_CPU_LIMIT
         )  # Default to CPU count or max limit, whichever is smaller
         self.verbose = verbose
@@ -55,10 +55,12 @@ class DuplicateSentenceAnalyzer:
     def load_duplicate_report(self):
         """Load the duplicate report JSON file."""
         if self.verbose:
-            print(f"[DEBUG] Loading duplicate report from {self.duplicate_report_path}")
+            print(
+                f"[DEBUG] Loading duplicate report from {self.duplicate_report_filepath}"
+            )
 
         try:
-            with open(self.duplicate_report_path, "r", encoding="utf-8") as f:
+            with open(self.duplicate_report_filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self.duplicates = data.get("duplicates", [])
 
@@ -83,15 +85,16 @@ class DuplicateSentenceAnalyzer:
     def compare_article_sentences(self, article1_data, article2_data):
         """Compare sentences between two article objects and calculate similarity metrics."""
         # Get sentences from both articles
-        sentences1 = article1_data.get("sentences", [])
-        sentences2 = article2_data.get("sentences", [])
+        article1_sentences = article1_data.get("sentences", [])
+        article2_sentences = article2_data.get("sentences", [])
 
         # Handle empty sentences
-        if not sentences1 or not sentences2:
+        if not article1_sentences or not article2_sentences:
             return {
-                "sentence_count_match": len(sentences1) == len(sentences2),
-                "sentence_count1": len(sentences1),
-                "sentence_count2": len(sentences2),
+                "sentence_count_match": len(article1_sentences)
+                == len(article2_sentences),
+                "sentence_count1": len(article1_sentences),
+                "sentence_count2": len(article2_sentences),
                 "identical_sentences": 0,
                 "similar_sentences": 0,
                 "average_similarity": 0.0,
@@ -105,28 +108,28 @@ class DuplicateSentenceAnalyzer:
         similar_count = 0
 
         # Use min length to avoid index errors
-        min_length = min(len(sentences1), len(sentences2))
+        min_length = min(len(article1_sentences), len(article2_sentences))
 
         for i in range(min_length):
             # Get text of each sentence (handling potential formats)
-            text1 = (
-                sentences1[i].get("text", "")
-                if isinstance(sentences1[i], dict)
-                else str(sentences1[i])
+            article1_sentence_text = (
+                article1_sentences[i].get("text", "")
+                if isinstance(article1_sentences[i], dict)
+                else str(article1_sentences[i])
             )
-            text2 = (
-                sentences2[i].get("text", "")
-                if isinstance(sentences2[i], dict)
-                else str(sentences2[i])
+            article2_sentence_text = (
+                article2_sentences[i].get("text", "")
+                if isinstance(article2_sentences[i], dict)
+                else str(article2_sentences[i])
             )
 
             # Skip empty sentences
-            if not text1 or not text2:
+            if not article1_sentence_text or not article2_sentence_text:
                 continue
 
             # Calculate similarity
             similarity = self.calculate_sentence_similarity(
-                text1, text2
+                article1_sentence_text, article2_sentence_text
             )  # This is computationally expensive
             similarities.append(similarity)
 
@@ -139,13 +142,13 @@ class DuplicateSentenceAnalyzer:
         # Calculate metrics
         avg_similarity = np.mean(similarities) if similarities else 0.0
         is_exact_duplicate = avg_similarity >= self.similarity_threshold and len(
-            sentences1
-        ) == len(sentences2)
+            article1_sentences
+        ) == len(article2_sentences)
 
         return {
-            "sentence_count_match": len(sentences1) == len(sentences2),
-            "sentence_count1": len(sentences1),
-            "sentence_count2": len(sentences2),
+            "sentence_count_match": len(article1_sentences) == len(article2_sentences),
+            "sentence_count1": len(article1_sentences),
+            "sentence_count2": len(article2_sentences),
             "identical_sentences": identical_count,
             "similar_sentences": similar_count,
             "average_similarity": float(avg_similarity),
@@ -258,7 +261,7 @@ class DuplicateSentenceAnalyzer:
         start_time = datetime.datetime.now()
         print(f"Started analysis at {start_time}")
         print(
-            f"Processing {len(self.duplicates)} duplicate sets with {self.num_processes} processes"
+            f"Processing {len(self.duplicates)} duplicate sets with {self.max_processes} processes"
         )
 
         try:
@@ -294,7 +297,7 @@ class DuplicateSentenceAnalyzer:
             # Add timeout to prevent hanging
             TIMEOUT_PER_BATCH = 300  # 5 minutes timeout per batch
 
-            with ProcessPoolExecutor(max_workers=self.num_processes) as executor:
+            with ProcessPoolExecutor(max_workers=self.max_processes) as executor:
                 # Submit batches instead of individual duplicates
                 futures = []
                 for i, batch in enumerate(duplicate_batches):
@@ -466,7 +469,7 @@ class DuplicateSentenceAnalyzer:
                 )
 
         # Balance batches if needed (avoid too many small batches)
-        if len(batches) > self.num_processes * 2:
+        if len(batches) > self.max_processes * 2:
             if self.verbose:
                 print(f"Merging small batches to optimize workload distribution...")
 
@@ -484,7 +487,7 @@ class DuplicateSentenceAnalyzer:
         from tqdm import tqdm
 
         if target_batch_count is None:
-            target_batch_count = max(self.num_processes, len(batches) // 2)
+            target_batch_count = max(self.max_processes, len(batches) // 2)
 
         if len(batches) <= target_batch_count:
             return batches
