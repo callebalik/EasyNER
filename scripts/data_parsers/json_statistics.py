@@ -449,8 +449,11 @@ class ArticleCounter:
             timestamp = self.results.get(
                 "timestamp", datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             )
+            # Create results directory if it doesn't exist
+            results_dir = os.path.join(os.getcwd(), "results", "json_diagnostics")
+            os.makedirs(results_dir, exist_ok=True)
             output_path = os.path.join(
-                os.getcwd(), f"article_count_report_{timestamp}.json"
+                results_dir, f"article_count_report_{timestamp}.json"
             )
 
         # Create a clean version of the results for the report
@@ -568,8 +571,11 @@ class ArticleCounter:
             timestamp = self.results.get(
                 "timestamp", datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             )
+            # Create results directory if it doesn't exist
+            results_dir = os.path.join(os.getcwd(), "results", "json_diagnostics")
+            os.makedirs(results_dir, exist_ok=True)
             output_path = os.path.join(
-                os.getcwd(), f"duplicate_report_{timestamp}.json"
+                results_dir, f"duplicate_report_{timestamp}.json"
             )
 
         # Write the duplicate report to file
@@ -653,8 +659,14 @@ if __name__ == "__main__":
     counter.generate_report(args.report)
 
     # Generate duplicate report by default
-    duplicate_report_path = args.duplicate_report or os.path.join(
-        os.getcwd(),
-        f"duplicate_report_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json",
-    )
+    if args.duplicate_report:
+        duplicate_report_path = args.duplicate_report
+    else:
+        # Create results directory if it doesn't exist
+        results_dir = os.path.join(os.getcwd(), "results", "json_diagnostics")
+        os.makedirs(results_dir, exist_ok=True)
+        duplicate_report_path = os.path.join(
+            results_dir,
+            f"duplicate_report_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json",
+        )
     counter.generate_duplicate_report(duplicate_report_path)
