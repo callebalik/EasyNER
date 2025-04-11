@@ -1,15 +1,8 @@
 import os
-import sys
 import pytest
-from pathlib import Path
-
-# Add the project root to sys.path to make scripts package importable
-script_dir = Path(__file__).parent
-project_root = script_dir.parent  # Go up one directory to reach project root
-sys.path.insert(0, str(project_root))
 
 # Import path constants from the infrastructure package
-from scripts.infrastructure.paths import (
+from easyner.infrastructure.paths import (
     PROJECT_ROOT,
     DATA_DIR,
     RESULTS_DIR,
@@ -19,9 +12,9 @@ from scripts.infrastructure.paths import (
     DATALOADER_RESULTS_DIR,
     SPLITTER_RESULTS_DIR,
     ANALYSIS_RESULTS_DIR,
-    DEFAULT_CONFIG_PATH,
-    DEFAULT_TEMPLATE_PATH,
-    DEFAULT_SCHEMA_PATH,
+    CONFIG_PATH,
+    TEMPLATE_PATH,
+    SCHEMA_PATH,
 )
 
 
@@ -38,16 +31,20 @@ def absolute_paths():
         "DATALOADER_RESULTS_DIR": PROJECT_ROOT / DATALOADER_RESULTS_DIR,
         "SPLITTER_RESULTS_DIR": PROJECT_ROOT / SPLITTER_RESULTS_DIR,
         "ANALYSIS_RESULTS_DIR": PROJECT_ROOT / ANALYSIS_RESULTS_DIR,
-        "DEFAULT_CONFIG_PATH": PROJECT_ROOT / DEFAULT_CONFIG_PATH,
-        "DEFAULT_TEMPLATE_PATH": PROJECT_ROOT / DEFAULT_TEMPLATE_PATH,
-        "DEFAULT_SCHEMA_PATH": DEFAULT_SCHEMA_PATH,  # Already absolute
+        "DEFAULT_CONFIG_PATH": PROJECT_ROOT / CONFIG_PATH,
+        "DEFAULT_TEMPLATE_PATH": PROJECT_ROOT / TEMPLATE_PATH,
+        "DEFAULT_SCHEMA_PATH": SCHEMA_PATH,  # Already absolute
     }
 
 
 def test_project_root_exists():
     """Test that the project root directory exists."""
-    assert PROJECT_ROOT.exists(), f"Project root does not exist: {PROJECT_ROOT}"
-    assert PROJECT_ROOT.is_dir(), f"Project root is not a directory: {PROJECT_ROOT}"
+    assert (
+        PROJECT_ROOT.exists()
+    ), f"Project root does not exist: {PROJECT_ROOT}"
+    assert (
+        PROJECT_ROOT.is_dir()
+    ), f"Project root is not a directory: {PROJECT_ROOT}"
 
 
 def test_standard_directories_exist(absolute_paths):
@@ -69,16 +66,17 @@ def test_standard_directories_exist(absolute_paths):
 def test_config_files(absolute_paths):
     """Test the config file paths."""
     # Check that at least the default config exists
-    assert absolute_paths[
-        "DEFAULT_CONFIG_PATH"
-    ].exists(), (
-        f"Default config file does not exist: {absolute_paths['DEFAULT_CONFIG_PATH']}"
+    assert absolute_paths["DEFAULT_CONFIG_PATH"].exists(), (
+        f"Default config file does not exist at: {absolute_paths['DEFAULT_CONFIG_PATH']} \n"
+        f"Please generate a config file using the generator or restore from personal backups."
     )
 
     # Check schema path
     assert absolute_paths[
         "DEFAULT_SCHEMA_PATH"
-    ].exists(), f"Schema file does not exist: {absolute_paths['DEFAULT_SCHEMA_PATH']}"
+    ].exists(), (
+        f"Schema file does not exist: {absolute_paths['DEFAULT_SCHEMA_PATH']}"
+    )
 
 
 def test_path_relationships():

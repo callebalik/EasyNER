@@ -10,14 +10,21 @@ from pathlib import Path
 
 # Base paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+PACKAGE_ROOT = Path(__file__).parent.parent
+
+# This is the main directory for scripts and modules
+# which are not part of the package
+# TODO: refactor all into package
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-CONFIG_DIR = SCRIPTS_DIR / "config"
-INFRASTRUCTURE_DIR = SCRIPTS_DIR / "infrastructure"
+
+CONFIG_DIR = PACKAGE_ROOT / "config"
+INFRASTRUCTURE_DIR = PACKAGE_ROOT / "infrastructure"
 
 # Config files
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.json"
-DEFAULT_TEMPLATE_PATH = PROJECT_ROOT / "config.template.json"
-DEFAULT_SCHEMA_PATH = CONFIG_DIR / "schema.json"
+CONFIG_PATH = PROJECT_ROOT / "config.json"
+TEMPLATE_PATH = PROJECT_ROOT / "config.template.json"
+SCHEMA_PATH = CONFIG_DIR / "schema.json"
+BACKUPS_DIR = PROJECT_ROOT / ".backups"
 
 # Data directories
 DATA_DIR = PROJECT_ROOT / "data"
@@ -36,14 +43,12 @@ def ensure_paths_exist(create_results_dirs=True, dry_run=False):
     """Ensure that all required directories exist.
 
     Args:
-        create_results_dirs: If True, creates results directories if they don't exist
-        dry_run: If True, only checks if directories exist without creating them
+        paths_to_check: List of paths to check/create
+        create_results_dirs: Create missing results directories if True
+        dry_run: Only check existence without creating if True
 
     Returns:
-        dict: Status of each directory with keys:
-            - 'exists': Whether the directory already existed
-            - 'created': Whether it was created (always False if dry_run=True)
-            - 'path': Path object for the directory
+        bool: True if all paths exist or were created successfully
     """
     results = {}
 
