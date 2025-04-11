@@ -1,23 +1,17 @@
 import json
 import jsonschema
-import os
-import sys
 import re
+import sys
 import argparse
 from pathlib import Path
-from typing import Dict, List, Any, Tuple, Optional, Union, Iterator, Set, TypeVar, cast
+from typing import Dict, List, Any, Tuple, Optional, Union, Iterator
 
-# Add the project root to sys.path to make scripts package importable
-script_dir = Path(__file__).parent
-project_root = script_dir.parent.parent  # Go up two directories to reach project root
-sys.path.insert(0, str(project_root))
+import jsonschema.exceptions
 
-# Import standard paths directly from infrastructure package
-from scripts.infrastructure.paths import (
-    DEFAULT_CONFIG_PATH,
-    DEFAULT_TEMPLATE_PATH,
-    DEFAULT_SCHEMA_PATH,
-    PROJECT_ROOT,
+from easyner.infrastructure.paths import (
+    CONFIG_PATH,
+    TEMPLATE_PATH,
+    SCHEMA_PATH,
 )
 
 
@@ -28,18 +22,20 @@ def load_schema() -> Dict[str, Any]:
         dict: The loaded schema
     """
     try:
-        with open(DEFAULT_SCHEMA_PATH, "r") as f:
+        with open(SCHEMA_PATH, "r") as f:
             schema = json.load(f)
         return schema
     except FileNotFoundError:
-        print(f"Error: Schema file not found at {DEFAULT_SCHEMA_PATH}")
+        print(f"Error: Schema file not found at {SCHEMA_PATH}")
         sys.exit(1)
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON in schema file: {e}")
         sys.exit(1)
 
 
-def validate_config(config_file: Union[str, Path], quiet: bool = False) -> bool:
+def validate_config(
+    config_file: Union[str, Path], quiet: bool = False
+) -> bool:
     """Validates the config file against the schema.
 
     Args:
@@ -68,17 +64,21 @@ def validate_config(config_file: Union[str, Path], quiet: bool = False) -> bool:
         warnings: List[str] = []
         empty_paths: List[str] = []
 
-        check_path_types(config_data, schema, validation_errors, warnings, empty_paths)
+        check_path_types(
+            config_data, schema, validation_errors, warnings, empty_paths
+        )
 
         # Check if the $schema field is present in the config
         if "$schema" not in config_data:
             warnings.append(
                 f"$schema field is missing. It should be set to \n"
-                f"'./scripts/config/schema.json' to provide type hints"
+                f"{SCHEMA_PATH} to provide type hints"
             )
-        elif config_data["$schema"] != "./scripts/config/schema.json":
+        elif config_data["$schema"] != str(SCHEMA_PATH):
             warnings.append(
-                f"$schema has unexpected value: '{config_data['$schema']}'. Expected: './scripts/config/schema.json'"
+                f"$schema has unexpected value: "
+                f"'{config_data['$schema']}'. "
+                f"Expected: '{SCHEMA_PATH}'"
             )
 
         if validation_errors:
@@ -109,9 +109,10 @@ def validate_config(config_file: Union[str, Path], quiet: bool = False) -> bool:
         jsonschema.validate(instance=config_data, schema=schema)
         if not quiet:
             print(f"\n{'-'*80}")
-            print(f"RESULT: Configuration validation successful!")
+            print("RESULT: Configuration validation successful!")
             print(f"{'-'*80}\n")
         return True
+
     except jsonschema.exceptions.ValidationError as e:
         # Create a more informative error message
         error_path = ".".join([str(p) for p in e.path]) if e.path else "root"
@@ -123,13 +124,18 @@ def validate_config(config_file: Union[str, Path], quiet: bool = False) -> bool:
 
         if "pattern" in str(e) and "does not match" in str(e):
             # This is a pattern validation error, likely for a path
-            error_value = get_value_at_path(config_data, e.path)
-            error_type = type(error_value).__name__
+            if "config_data" in locals():
+                error_value = get_value_at_path(config_data, e.path)
+                error_type = type(error_value).__name__
+            else:
+                print("Unexpected error: config_data not available")
+                return False
 
             if isinstance(error_value, (int, float, bool)):
                 # The value is not even a string
                 print(
-                    f"  Path field '{error_path}' must be a string, but got {error_type}: {error_value}"
+                    f"  Path field '{error_path}' must be a string, "
+                    f"but got {error_type}: {error_value}"
                 )
             elif error_value == "":
                 # Empty strings are allowed with an info message
@@ -143,7 +149,8 @@ def validate_config(config_file: Union[str, Path], quiet: bool = False) -> bool:
             else:
                 # The value is a string but doesn't match the pattern
                 print(
-                    f"  Path field '{error_path}' contains an invalid path format: '{error_value}'"
+                    f"  Path field '{error_path}' "
+                    f"contains an invalid path format:  {error_value}"
                 )
         else:
             # For other validation errors
@@ -167,7 +174,7 @@ def validate_config(config_file: Union[str, Path], quiet: bool = False) -> bool:
 
 
 def check_path_types(
-    data: Any,
+    data: Dict[str, Any],
     schema: Dict[str, Any],
     errors: List[str],
     warnings: List[str],
@@ -202,23 +209,39 @@ def check_path_types(
                 if prop_schema.get("$ref") == "#/definitions/path":
                     if not isinstance(value, str):
                         errors.append(
-                            f"Path field '{path_str}' must be a string, but got {type(value).__name__}: {value}"
+                            f"Path field '{path_str}' must be a string, "
+                            f"but got {type(value).__name__}: {value}"
                         )
                     elif value == "":
                         empty_paths.append(path_str)
                 # If this is an object or array, recurse
-                elif isinstance(value, dict) and prop_schema.get("type") == "object":
+                elif (
+                    isinstance(value, dict)
+                    and prop_schema.get("type") == "object"
+                ):
                     check_path_types(
-                        value, prop_schema, errors, warnings, empty_paths, current_path
+                        value,
+                        prop_schema,
+                        errors,
+                        warnings,
+                        empty_paths,
+                        current_path,
                     )
-                elif isinstance(value, list) and prop_schema.get("type") == "array":
+                elif (
+                    isinstance(value, list)
+                    and prop_schema.get("type") == "array"
+                ):
                     # If the array items are paths
-                    if prop_schema.get("items", {}).get("$ref") == "#/definitions/path":
+                    if (
+                        prop_schema.get("items", {}).get("$ref")
+                        == "#/definitions/path"
+                    ):
                         for i, item in enumerate(value):
                             if not isinstance(item, str):
                                 item_path = path_str + f"[{i}]"
                                 errors.append(
-                                    f"Path field '{item_path}' must be a string, but got {type(item).__name__}: {item}"
+                                    f"Path field '{item_path}' must be a string, "
+                                    f" but got {type(item).__name__}: {item}"
                                 )
                             elif item == "":
                                 item_path = path_str + f"[{i}]"
@@ -292,7 +315,8 @@ def check_absolute_paths(
                             continue
                         new_path = f"{path}.{key}" if path else key
                         if isinstance(value, str) and (
-                            Path(value).is_absolute() or re.search(r"[A-Z]:/.*", value)
+                            Path(value).is_absolute()
+                            or re.search(r"[A-Z]:/.*", value)
                         ):
                             if value != "PATH_PLACEHOLDER":
                                 found_paths.append((new_path, value))
@@ -302,7 +326,8 @@ def check_absolute_paths(
                     for i, item in enumerate(obj):
                         new_path = f"{path}[{i}]"
                         if isinstance(item, str) and (
-                            Path(item).is_absolute() or re.search(r"[A-Z]:/.*", item)
+                            Path(item).is_absolute()
+                            or re.search(r"[A-Z]:/.*", item)
                         ):
                             if item != "PATH_PLACEHOLDER":
                                 found_paths.append((new_path, item))
@@ -338,8 +363,8 @@ def run_validation_tests() -> bool:
         bool: True if all validation tests pass, False otherwise
     """
     # Use the standard path constants from the config package
-    config_file = DEFAULT_CONFIG_PATH
-    template_file = DEFAULT_TEMPLATE_PATH
+    config_file = CONFIG_PATH
+    template_file = TEMPLATE_PATH
 
     # Check if the config file exists
     if not config_file.exists():
@@ -368,8 +393,12 @@ def run_validation_tests() -> bool:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Validate configuration files")
-    parser.add_argument("file", nargs="?", default=None, help="Config file to validate")
+    parser = argparse.ArgumentParser(
+        description="Validate configuration files"
+    )
+    parser.add_argument(
+        "file", nargs="?", default=None, help="Config file to validate"
+    )
     parser.add_argument(
         "--quiet", action="store_true", help="Suppress success messages"
     )
@@ -377,9 +406,9 @@ if __name__ == "__main__":
 
     if args.file:
         # Validate a specific file
-        success = validate_config(args.file, args.quiet) and check_absolute_paths(
-            args.file, quiet=args.quiet
-        )
+        success = validate_config(
+            args.file, args.quiet
+        ) and check_absolute_paths(args.file, quiet=args.quiet)
     else:
         # Run all validation tests
         success = run_validation_tests()

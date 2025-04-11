@@ -1,23 +1,18 @@
 import json
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Generator
 
 import pytest
 
-# Add the project root directory to the path
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-# Import the modules we want to test using the new namespace
-from scripts.config import (
+from easyner.config.validator import (
     check_absolute_paths,
-    generate_template,
     load_schema,
     validate_config,
 )
+from easyner.config.generator import generate_template
+from easyner.infrastructure.paths import PROJECT_ROOT
 
 
 @pytest.fixture
@@ -71,7 +66,9 @@ def sample_config() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def config_files(temp_test_dir: str, sample_config: Dict[str, Any]) -> Dict[str, str]:
+def config_files(
+    temp_test_dir: str, sample_config: Dict[str, Any]
+) -> Dict[str, str]:
     """Create config files for testing."""
     config_path = Path(temp_test_dir) / "config.json"
     with open(config_path, "w") as f:
@@ -79,7 +76,10 @@ def config_files(temp_test_dir: str, sample_config: Dict[str, Any]) -> Dict[str,
 
     template_path = Path(temp_test_dir) / "config.template.json"
 
-    return {"config_path": str(config_path), "template_path": str(template_path)}
+    return {
+        "config_path": str(config_path),
+        "template_path": str(template_path),
+    }
 
 
 def test_generate_template(
@@ -90,7 +90,9 @@ def test_generate_template(
     generate_template(config_files["template_path"])
 
     # Check that the template file exists
-    assert Path(config_files["template_path"]).exists(), "Template file was not created"
+    assert Path(
+        config_files["template_path"]
+    ).exists(), "Template file was not created"
 
     # Load the template
     with open(config_files["template_path"], "r") as f:
@@ -262,6 +264,7 @@ def test_validate_current_config() -> None:
     # Check if config.json exists
     config_path = PROJECT_ROOT / "config.json"
     assert config_path.exists(), "Current config.json file not found"
+    "Generate using python easyner.config.generate.py"
 
     # Validate the config file
     result = validate_config(str(config_path))

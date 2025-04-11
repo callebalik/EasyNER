@@ -3,8 +3,8 @@ EasyNER Configuration Management
 
 Tools for creating, validating, and working with the config.
 
-Main benefit is to validate the configuration files against a schema on load
-ensure that the configuration is correct and complete.
+Main benefit is to validate the configuration files against a schema on
+load ensure that the configuration is correct and complete.
 
 Example Usage:
 -------------
@@ -22,7 +22,8 @@ Example Usage:
 
 2. Generate a template from the schema:
    ```python
-   from scripts.config import generate_template_from_schema, DEFAULT_TEMPLATE_PATH
+   from scripts.config import generate_template_from_schema,
+   DEFAULT_TEMPLATE_PATH
 
    # Generate a template based on the schema
    generate_template_from_schema(DEFAULT_TEMPLATE_PATH)
@@ -43,24 +44,29 @@ Example Usage:
    ```python
    from scripts.config import format_with_prettier
 
-   # Format a JSON file using prettier (requires npm prettier to be installed)
+   # Format a JSON file using prettier (requires npm prettier to be
+   # installed)
    format_with_prettier("config.template.json")
    ```
 """
 
+__all__ = [
+    # Variables
+    # "config",
+    # Functions
+    "load_config",
+]
+
+
 import json
 from pathlib import Path
-from typing import Dict, Any, Union, List, Optional
-
-# Export key functions directly from the module level
-from scripts.config.validator import validate_config, check_absolute_paths, load_schema
-from scripts.config.generator import generate_template, format_with_prettier
+from typing import Dict, Any, Union
 
 # Import paths from the infrastructure package
-from scripts.infrastructure.paths import DEFAULT_CONFIG_PATH
+from easyner.infrastructure.paths import CONFIG_PATH
 
 
-def load_config(config_path: Union[str, Path] = DEFAULT_CONFIG_PATH) -> Dict[str, Any]:
+def load_config(config_path: Union[str, Path] = CONFIG_PATH) -> Dict[str, Any]:
     """Load and validate a configuration file.
 
     Args:
@@ -73,13 +79,16 @@ def load_config(config_path: Union[str, Path] = DEFAULT_CONFIG_PATH) -> Dict[str
         FileNotFoundError: If the config file doesn't exist
         json.JSONDecodeError: If the config file contains invalid JSON
     """
+    from . import validator
+
     config_path = Path(config_path)
 
     if not config_path.exists():
+        print(f"Configuration file not found: {config_path}")
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
     # Validate the config
-    is_valid = validate_config(config_path)
+    is_valid = validator.validate_config(config_path)
     if not is_valid:
         print(f"Warning: Configuration at {config_path} has validation issues")
 
@@ -90,12 +99,4 @@ def load_config(config_path: Union[str, Path] = DEFAULT_CONFIG_PATH) -> Dict[str
     return config
 
 
-__all__ = [
-    # Functions
-    "validate_config",
-    "check_absolute_paths",
-    "load_schema",
-    "generate_template",
-    "format_with_prettier",
-    "load_config",
-]
+# config: Dict[str, Any] = load_config()
