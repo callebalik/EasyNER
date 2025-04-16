@@ -61,26 +61,18 @@ class JsonHandler(IOHandler):
         Helper method to load JSON within executor with improved
         error messages
         """
-        try:
-            # Check for empty file
-            if os.path.getsize(file_path) == 0:
-                raise ValueError(
-                    f"Empty file detected: no data in {file_path}"
-                )
+        # Check for empty file
+        if os.path.getsize(file_path) == 0:
+            raise ValueError(f"Empty file detected: no data in {file_path}")
 
-            with open(file_path, "r", encoding=self.encoding) as f:
-                try:
-                    return json.load(f)
-                except json.JSONDecodeError as e:
-                    # Wrap JSON decode errors with more descriptive messages
-                    raise ValueError(
-                        f"Error decoding JSON file in {file_path}: {str(e)}"
-                    )
-        except json.JSONDecodeError as e:
-            # Catch any JSON errors that might slip through
-            raise ValueError(
-                f"Error decoding JSON file: {file_path}: {str(e)}"
-            )
+        with open(file_path, "r", encoding=self.encoding) as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError as e:
+                # Wrap JSON decode errors with more descriptive messages
+                raise ValueError(
+                    f"Error decoding JSON file in {file_path}: {str(e)}"
+                ) from e
 
     from typing import Optional
 
