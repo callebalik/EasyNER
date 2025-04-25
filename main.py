@@ -3,25 +3,23 @@
 import json
 import os
 from glob import glob
-from tqdm import tqdm
 import time
-import spacy
+from typing import Optional
+from tqdm import tqdm
 import torch
-from spacy.matcher import PhraseMatcher
 from concurrent.futures import (
     ProcessPoolExecutor,
-    ThreadPoolExecutor,
     as_completed,
 )
 from multiprocessing import cpu_count
 
+from easyner.utils.timekeep import TimingManager, timed_execution
 from scripts import cord_loader
 from scripts import downloader
 from scripts import splitter
 from scripts import splitter_pubmed
 from scripts import text_loader
 from scripts import search
-from scripts import util
 from scripts import metrics
 from scripts import nel
 from scripts import entity_merger
@@ -29,316 +27,257 @@ from scripts import ner_main
 from scripts import analysis
 from scripts import pubmed_bulk
 
-
-def run_cord_loader(cord_loader_config: dict, ignore: bool):
-    if ignore:
-        print("Ignoring script: cord_loader.")
-        return
-
-    print("Running cord_loader script.")
-    cord_loader.run(
-        input_file=cord_loader_config["input_path"],
-        output_file=cord_loader_config["output_path"],
-        subset=cord_loader_config["subset"],
-        subset_file=cord_loader_config["subset_file"],
-    )
-    print("Finished running cord_loader script.")
+ignored_modules = []
+run_modules = []
 
 
-def run_download(dl_config: dict, ignore: bool):
-    if ignore:
-        print("Ignoring script: downloader.")
-        return
+class EasyNerModule:
+    """Base class for all processing modules in the EasyNER pipeline."""
 
-    print("Running downloader script.")
-    downloader.run(
-        input_file=dl_config["input_path"],
-        output_file=dl_config["output_path"],
-        batch_size=dl_config["batch_size"],
-    )
-    print("Finished running downloader script.")
+    def __init__(self, name, config, ignore_dict):
+        self.name = name
+        self.full_config = config
+        self.config = config.get(name, {})
+        self.ignored = ignore_dict.get(name, False)
+        self.start_time: Optional[float] = None
+        self.end_time: Optional[float] = None
+        self.execution_time: Optional[float] = None
+        self.execution_success: Optional[bool] = False
 
+    @timed_execution
+    def run(self, **kwargs):
+        """Execute this module with appropriate timing and logging."""
+        if self.ignored:
+            print(f"Ignoring script: {self.name}.")
+            self.execution_success = None  # Indicate module ignored
+            return False
+        else:
+            print(f"Running {self.name} script.")
+            # Execute the module's specific processing
+            result = self._execute()
+            print(f"Finished running {self.name} script.")
+            print()
+            return result
 
-def run_text_loader(tl_config: dict, ignore: bool):
-
-    if ignore:
-        print("Ignoring script: free text loader")
-        return
-
-    print("Running free text loader script")
-
-    text_loader.run(tl_config)
-
-    print("Finished running freetext loader script.")
-
-
-def run_pubmed_bulk_loader(pbl_config: dict, ignore: bool):
-    if ignore:
-        print("Ignoring script: pubmed bulk downloader")
-        return
-
-    print("Running pubmed bulk downloader script.")
-    pubmed_bulk.run_pbl(pbl_config)
+    def _execute(self):
+        """To be implemented by each module subclass."""
+        raise NotImplementedError("Subclasses must implement _execute method")
 
 
-def run_splitter(splitter_config: dict, ignore: bool) -> dict:
-    if ignore:
-        print("Ignoring script: splitter.")
+class CordLoaderModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("cord_loader", config, ignore_dict)
+
+    def _execute(self):
+        return cord_loader.run(
+            input_file=self.config["input_path"],
+            output_file=self.config["output_path"],
+            subset=self.config["subset"],
+            subset_file=self.config["subset_file"],
+        )
+
+
+class DownloaderModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("downloader", config, ignore_dict)
+
+    def _execute(self):
+        return downloader.run(
+            input_file=self.config["input_path"],
+            output_file=self.config["output_path"],
+            batch_size=self.config["batch_size"],
+        )
+
+
+class TextLoaderModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("text_loader", config, ignore_dict)
+
+    def _execute(self):
+        return text_loader.run(self.config)
+
+
+class PubmedBulkLoaderModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("pubmed_bulk_loader", config, ignore_dict)
+
+    def _execute(self):
+        return pubmed_bulk.run_pbl(self.config)
+
+
+class SplitterModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("splitter", config, ignore_dict)
+
+    def _execute(self):
+        os.makedirs(self.config["output_folder"], exist_ok=True)
+
+        if self.config["pubmed_bulk"]:
+            self._process_pubmed_bulk()
+        else:
+            self._process_standard()
+
         return {}
 
-    os.makedirs(splitter_config["output_folder"], exist_ok=True)
-
-    if splitter_config["pubmed_bulk"] == True:
-        if splitter_config["file_limit"] == "ALL":
+    def _process_pubmed_bulk(self):
+        # Extract pubmed bulk processing logic
+        if self.config["file_limit"] == "ALL":
             input_files_list = splitter_pubmed.load_pre_batched_files(
-                splitter_config["input_path"]
+                self.config["input_path"]
             )
         else:
             input_files_list = splitter_pubmed.load_pre_batched_files(
-                splitter_config["input_path"],
-                limit=splitter_config["file_limit"],
+                self.config["input_path"],
+                limit=self.config["file_limit"],
             )
-            # split each batch
-        if splitter_config["tokenizer"] == "spacy":
-            print("Running splitter script with spacy")
 
-            with ProcessPoolExecutor(min(CPU_LIMIT, cpu_count())) as executor:
+        self._process_with_tokenizer(input_files_list, is_pubmed_bulk=True)
 
-                futures = [
-                    executor.submit(
-                        splitter_pubmed.split_prebatch,
-                        splitter_config,
-                        input_file,
-                        tokenizer="spacy",
-                    )
-                    for input_file in input_files_list
-                ]
-
-                for future in as_completed(futures):
-                    # print(future.result)
-                    i = future.result()
-
-        elif splitter_config["tokenizer"] == "nltk":
-            print("Running splitter script with nltk")
-
-            # import nltk
-            # nltk.download("punkt")
-
-            with ProcessPoolExecutor(min(CPU_LIMIT, cpu_count())) as executor:
-
-                futures = [
-                    executor.submit(
-                        splitter_pubmed.split_prebatch,
-                        splitter_config,
-                        input_file,
-                        tokenizer="nltk",
-                    )
-                    for input_file in input_files_list
-                ]
-
-                for future in as_completed(futures):
-                    i = future.result()
-
-    else:
-        with open(splitter_config["input_path"], "r", encoding="utf-8") as f:
+    def _process_standard(self):
+        with open(self.config["input_path"], "r", encoding="utf-8") as f:
             full_articles = json.loads(f.read())
 
         article_batches = splitter.make_batches(
-            list(full_articles), splitter_config["batch_size"]
+            list(full_articles), self.config["batch_size"]
         )
 
-        # split each batch
-        if splitter_config["tokenizer"] == "spacy":
-            print("Running splitter script with spacy")
+        self._process_with_tokenizer(
+            article_batches, full_articles=full_articles
+        )
 
-            with ProcessPoolExecutor(min(CPU_LIMIT, cpu_count())) as executor:
+    def _process_with_tokenizer(
+        self, items, is_pubmed_bulk=False, full_articles=None
+    ):
+        tokenizer = self.config["tokenizer"]
+        print(f"Running splitter script with {tokenizer}")
 
-                futures = [
-                    executor.submit(
-                        splitter.split_batch,
-                        splitter_config,
-                        idx,
-                        art,
-                        full_articles,
-                        tokenizer="spacy",
-                    )
-                    for idx, art in enumerate(article_batches)
-                ]
-
-                for future in as_completed(futures):
-                    # print(future.result)
-                    i = future.result()
-
-        elif splitter_config["tokenizer"] == "nltk":
-            print("Running splitter script with nltk")
-
-            # import nltk
-            # nltk.download("punkt")
-
-            with ProcessPoolExecutor(min(CPU_LIMIT, cpu_count())) as executor:
-
-                futures = [
-                    executor.submit(
-                        splitter.split_batch,
-                        splitter_config,
-                        idx,
-                        art,
-                        full_articles,
-                        tokenizer="nltk",
-                    )
-                    for idx, art in enumerate(article_batches)
-                ]
-
-                for future in as_completed(futures):
-                    i = future.result()
-
-    print("Finished running splitter script.")
-
-
-def run_ner(ner_config: dict, ignore: bool):
-
-    if ignore:
-        print("Ignoring script: NER.")
-        return
-
-    print("Running NER script.")
-
-    # For experimentation: limit number of articles to process (and to output)
-    # limit = ner_config["article_limit"]
-    # if limit > 0:
-    #     print(f"Limiting NER to {limit} articles.")
-    #     a = {}
-    #     i = 0
-    #     for id in articles:
-    #         if i >= limit:
-    #             break
-    #         a[id] = articles[id]
-    #         i += 1
-    #     articles = a
-
-    if ner_config.get("clear_old_results", True):
-        try:
-            os.remove(ner_config["output_path"])
-        except OSError:
-            pass
-
-    os.makedirs(ner_config["output_path"], exist_ok=True)
-
-    input_file_list = sorted(
-        glob(f'{ner_config["input_path"]}*.json'),
-        key=lambda x: int(
-            os.path.splitext(os.path.basename(x))[0].split("-")[-1]
-        ),
-    )
-
-    # Sort files on range
-    if "article_limit" in ner_config:
-        if isinstance(ner_config["article_limit"], list):
-            start = ner_config["article_limit"][0]
-            end = ner_config["article_limit"][1]
-
-            input_file_list = ner_main.filter_files(
-                input_file_list, start, end
-            )
-
-            print(
-                "processing articles between {} and {} range".format(
-                    start, end
-                )
-            )
-
-    # Run prediction on each sentence in each article.
-    if ner_config["multiprocessing"]:
         with ProcessPoolExecutor(min(CPU_LIMIT, cpu_count())) as executor:
-
-            futures = [
-                executor.submit(ner_main.run_ner_main, ner_config, batch_file)
-                for batch_file in input_file_list
-            ]
+            if is_pubmed_bulk:
+                futures = [
+                    executor.submit(
+                        splitter_pubmed.split_prebatch,
+                        self.config,
+                        input_file,
+                        tokenizer=tokenizer,
+                    )
+                    for input_file in items
+                ]
+            else:
+                futures = [
+                    executor.submit(
+                        splitter.split_batch,
+                        self.config,
+                        idx,
+                        art,
+                        full_articles,
+                        tokenizer=tokenizer,
+                    )
+                    for idx, art in enumerate(items)
+                ]
 
             for future in as_completed(futures):
-                i = future.result()
-    else:
-        device = torch.device(0 if torch.cuda.is_available() else "cpu")
-
-        for batch_file in tqdm(input_file_list):
-            ner_main.run_ner_main(ner_config, batch_file, device)
-
-    print("Finished running NER script.")
+                _ = future.result()
 
 
-def run_analysis(analysis_config: dict, ignore: bool):
-    if ignore:
-        print("Ignoring script: analysis.")
-        return
+class NERModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("ner", config, ignore_dict)
 
-    print("Running analysis script.")
+    def _execute(self):
+        if self.config.get("clear_old_results", True):
+            try:
+                os.remove(self.config["output_path"])
+            except OSError:
+                pass
 
-    analysis.run(analysis_config)
+        os.makedirs(self.config["output_path"], exist_ok=True)
 
-    print("Finished running analysis script.")
+        input_file_list = sorted(
+            glob(f'{self.config["input_path"]}*.json'),
+            key=lambda x: int(
+                os.path.splitext(os.path.basename(x))[0].split("-")[-1]
+            ),
+        )
 
+        # Sort files on range
+        if "article_limit" in self.config:
+            if isinstance(self.config["article_limit"], list):
+                start = self.config["article_limit"][0]
+                end = self.config["article_limit"][1]
 
-def run_metrics(config: dict, ignore: bool):
-    if ignore:
-        print("Ignoring script: metrics.")
-        return
+                input_file_list = ner_main.filter_files(
+                    input_file_list, start, end
+                )
 
-    print("Running metrics script.")
+                print(f"processing articles between {start} and {end} range")
 
-    metrics_config = config["metrics"]
+        # Run prediction on each sentence in each article
+        if self.config["multiprocessing"]:
+            with ProcessPoolExecutor(min(CPU_LIMIT, cpu_count())) as executor:
+                futures = [
+                    executor.submit(
+                        ner_main.run_ner_main, self.config, batch_file
+                    )
+                    for batch_file in input_file_list
+                ]
 
-    metrics.get_metrics(metrics_config)
+                for future in as_completed(futures):
+                    _ = future.result()
+        else:
+            device = torch.device(0 if torch.cuda.is_available() else "cpu")
 
-    print("Finished running metrics script.")
+            for batch_file in tqdm(input_file_list):
+                ner_main.run_ner_main(self.config, batch_file, device)
 
-
-def run_nel(config: dict, ignore: bool):
-    if ignore:
-        print("Ignoring script: nel.")
-        return
-
-    print("Running nel script.")
-
-    nel_config = config["nel"]
-
-    nel.nel_main(nel_config)
-
-    print("Finished running nel script.")
-
-
-def run_merger(config: dict, ignore: bool):
-    if ignore:
-        print("Ignoring script: merger.")
-        return
-
-    print("Running merger script.")
-
-    merger_config = config["merger"]
-
-    entity_merger.run_entity_merger(merger_config)
-
-    print("Finished running merger script.")
+        return True
 
 
-def run_search(config: dict, ignore: bool):
-    if ignore:
-        print("Ignoring script: result inspection.")
-        return
+class AnalysisModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("analysis", config, ignore_dict)
 
-    print("Running result inspection script.")
+    def _execute(self):
+        return analysis.run(self.config)
 
-    search_config = config["result_inspection"]
 
-    os.makedirs(os.path.dirname(search_config["output_file"]), exist_ok=True)
-    searcher = search.EntitySearch(search_config)
-    searcher.run()
+class MetricsModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("metrics", config, ignore_dict)
 
-    print("Finished running result inspection script.")
+    def _execute(self):
+        return metrics.get_metrics(self.full_config["metrics"])
+
+
+class NelModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("nel", config, ignore_dict)
+
+    def _execute(self):
+        return nel.nel_main(self.full_config["nel"])
+
+
+class MergerModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("merger", config, ignore_dict)
+
+    def _execute(self):
+        return entity_merger.run_entity_merger(self.full_config["merger"])
+
+
+class SearchModule(EasyNerModule):
+    def __init__(self, config, ignore_dict):
+        super().__init__("result_inspection", config, ignore_dict)
+
+    def _execute(self):
+        search_config = self.full_config["result_inspection"]
+        os.makedirs(
+            os.path.dirname(search_config["output_file"]), exist_ok=True
+        )
+        searcher = search.EntitySearch(search_config)
+        return searcher.run()
 
 
 if __name__ == "__main__":
-
     print("Please see config.json for configuration!")
 
     with open("config.json", "r") as f:
@@ -346,11 +285,8 @@ if __name__ == "__main__":
 
     print("Loaded config:")
 
-    TIMEKEEP = config["TIMEKEEP"]
-    if TIMEKEEP:
-        start_main = time.time()
-        tkff = open("timekeep.txt", "w", encoding="utf8")
-        tkff.write(f"start_time at: {start_main}\n")
+    # Initialize timing manager
+    timer = TimingManager(enabled=config["TIMEKEEP"])
 
     os.makedirs("data", exist_ok=True)
 
@@ -358,107 +294,26 @@ if __name__ == "__main__":
     CPU_LIMIT = config["CPU_LIMIT"]  # for multiprocessing
     print(f"Limited to {CPU_LIMIT} CPUs")
 
-    # Load abstracts from the CORD dataset.
-    if not ignore["cord_loader"] and TIMEKEEP:
-        start_cordloader = time.time()
+    # Define modules pipeline
+    modules = [
+        CordLoaderModule(config, ignore),
+        DownloaderModule(config, ignore),
+        TextLoaderModule(config, ignore),
+        PubmedBulkLoaderModule(config, ignore),
+        SplitterModule(config, ignore),
+        NERModule(config, ignore),
+        AnalysisModule(config, ignore),
+        MetricsModule(config, ignore),
+        NelModule(config, ignore),
+        MergerModule(config, ignore),
+        SearchModule(config, ignore),
+    ]
 
-    run_cord_loader(config["cord_loader"], ignore=ignore["cord_loader"])
+    # Execute each module
+    for module in modules:
+        module.run(timer=timer)
 
-    if not ignore["cord_loader"] and TIMEKEEP:
-        end_cordloader = time.time()
-        tkff.write(f"Cord Loader time: {end_cordloader-start_cordloader}\n")
-    print()
-
-    # Download articles from the PubMed API.
-    if not ignore["downloader"] and TIMEKEEP:
-        start_downloader = time.time()
-
-    run_download(config["downloader"], ignore=ignore["downloader"])
-
-    if not ignore["downloader"] and TIMEKEEP:
-        end_downloader = time.time()
-        tkff.write(f"Downloader time: {end_downloader-start_downloader}\n")
-    print()
-
-    # Prepare free text for pipelne.
-    if not ignore["text_loader"] and TIMEKEEP:
-        start_textloader = time.time()
-
-    run_text_loader(config["text_loader"], ignore=ignore["text_loader"])
-
-    if not ignore["text_loader"] and TIMEKEEP:
-        end_textloader = time.time()
-        tkff.write(f"Text loader time: {end_textloader-start_textloader}\n")
-    print()
-
-    # Bulk download pubmed baseline though ftp
-    if not ignore["pubmed_bulk_loader"] and TIMEKEEP:
-        start_pbloader = time.time()
-
-    run_pubmed_bulk_loader(
-        config["pubmed_bulk_loader"], ignore=ignore["pubmed_bulk_loader"]
-    )
-
-    if not ignore["pubmed_bulk_loader"] and TIMEKEEP:
-        end_pbloader = time.time()
-        tkff.write(f"Pubmed bulk loader time: {end_pbloader-start_pbloader}\n")
-    print()
-
-    # Extract sentences from each article.
-    if TIMEKEEP:
-        start_splitter = time.time()
-
-    run_splitter(config["splitter"], ignore=ignore["splitter"])
-
-    if TIMEKEEP:
-        end_splitter = time.time()
-        tkff.write(f"Splitter time: {end_splitter-start_splitter}\n")
-    print()
-
-    # Run NER inference on each sentence for each article.
-    if TIMEKEEP:
-        start_ner = time.time()
-
-    run_ner(config["ner"], ignore=ignore["ner"])
-
-    if TIMEKEEP:
-        end_ner = time.time()
-        tkff.write(f"NER time: {end_ner-start_ner}\n")
-        tkff.write(f"Total time till NER: {end_ner-start_main}\n")
-    print()
-
-    # Run analysis on the entities that were found by NER.
-    if not ignore["analysis"] and TIMEKEEP:
-        start_analysis = time.time()
-
-    run_analysis(config["analysis"], ignore=ignore["analysis"])
-
-    if not ignore["analysis"] and TIMEKEEP:
-        end_analysis = time.time()
-        tkff.write(f"Analysis time: {end_analysis-start_analysis}\n")
-    print()
-
-    # Run metrics on models and gold-standard set
-    run_metrics(config, ignore=ignore["metrics"])
-    print()
-
-    # Run nel on models and gold-standard set
-    run_nel(config, ignore=ignore["nel"])
-    print()
-
-    # Run merger on specified output folders
-    run_merger(config, ignore=ignore["merger"])
-    print()
-
-    # Run result inspection on specified NER folder
-    run_search(config, ignore=ignore["result_inspection"])
-    print()
+    # Finalize timing information
+    timer.finalize()
 
     print("Program finished successfully.")
-
-    if TIMEKEEP:
-        end_main = time.time()
-        tkff.write(f"end_time at: {end_main}\n")
-
-        tkff.write(f"Total runtime: {end_main-start_main}\n")
-        tkff.close()
