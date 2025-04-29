@@ -14,7 +14,7 @@ from datasets import Dataset, load_dataset
 
 from .transformer_based import ner_biobert
 from easyner import util
-from .ner_inference import NERInferenceSession_biobert_onnx
+
 
 OUTPUT_FILE_TEMPLATE = "{output_path}/{output_file_prefix}-{batch_index}.json"
 
