@@ -220,32 +220,45 @@ class BioBertNERProcessor(NERProcessor):
 
         cpu_limit = self.config.get("cpu_limit", 1)
 
-        with ProcessPoolExecutor(min(cpu_limit, cpu_count())) as executor:
-            futures = []
+        try:
+            with ProcessPoolExecutor(min(cpu_limit, cpu_count())) as executor:
+                futures = []
 
-            # Create a separate device for each worker if multiple GPUs are available
-            for i, batch_file in enumerate(input_files):
-                device_id = (
-                    i % torch.cuda.device_count()
-                    if torch.cuda.is_available()
-                    else "cpu"
-                )
-                device = (
-                    torch.device(device_id)
-                    if isinstance(device_id, int)
-                    else device_id
-                )
-                futures.append(
-                    executor.submit(
-                        self._process_single_file, batch_file, device
+                # Create a separate device for each worker if multiple GPUs are available
+                for i, batch_file in enumerate(input_files):
+                    device_id = (
+                        i % torch.cuda.device_count()
+                        if torch.cuda.is_available()
+                        else "cpu"
                     )
-                )
+                    device = (
+                        torch.device(device_id)
+                        if isinstance(device_id, int)
+                        else device_id
+                    )
+                    futures.append(
+                        executor.submit(
+                            self._process_single_file, batch_file, device
+                        )
+                    )
 
-            for i, future in enumerate(as_completed(futures)):
-                batch_index = future.result()
-                print(
-                    f"Completed BioBERT batch {batch_index} ({i+1}/{len(futures)})"
+                for i, future in enumerate(as_completed(futures)):
+                    try:
+                        batch_index = future.result()
+                        print(
+                            f"Completed BioBERT batch {batch_index} ({i+1}/{len(futures)})"
+                        )
+                    except Exception as e:
+                        print(f"Error processing batch: {e}")
+        except Exception as e:
+            print(f"Error in parallel processing: {e}")
+            # Fall back to sequential processing
+            print("Falling back to sequential processing")
+            for batch_file in input_files:
+                device = torch.device(
+                    0 if torch.cuda.is_available() else "cpu"
                 )
+                self._process_single_file(batch_file, device)
 
     def _get_optimal_batch_size(
         self, dataset: Dataset, text_column: str, fallback_batch_size: int = 32
