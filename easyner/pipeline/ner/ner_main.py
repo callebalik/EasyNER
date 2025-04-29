@@ -76,6 +76,11 @@ class NERPipeline:
         # Get sorted input files
         input_file_list = self._get_input_files_sorted()
 
+        # Skip processing if no input files are found
+        if not input_file_list:
+            print("No input files found. Skipping processing.")
+            return
+
         # Let the processor handle the dataset in the most appropriate way
         device = torch.device(0 if torch.cuda.is_available() else "cpu")
         self.processor.process_dataset(input_file_list, device)
