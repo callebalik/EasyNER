@@ -13,9 +13,7 @@ from pathlib import Path, PurePosixPath
 import torch
 from tqdm import tqdm
 
-from easyner.pipeline.ner.ner_main import (
-    NERProcessor,
-)
+from easyner.pipeline.ner.processor import NERProcessor
 
 
 class BioBertNERProcessor(NERProcessor):
