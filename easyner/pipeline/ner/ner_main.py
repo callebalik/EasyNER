@@ -4,7 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 import torch
 from glob import glob
-from typing import List, Dict, Any, Optional, Union, Tuple, Iterator
+from typing import List, Dict, Any, Optional, Set, Union, Tuple, Iterator
 from abc import ABC, abstractmethod
 from tqdm import tqdm
 
@@ -174,113 +174,6 @@ class SpacyNERProcessor(NERProcessor):
                 )
 
 
-class BioBertNERProcessor(NERProcessor):
-    """NER processor using BioBert fine-tuned model."""
-
-    def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)
-        # Load BioBERT model once for all processing
-        self._model = None
-
-    def _initialize_model(self, device: Any) -> None:
-        """Initialize the BioBERT model once for all processing."""
-        # Implementation-specific model loading
-        pass
-
-    def process_dataset(
-        self, input_files: List[str], device: Any = None
-    ) -> None:
-        """
-        Process all files using BioBERT.
-
-        Parameters:
-        -----------
-        input_files: List[str]
-            List of input file paths to process
-        device: Any, optional
-            Device to use for processing
-        """
-        if device is None:
-            device = torch.device(0 if torch.cuda.is_available() else "cpu")
-
-        # Initialize model once for all processing
-        self._initialize_model(device)
-
-        # BioBERT often benefits from batched processing across files
-        if self.config.get("cross_file_batching", False):
-            self._process_with_cross_file_batching(input_files, device)
-        elif self.config.get("multiprocessing", False):
-            # For multi-GPU setups
-            self._process_files_in_parallel(input_files)
-        else:
-            # Process sequentially
-            for batch_file in tqdm(
-                input_files, desc="Processing with BioBERT"
-            ):
-                self._process_single_file(batch_file, device)
-
-    def _process_single_file(self, batch_file: str, device: Any) -> int:
-        """Process a single file with BioBERT NER."""
-        from .transformer_based.ner_biobert import (
-            run_ner_with_biobert_finetuned,
-        )
-
-        articles, batch_index = self._read_batch_file(batch_file)
-
-        if not articles:
-            self._save_processed_articles(articles, batch_index)
-            return batch_index
-
-        processed_articles = run_ner_with_biobert_finetuned(
-            articles, self.config, batch_index, device
-        )
-
-        self._save_processed_articles(processed_articles, batch_index)
-        return batch_index
-
-    def _process_with_cross_file_batching(
-        self, input_files: List[str], device: Any
-    ) -> None:
-        """Process with optimal batching across files."""
-        # Implementation for cross-file batching strategy
-        # This would combine articles from multiple files to create optimally-sized batches
-        # for transformer processing
-        pass
-
-    def _process_files_in_parallel(self, input_files: List[str]) -> None:
-        """Process files in parallel using multiprocessing."""
-        from multiprocessing import cpu_count
-
-        cpu_limit = self.config.get("cpu_limit", 1)
-
-        with ProcessPoolExecutor(min(cpu_limit, cpu_count())) as executor:
-            futures = []
-
-            # Create a separate device for each worker if multiple GPUs are available
-            for i, batch_file in enumerate(input_files):
-                device_id = (
-                    i % torch.cuda.device_count()
-                    if torch.cuda.is_available()
-                    else "cpu"
-                )
-                device = (
-                    torch.device(device_id)
-                    if isinstance(device_id, int)
-                    else device_id
-                )
-                futures.append(
-                    executor.submit(
-                        self._process_single_file, batch_file, device
-                    )
-                )
-
-            for i, future in enumerate(as_completed(futures)):
-                batch_index = future.result()
-                print(
-                    f"Completed BioBERT batch {batch_index} ({i+1}/{len(futures)})"
-                )
-
-
 class NERProcessorFactory:
     """Factory class for creating appropriate NER processors."""
 
@@ -303,6 +196,10 @@ class NERProcessorFactory:
         if model_type == "spacy_phrasematcher":
             return SpacyNERProcessor(config)
         elif model_type == "biobert_finetuned":
+            from easyner.pipeline.ner.transformer_based.ner_biobert import (
+                BioBertNERProcessor,
+            )
+
             return BioBertNERProcessor(config)
         else:
             raise ValueError(
