@@ -6,7 +6,7 @@ from easyner.io.base import IOHandler
 
 
 # Create a concrete implementation of IOHandler for testing
-class TestHandler(IOHandler):
+class MockHandler(IOHandler):
     def read(self, file_path, **kwargs):
         return {"test": "data"}
 
@@ -18,16 +18,16 @@ class TestHandler(IOHandler):
 class TestIOHandlerBase:
 
     def test_init_default_encoding(self):
-        handler = TestHandler()
+        handler = MockHandler()
         assert handler.encoding == IOHandler.DEFAULT_ENCODING
 
     def test_init_custom_encoding(self):
         custom_encoding = "latin-1"
-        handler = TestHandler(encoding=custom_encoding)
+        handler = MockHandler(encoding=custom_encoding)
         assert handler.encoding == custom_encoding
 
     def test_ensure_dir_exists(self):
-        handler = TestHandler()
+        handler = MockHandler()
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             test_dir = os.path.join(tmp_dir, "test_dir")
@@ -46,7 +46,7 @@ class TestIOHandlerBase:
             handler.ensure_dir_exists(test_file)
 
     def test_check_file_exists(self):
-        handler = TestHandler()
+        handler = MockHandler()
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create a test file
