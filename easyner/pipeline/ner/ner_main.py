@@ -1,6 +1,5 @@
 # coding=utf-8
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 import torch
 from glob import glob
