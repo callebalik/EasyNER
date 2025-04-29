@@ -150,6 +150,9 @@ class ConfigGenerator:
         Returns:
             The default value for the property
         """
+        if "default" in schema_property:  # Top-level default value
+            return schema_property["default"]
+
         if "$ref" in schema_property:
             if schema_property["$ref"] == "#/definitions/path":
                 return ""
