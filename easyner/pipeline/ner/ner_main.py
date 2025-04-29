@@ -141,6 +141,8 @@ def find_and_sort_input_files(ner_config: dict) -> list:
     if "article_limit" in ner_config and isinstance(
         ner_config["article_limit"], list
     ):
+        from easyner.io.utils import filter_files
+
         start = ner_config["article_limit"][0]
         end = ner_config["article_limit"][1]
 
@@ -257,35 +259,6 @@ def prepare_output_path(ner_config: dict, batch_index: int) -> str:
         output_file_prefix=ner_config["output_file_prefix"],
         batch_index=batch_index,
     )
-
-
-# Update function calls throughout the code
-def filter_files(list_files, start, end):
-    """
-    Filter files based on index range.
-
-    Parameters:
-    -----------
-    list_files: list
-        List of file paths to filter
-    start: int
-        Starting index (inclusive)
-    end: int
-        Ending index (inclusive)
-
-    Returns:
-    --------
-    list: Filtered list of file paths
-    """
-    filtered_list_files = []
-    for file in list_files:
-        file_idx = int(
-            os.path.splitext(os.path.basename(file))[0].split("-")[-1]
-        )
-        if file_idx >= start and file_idx <= end:
-            filtered_list_files.append(file)
-
-    return filtered_list_files
 
 
 if __name__ == "__main__":
