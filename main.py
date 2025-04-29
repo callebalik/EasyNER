@@ -19,7 +19,7 @@ from scripts import search
 from scripts import metrics
 from scripts import nel
 from scripts import entity_merger
-from scripts import ner_main
+from easyner.pipeline.ner import ner_main
 from scripts import analysis
 from scripts import pubmed_bulk
 
