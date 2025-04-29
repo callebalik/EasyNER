@@ -83,7 +83,7 @@ class NERPipeline:
 
         # Let the processor handle the dataset in the most appropriate way
         device = torch.device(0 if torch.cuda.is_available() else "cpu")
-        self.processor.process_dataset(input_file_list, device)
+        self.processor.process_dataset(input_file_list, device=device)
 
         print("----NER pipeline processing complete----")
 
