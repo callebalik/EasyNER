@@ -15,52 +15,7 @@ from easyner import util
 OUTPUT_FILE_TEMPLATE = "{output_path}/{output_file_prefix}-{batch_index}.json"
 
 
-def run_ner_module(ner_config: dict, cpu_limit: int):
-    """
-    Main entry point for the NER pipeline that handles:
-    - Output directory setup
-    - File discovery and filtering
-    - Managing parallel or sequential processing
-
-    Parameters:
-    -----------
-    ner_config: dict
-        Configuration for NER processing
-    cpu_limit: int
-        Maximum number of CPUs to use for multiprocessing
-    """
-    print("Starting NER pipeline...")
-
-    # Setup output directory
-    output_path = ner_config["output_path"]
-    if ner_config.get("clear_old_results", True):
-        try:
-            os.remove(output_path)
-        except OSError:
-            # Directory might not exist or might be a directory
-            pass
-
-    os.makedirs(output_path, exist_ok=True)
-
-    # Find and sort input files
-    input_file_list = find_and_sort_input_files(ner_config)
-
-    # Process files (in parallel or sequentially)
-    if ner_config["multiprocessing"]:
-        process_files_in_parallel(input_file_list, ner_config, cpu_limit)
-    else:
-        device = torch.device(0 if torch.cuda.is_available() else "cpu")
-        print(
-            f"Processing files sequentially with {ner_config['model_type']} on device: {device}"
-        )
-
-        for batch_file in tqdm(input_file_list, desc="Processing batches"):
-            process_batch_file(ner_config, batch_file, device)
-
-    print("----NER pipeline processing complete----")
-
-
-def find_and_sort_input_files(ner_config: dict) -> list:
+def _get_input_files_sorted(ner_config: dict) -> list:
     """
     Find and sort input files based on configuration.
 
@@ -93,6 +48,28 @@ def find_and_sort_input_files(ner_config: dict) -> list:
         print(f"Processing articles in range {start} to {end}")
 
     return input_file_list
+
+
+def _build_output_filepath(ner_config: dict, batch_index: int) -> str:
+    """
+    Generate the output file path based on the configuration and batch index.
+
+    Parameters:
+    -----------
+    ner_config: dict
+        Configuration with output paths and prefixes
+    batch_index: int
+        The batch index to include in the filename
+
+    Returns:
+    --------
+    str: The formatted output file path
+    """
+    return OUTPUT_FILE_TEMPLATE.format(
+        output_path=ner_config["output_path"],
+        output_file_prefix=ner_config["output_file_prefix"],
+        batch_index=batch_index,
+    )
 
 
 def process_files_in_parallel(
@@ -152,7 +129,7 @@ def process_batch_file(ner_config: dict, batch_file: str, device=None) -> int:
     batch_index = extract_batch_index(batch_file)
 
     # Prepare output file path
-    output_file = prepare_output_path(ner_config, batch_index)
+    output_file = _build_output_filepath(ner_config, batch_index)
 
     # Handle empty articles case
     if len(articles) == 0:
@@ -187,26 +164,49 @@ def process_batch_file(ner_config: dict, batch_file: str, device=None) -> int:
     return batch_index
 
 
-def prepare_output_path(ner_config: dict, batch_index: int) -> str:
+def run_ner_module(ner_config: dict, cpu_limit: int):
     """
-    Generate the output file path based on the configuration and batch index.
+    Main entry point for the NER pipeline that handles:
+    - Output directory setup
+    - File discovery and filtering
+    - Managing parallel or sequential processing
 
     Parameters:
     -----------
     ner_config: dict
-        Configuration with output paths and prefixes
-    batch_index: int
-        The batch index to include in the filename
-
-    Returns:
-    --------
-    str: The formatted output file path
+        Configuration for NER processing
+    cpu_limit: int
+        Maximum number of CPUs to use for multiprocessing
     """
-    return OUTPUT_FILE_TEMPLATE.format(
-        output_path=ner_config["output_path"],
-        output_file_prefix=ner_config["output_file_prefix"],
-        batch_index=batch_index,
-    )
+    print("Starting NER pipeline...")
+
+    # Setup output directory
+    output_path = ner_config["output_path"]
+    if ner_config.get("clear_old_results", True):
+        try:
+            os.remove(output_path)
+        except OSError:
+            # Directory might not exist or might be a directory
+            pass
+
+    os.makedirs(output_path, exist_ok=True)
+
+    # Find and sort input files
+    input_file_list = _get_input_files_sorted(ner_config)
+
+    # Process files (in parallel or sequentially)
+    if ner_config["multiprocessing"]:
+        process_files_in_parallel(input_file_list, ner_config, cpu_limit)
+    else:
+        device = torch.device(0 if torch.cuda.is_available() else "cpu")
+        print(
+            f"Processing files sequentially with {ner_config['model_type']} on device: {device}"
+        )
+
+        for batch_file in tqdm(input_file_list, desc="Processing batches"):
+            process_batch_file(ner_config, batch_file, device)
+
+    print("----NER pipeline processing complete----")
 
 
 if __name__ == "__main__":
