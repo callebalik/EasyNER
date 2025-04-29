@@ -4,7 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 import torch
 from glob import glob
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Tuple, Iterator
 from abc import ABC, abstractmethod
 from tqdm import tqdm
 
@@ -31,64 +31,20 @@ class NERProcessor(ABC):
         )
 
     @abstractmethod
-    def process_articles(
-        self, articles: List[Dict], batch_index: int, device: Any = None
-    ) -> List[Dict]:
+    def process_dataset(
+        self, input_files: List[str], device: Any = None
+    ) -> None:
         """
-        Process articles with named entity recognition.
+        Process the entire dataset of files with named entity recognition.
 
         Parameters:
         -----------
-        articles: List[Dict]
-            List of article dictionaries to process
-        batch_index: int
-            The batch index of the current file
+        input_files: List[str]
+            List of input file paths to process
         device: Any, optional
             Device to use for processing
-
-        Returns:
-        --------
-        List[Dict]: Processed articles with NER results
         """
         pass
-
-    def process_batch_file(self, batch_file: str, device: Any = None) -> int:
-        """
-        Process a single batch file with NER.
-
-        Parameters:
-        -----------
-        batch_file: str
-            Path to the batch file to process
-        device: Any, optional
-            Device to use for processing
-
-        Returns:
-        --------
-        int: The batch index of the processed file
-        """
-        # Read articles
-        articles = JsonHandler().read(batch_file)
-
-        # Extract batch index from filename
-        batch_index = extract_batch_index(batch_file)
-
-        # Prepare output file path
-        output_file = self._build_output_filepath(batch_index)
-
-        # Handle empty articles case
-        if len(articles) == 0:
-            util.append_to_json_file(output_file, articles)
-            return batch_index
-
-        # Process articles with the specific NER implementation
-        processed_articles = self.process_articles(
-            articles, batch_index, device
-        )
-
-        # Save results to output file
-        util.append_to_json_file(output_file, processed_articles)
-        return batch_index
 
     def _build_output_filepath(self, batch_index: int) -> str:
         """
@@ -109,24 +65,113 @@ class NERProcessor(ABC):
             batch_index=batch_index,
         )
 
+    def _read_batch_file(self, batch_file: str) -> Tuple[List[Dict], int]:
+        """
+        Read a batch file and extract its index.
+
+        Parameters:
+        -----------
+        batch_file: str
+            Path to the batch file to read
+
+        Returns:
+        --------
+        Tuple[List[Dict], int]: Articles and batch index
+        """
+        articles = JsonHandler().read(batch_file)
+        batch_index = extract_batch_index(batch_file)
+        return articles, batch_index
+
+    def _save_processed_articles(
+        self, articles: List[Dict], batch_index: int
+    ) -> None:
+        """
+        Save processed articles to the appropriate output file.
+
+        Parameters:
+        -----------
+        articles: List[Dict]
+            Processed articles to save
+        batch_index: int
+            Batch index for the output filename
+        """
+        output_file = self._build_output_filepath(batch_index)
+        util.append_to_json_file(output_file, articles)
+
 
 class SpacyNERProcessor(NERProcessor):
     """NER processor using SpaCy's phrase matcher."""
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        # Any SpaCy-specific initialization can go here
+        # Load spaCy model once for all processing
+        self._initialize_model()
 
-    def process_articles(
-        self, articles: List[Dict], batch_index: int, device: Any = None
-    ) -> List[Dict]:
+    def _initialize_model(self) -> None:
+        """Initialize the spaCy model once for all processing."""
+        # Implementation-specific initialization
+        pass
+
+    def process_dataset(
+        self, input_files: List[str], device: Any = None
+    ) -> None:
+        """
+        Process all files using SpaCy's phrase matcher.
+
+        Parameters:
+        -----------
+        input_files: List[str]
+            List of input file paths to process
+        device: Any, optional
+            Device to use for processing (not used for SpaCy)
+        """
         from .dictionary_based.ner_spacy import (
             run_ner_with_spacy_phrasematcher,
         )
 
-        return run_ner_with_spacy_phrasematcher(
+        # Process files sequentially or in parallel based on configuration
+        if self.config.get("multiprocessing", False):
+            self._process_files_in_parallel(input_files)
+        else:
+            for batch_file in tqdm(input_files, desc="Processing with SpaCy"):
+                self._process_single_file(batch_file)
+
+    def _process_single_file(self, batch_file: str) -> int:
+        """Process a single file with SpaCy NER."""
+        from .dictionary_based.ner_spacy import (
+            run_ner_with_spacy_phrasematcher,
+        )
+
+        articles, batch_index = self._read_batch_file(batch_file)
+
+        if not articles:
+            self._save_processed_articles(articles, batch_index)
+            return batch_index
+
+        processed_articles = run_ner_with_spacy_phrasematcher(
             articles, self.config, batch_index
         )
+
+        self._save_processed_articles(processed_articles, batch_index)
+        return batch_index
+
+    def _process_files_in_parallel(self, input_files: List[str]) -> None:
+        """Process files in parallel using multiprocessing."""
+        from multiprocessing import cpu_count
+
+        cpu_limit = self.config.get("cpu_limit", 1)
+
+        with ProcessPoolExecutor(min(cpu_limit, cpu_count())) as executor:
+            futures = [
+                executor.submit(self._process_single_file, batch_file)
+                for batch_file in input_files
+            ]
+
+            for i, future in enumerate(as_completed(futures)):
+                batch_index = future.result()
+                print(
+                    f"Completed SpaCy batch {batch_index} ({i+1}/{len(futures)})"
+                )
 
 
 class BioBertNERProcessor(NERProcessor):
@@ -134,18 +179,136 @@ class BioBertNERProcessor(NERProcessor):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        # Any BioBert-specific initialization can go here
+        # Load BioBERT model once for all processing
+        self._model = None
 
-    def process_articles(
-        self, articles: List[Dict], batch_index: int, device: Any = None
-    ) -> List[Dict]:
+    def _initialize_model(self, device: Any) -> None:
+        """Initialize the BioBERT model once for all processing."""
+        # Implementation-specific model loading
+        pass
+
+    def process_dataset(
+        self, input_files: List[str], device: Any = None
+    ) -> None:
+        """
+        Process all files using BioBERT.
+
+        Parameters:
+        -----------
+        input_files: List[str]
+            List of input file paths to process
+        device: Any, optional
+            Device to use for processing
+        """
+        if device is None:
+            device = torch.device(0 if torch.cuda.is_available() else "cpu")
+
+        # Initialize model once for all processing
+        self._initialize_model(device)
+
+        # BioBERT often benefits from batched processing across files
+        if self.config.get("cross_file_batching", False):
+            self._process_with_cross_file_batching(input_files, device)
+        elif self.config.get("multiprocessing", False):
+            # For multi-GPU setups
+            self._process_files_in_parallel(input_files)
+        else:
+            # Process sequentially
+            for batch_file in tqdm(
+                input_files, desc="Processing with BioBERT"
+            ):
+                self._process_single_file(batch_file, device)
+
+    def _process_single_file(self, batch_file: str, device: Any) -> int:
+        """Process a single file with BioBERT NER."""
         from .transformer_based.ner_biobert import (
             run_ner_with_biobert_finetuned,
         )
 
-        return run_ner_with_biobert_finetuned(
+        articles, batch_index = self._read_batch_file(batch_file)
+
+        if not articles:
+            self._save_processed_articles(articles, batch_index)
+            return batch_index
+
+        processed_articles = run_ner_with_biobert_finetuned(
             articles, self.config, batch_index, device
         )
+
+        self._save_processed_articles(processed_articles, batch_index)
+        return batch_index
+
+    def _process_with_cross_file_batching(
+        self, input_files: List[str], device: Any
+    ) -> None:
+        """Process with optimal batching across files."""
+        # Implementation for cross-file batching strategy
+        # This would combine articles from multiple files to create optimally-sized batches
+        # for transformer processing
+        pass
+
+    def _process_files_in_parallel(self, input_files: List[str]) -> None:
+        """Process files in parallel using multiprocessing."""
+        from multiprocessing import cpu_count
+
+        cpu_limit = self.config.get("cpu_limit", 1)
+
+        with ProcessPoolExecutor(min(cpu_limit, cpu_count())) as executor:
+            futures = []
+
+            # Create a separate device for each worker if multiple GPUs are available
+            for i, batch_file in enumerate(input_files):
+                device_id = (
+                    i % torch.cuda.device_count()
+                    if torch.cuda.is_available()
+                    else "cpu"
+                )
+                device = (
+                    torch.device(device_id)
+                    if isinstance(device_id, int)
+                    else device_id
+                )
+                futures.append(
+                    executor.submit(
+                        self._process_single_file, batch_file, device
+                    )
+                )
+
+            for i, future in enumerate(as_completed(futures)):
+                batch_index = future.result()
+                print(
+                    f"Completed BioBERT batch {batch_index} ({i+1}/{len(futures)})"
+                )
+
+
+class NERProcessorFactory:
+    """Factory class for creating appropriate NER processors."""
+
+    @staticmethod
+    def create_processor(config: Dict[str, Any]) -> NERProcessor:
+        """
+        Create an appropriate NER processor based on configuration.
+
+        Parameters:
+        -----------
+        config: Dict[str, Any]
+            Configuration for NER processing
+
+        Returns:
+        --------
+        NERProcessor: The appropriate processor instance
+        """
+        model_type = config.get("model_type", "")
+
+        if model_type == "spacy_phrasematcher":
+            return SpacyNERProcessor(config)
+        elif model_type == "biobert_finetuned":
+            return BioBertNERProcessor(config)
+        else:
+            raise ValueError(
+                f"Unknown model type: {model_type}. "
+                "Supported types are 'spacy_phrasematcher' and 'biobert_finetuned'."
+            )
 
 
 class NERPipeline:
@@ -163,24 +326,10 @@ class NERPipeline:
             Maximum number of CPUs to use for multiprocessing
         """
         self.config = config
-        self.cpu_limit = cpu_limit
+        self.config["cpu_limit"] = cpu_limit
 
-        # Create the appropriate processor based on model_type
-        self._create_processor()
-
-    def _create_processor(self) -> None:
-        """Create the appropriate NER processor based on configuration."""
-        model_type = self.config.get("model_type", "")
-
-        if model_type == "spacy_phrasematcher":
-            self.processor = SpacyNERProcessor(self.config)
-        elif model_type == "biobert_finetuned":
-            self.processor = BioBertNERProcessor(self.config)
-        else:
-            raise ValueError(
-                f"Unknown model type: {model_type}. "
-                "Supported types are 'spacy_phrasematcher' and 'biobert_finetuned'."
-            )
+        # Create the appropriate processor using the factory
+        self.processor = NERProcessorFactory.create_processor(self.config)
 
     def _get_input_files_sorted(self) -> List[str]:
         """
@@ -211,38 +360,12 @@ class NERPipeline:
 
         return input_file_list
 
-    def _process_files_in_parallel(self, input_file_list: List[str]) -> None:
-        """
-        Process multiple batch files in parallel using a process pool.
-
-        Parameters:
-        -----------
-        input_file_list: List[str]
-            List of files to process
-        """
-        from multiprocessing import cpu_count
-
-        print(
-            f"Processing files in parallel with {self.config['model_type']} using {self.cpu_limit} CPUs"
-        )
-
-        with ProcessPoolExecutor(min(self.cpu_limit, cpu_count())) as executor:
-            futures = [
-                executor.submit(self.processor.process_batch_file, batch_file)
-                for batch_file in input_file_list
-            ]
-
-            # Process results as they complete
-            for i, future in enumerate(as_completed(futures)):
-                batch_index = future.result()
-                print(f"Completed batch {batch_index} ({i+1}/{len(futures)})")
-
     def run(self) -> None:
         """
         Main entry point for the NER pipeline.
         - Sets up output directory
         - Discovers and filters files
-        - Processes files in parallel or sequentially
+        - Delegates processing to the appropriate processor
         """
         print("----Starting NER pipeline----")
 
@@ -257,17 +380,9 @@ class NERPipeline:
         # Get sorted input files
         input_file_list = self._get_input_files_sorted()
 
-        # Process files (in parallel or sequentially)
-        if self.config["multiprocessing"]:
-            self._process_files_in_parallel(input_file_list)
-        else:
-            device = torch.device(0 if torch.cuda.is_available() else "cpu")
-            print(
-                f"Processing files sequentially with {self.config['model_type']} on device: {device}"
-            )
-
-            for batch_file in tqdm(input_file_list, desc="Processing batches"):
-                self.processor.process_batch_file(batch_file, device)
+        # Let the processor handle the dataset in the most appropriate way
+        device = torch.device(0 if torch.cuda.is_available() else "cpu")
+        self.processor.process_dataset(input_file_list, device)
 
         print("----NER pipeline processing complete----")
 
