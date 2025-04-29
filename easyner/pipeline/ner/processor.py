@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Tuple
 
 from easyner.io.handlers import JsonHandler
 from easyner.io.utils import extract_batch_index
+from easyner import util
 
 
 class NERProcessor(ABC):
