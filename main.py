@@ -16,7 +16,6 @@ from scripts import splitter
 from scripts import splitter_pubmed
 from scripts import text_loader
 from scripts import search
-from scripts import util
 from scripts import metrics
 from scripts import nel
 from scripts import entity_merger
