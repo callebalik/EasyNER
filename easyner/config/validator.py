@@ -175,7 +175,40 @@ class ConfigValidator:
                     self._print_message(path, prefix="  • ")
 
             # Perform schema validation
-            jsonschema.validate(instance=config_data, schema=self.schema)
+            try:
+                jsonschema.validate(instance=config_data, schema=self.schema)
+            except jsonschema.exceptions.ValidationError as e:
+                # Enhanced validation error reporting
+                error_path = (
+                    ".".join([str(p) for p in e.path]) if e.path else "root"
+                )
+                error_msg = (
+                    f"Schema validation error at '{error_path}': {e.message}"
+                )
+
+                # Show the invalid value
+                if e.instance is not None:
+                    error_msg += f"\nInvalid value: {e.instance}"
+
+                # Show what was expected from the schema
+                if e.schema:
+                    validation_info = {}
+                    for key in [
+                        "type",
+                        "required",
+                        "minimum",
+                        "maximum",
+                        "pattern",
+                        "enum",
+                    ]:
+                        if key in e.schema:
+                            validation_info[key] = e.schema[key]
+                    if validation_info:
+                        error_msg += f"\nExpected: {validation_info}"
+
+                self._print_section("SCHEMA VALIDATION ERROR:")
+                self._print_message(error_msg, prefix="  ")
+                return False
 
             if not self.quiet:
                 self._print_section(

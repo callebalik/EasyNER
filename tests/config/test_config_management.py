@@ -189,16 +189,39 @@ def test_validate_config(
     generator: ConfigGenerator,
 ) -> None:
     """Test the config validation functionality."""
-    # Validate the original config
-    result = validator.validate_config(config_files["config_path"])
+    # Disable quiet mode temporarily to see validation errors
+    validator.quiet = False
+
+    # Validate the original config and capture output
+    f = io.StringIO()
+    with redirect_stdout(f):
+        result = validator.validate_config(config_files["config_path"])
+
+    # Print error output if validation failed to help debug
+    if not result:
+        print(f"Config validation failed with errors:\n{f.getvalue()}")
+
     assert result, "Valid config should pass validation"
+
+    # Re-enable quiet mode
+    validator.quiet = True
 
     # Generate the template directly to the template path
     generator.generate_template(config_files["template_path"])
 
     # Validate the template using Path object
     template_path = Path(config_files["template_path"])
-    result = validator.validate_config(str(template_path))
+
+    # Disable quiet mode to see template validation errors
+    validator.quiet = False
+    f = io.StringIO()
+    with redirect_stdout(f):
+        result = validator.validate_config(str(template_path))
+
+    # Print error output if validation failed to help debug
+    if not result:
+        print(f"Template validation failed with errors:\n{f.getvalue()}")
+
     assert result, "Template should pass validation"
 
 
