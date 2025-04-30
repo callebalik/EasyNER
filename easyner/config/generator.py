@@ -41,7 +41,7 @@ class ConfigGenerator:
             schema_path: Path to the JSON schema file
             quiet: Whether to suppress standard output messages
         """
-        self.schema_path = schema_path
+        self.schema_path: str = str(SCHEMA_PATH.relative_to(PROJECT_ROOT))
         self.quiet = quiet
         self.validator = ConfigValidator(schema_path, quiet)
         self._schema: Optional[Dict[str, Any]] = None
@@ -265,9 +265,9 @@ class ConfigGenerator:
         # Create a template based on the schema
         template = {}
 
-        # Add schema reference to enable VS Code validation and autocompletion
+        # Add schema reference to enable IDE Code validation and autocompletion
         template["$schema"] = existing_template.get(
-            "$schema", str(self.schema_path.relative_to(PROJECT_ROOT))
+            "$schema", self.schema_path
         )
 
         # Process all properties
@@ -320,7 +320,7 @@ class ConfigGenerator:
                         "for your environment."
                     ),
                     "schema": (
-                        "Schema defined in scripts/config/schema.json. "
+                        f"Schema defined in {self.schema_path}. "
                         "Type hints should be provided in most editors."
                     ),
                 }
