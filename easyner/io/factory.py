@@ -1,7 +1,7 @@
 from typing import Optional
 
-from .base import IOHandler
-from .handlers import JsonHandler, ParquetHandler
+
+from .handlers import IOHandler, JsonHandler, ParquetHandler
 
 # Import other handlers as they are created
 

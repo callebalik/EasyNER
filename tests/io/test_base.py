@@ -2,7 +2,7 @@ import pytest
 import os
 import tempfile
 from pathlib import Path
-from easyner.io.base import IOHandler
+from easyner.io.handlers.base import IOHandler
 
 
 # Create a concrete implementation of IOHandler for testing
