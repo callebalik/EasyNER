@@ -28,9 +28,9 @@ class SpacyNERProcessor(NERProcessor):
         self.matcher = PhraseMatcher(self.nlp.vocab, attr="LOWER")
         terms = self._load_vocabulary()
 
-        """To create the patterns, each phrase has to be processed with the nlp object. If you have a trained pipeline loaded, doing this in a loop or list comprehension can easily become inefficient and slow. If you only need the tokenization and lexical attributes, you can run nlp.make_doc instead, which will only run the tokenizer. For an additional speed boost, you can also use the nlp.tokenizer.pipe method, which will process the texts as a stream."""
+        # To create the patterns, each phrase has to be processed with the nlp object. If you have a trained pipeline loaded, doing this in a loop or list comprehension can easily become inefficient and slow. If you only need the tokenization and lexical attributes, you can run nlp.make_doc instead, which will only run the tokenizer. For an additional speed boost, you can also use the nlp.tokenizer.pipe method, which will process the texts as a stream.
 
-        # TODO: Implement coice  between full nlp processing and nlp.make_doc/nlp.tokenizer.pipe
+        # TODO: Implement choice between full nlp processing and nlp.make_doc/nlp.tokenizer.pipe
 
         # patterns = [self.nlp.make_doc(term) for term in terms]
 
