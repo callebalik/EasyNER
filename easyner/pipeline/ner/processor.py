@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Tuple
 
-from easyner.io.utils import extract_batch_index
+from easyner.io.utils import get_batch_file_index
 from easyner import util
 from easyner.io.factory import get_io_handler
 
@@ -72,7 +72,7 @@ class NERProcessor(ABC):
         Tuple[List[Dict], int]: Articles and batch index
         """
         articles = get_io_handler("json").read(batch_file)
-        batch_index = extract_batch_index(batch_file)
+        batch_index = get_batch_file_index(batch_file)
         return articles, batch_index
 
     def _save_processed_articles(
