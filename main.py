@@ -10,19 +10,6 @@ from concurrent.futures import (
 )
 from multiprocessing import cpu_count
 
-from scripts import cord_loader
-from scripts import downloader
-from scripts import splitter
-from scripts import splitter_pubmed
-from scripts import text_loader
-from scripts import search
-from scripts import metrics
-from scripts import nel
-from scripts import entity_merger
-from easyner.pipeline.ner import ner_main
-from scripts import analysis
-from scripts import pubmed_bulk
-
 
 def run_cord_loader(cord_loader_config: dict, ignore: bool):
     if ignore:
@@ -30,6 +17,8 @@ def run_cord_loader(cord_loader_config: dict, ignore: bool):
         return
 
     print("Running cord_loader script.")
+    from scripts import cord_loader
+
     cord_loader.run(
         input_file=cord_loader_config["input_path"],
         output_file=cord_loader_config["output_path"],
@@ -45,6 +34,8 @@ def run_download(dl_config: dict, ignore: bool):
         return
 
     print("Running downloader script.")
+    from scripts import downloader
+
     downloader.run(
         input_file=dl_config["input_path"],
         output_file=dl_config["output_path"],
@@ -60,6 +51,7 @@ def run_text_loader(tl_config: dict, ignore: bool):
         return
 
     print("Running free text loader script")
+    from scripts import text_loader
 
     text_loader.run(tl_config)
 
@@ -72,6 +64,8 @@ def run_pubmed_bulk_loader(pbl_config: dict, ignore: bool):
         return
 
     print("Running pubmed bulk downloader script.")
+    from scripts import pubmed_bulk
+
     pubmed_bulk.run_pbl(pbl_config)
 
 
@@ -79,6 +73,9 @@ def run_splitter(splitter_config: dict, ignore: bool) -> dict:
     if ignore:
         print("Ignoring script: splitter.")
         return {}
+
+    from scripts import splitter
+    from scripts import splitter_pubmed
 
     os.makedirs(splitter_config["output_folder"], exist_ok=True)
 
@@ -208,6 +205,8 @@ def run_analysis(analysis_config: dict, ignore: bool):
 
     print("Running analysis script.")
 
+    from scripts import analysis
+
     analysis.run(analysis_config)
 
     print("Finished running analysis script.")
@@ -219,6 +218,8 @@ def run_metrics(config: dict, ignore: bool):
         return
 
     print("Running metrics script.")
+
+    from scripts import metrics
 
     metrics_config = config["metrics"]
 
@@ -234,6 +235,8 @@ def run_nel(config: dict, ignore: bool):
 
     print("Running nel script.")
 
+    from scripts import nel
+
     nel_config = config["nel"]
 
     nel.nel_main(nel_config)
@@ -248,6 +251,8 @@ def run_merger(config: dict, ignore: bool):
 
     print("Running merger script.")
 
+    from scripts import entity_merger
+
     merger_config = config["merger"]
 
     entity_merger.run_entity_merger(merger_config)
@@ -261,6 +266,8 @@ def run_search(config: dict, ignore: bool):
         return
 
     print("Running result inspection script.")
+
+    from scripts import search
 
     search_config = config["result_inspection"]
 
