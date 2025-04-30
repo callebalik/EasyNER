@@ -2,8 +2,7 @@
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any, Dict, List
-import spacy
-from spacy.matcher import PhraseMatcher
+
 from tqdm import tqdm
 
 from easyner.pipeline.ner.processor import NERProcessor
@@ -19,8 +18,11 @@ class SpacyNERProcessor(NERProcessor):
 
     def _initialize_model(self) -> None:
         """Initialize the spaCy model once for all processing."""
+        import spacy
+        from spacy.matcher import PhraseMatcher
+
         if not self.config.get("multiprocessing", False):
-            spacy.prefer_gpu()
+            spacy.prefer_gpu()  # Should ideally be called before importing spacy and loading any pipelines
 
         self.nlp = spacy.load("en_core_web_sm")  # Default model
         self.matcher = PhraseMatcher(self.nlp.vocab, attr="LOWER")
