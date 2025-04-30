@@ -1,13 +1,14 @@
 from typing import Optional
 
 
-from .handlers import IOHandler, JsonHandler, ParquetHandler
+from .handlers import IOHandler, JsonHandler, ParquetHandler, SQLiteHandler
 
 # Import other handlers as they are created
 
 _handlers = {
     "json": JsonHandler,
     "parquet": ParquetHandler,
+    "sqlite": SQLiteHandler,
     # Add other format mappings here
 }
 
