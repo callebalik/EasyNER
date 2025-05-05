@@ -1,8 +1,5 @@
-import os
-import tempfile
 import pandas as pd
 import numpy as np
-from pathlib import Path
 import pytest
 
 from easyner.io.converters.json_to_duck_converter import JsonToDuckConverter
@@ -10,7 +7,6 @@ from easyner.io.database.db_utils import (
     get_articles,
     get_sentences,
     get_entities,
-    initialize_db,
 )
 
 
