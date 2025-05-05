@@ -3,11 +3,7 @@ import numpy as np
 import pytest
 
 from easyner.io.converters.json_to_duck_converter import JsonToDuckConverter
-from easyner.io.database.db_utils import (
-    get_articles_df,
-    get_sentences_df,
-    get_entities_df,
-)
+from easyner.io.database.duckdb_handler import DuckDBHandler
 
 
 def test_list_convertible_files(temp_dir, test_json_file):
@@ -47,9 +43,9 @@ def test_convert_to_db(temp_dir, test_json_file):
     connection = converter.connection
 
     # Retrieve data from database as DataFrames (now default)
-    articles_data = get_articles_df(connection)
-    sentences_data = get_sentences_df(connection)
-    entities_data = get_entities_df(connection)
+    articles_data = converter.db_handler.get_articles_df()
+    sentences_data = converter.db_handler.get_sentences_df()
+    entities_data = converter.db_handler.get_entities_df()
 
     # Verify database content
     assert len(articles_data) == 2
@@ -101,6 +97,7 @@ class TestExampleDataStructureAndContent:
         test_data = {
             "converter": converter,
             "connection": converter.connection,
+            "db_handler": converter.db_handler,
             "db_path": db_path,
             "result": result,
         }
@@ -113,7 +110,7 @@ class TestExampleDataStructureAndContent:
     @pytest.fixture
     def db_articles(self, test_db_setup):
         """Get articles data from the test database."""
-        articles_data = get_articles_df(test_db_setup["connection"])
+        articles_data = test_db_setup["db_handler"].get_articles_df()
 
         # Sort by article_id for consistent ordering
         return articles_data.sort_values("article_id").reset_index(drop=True)
@@ -121,7 +118,7 @@ class TestExampleDataStructureAndContent:
     @pytest.fixture
     def db_sentences(self, test_db_setup):
         """Get sentences data from the test database."""
-        sentences_data = get_sentences_df(test_db_setup["connection"])
+        sentences_data = test_db_setup["db_handler"].get_sentences_df()
 
         # Sort by article_id and sentence_id for consistent ordering
         return sentences_data.sort_values(
@@ -131,7 +128,7 @@ class TestExampleDataStructureAndContent:
     @pytest.fixture
     def db_entities(self, test_db_setup):
         """Get entities data from the test database."""
-        entities_data = get_entities_df(test_db_setup["connection"])
+        entities_data = test_db_setup["db_handler"].get_entities_df()
 
         # Get only the columns we want to compare
         entity_cols = [
@@ -298,7 +295,7 @@ class TestExampleDataStructureAndContent:
     ):
         """Test direct comparison of articles DataFrame from DB and CSV without type conversion."""
         # Get articles from database
-        db_articles = get_articles_df(test_db_setup["connection"])
+        db_articles = test_db_setup["db_handler"].get_articles_df()
 
         # Print the types to see what they actually are
         print("\nArticle ID types:")
@@ -328,7 +325,7 @@ class TestExampleDataStructureAndContent:
     ):
         """Test direct comparison of sentences DataFrame from DB and CSV without type conversion."""
         # Get sentences from database
-        db_sentences = get_sentences_df(test_db_setup["connection"])
+        db_sentences = test_db_setup["db_handler"].get_sentences_df()
 
         # Print the types to see what they actually are
         print("\nSentence ID types:")
@@ -364,7 +361,7 @@ class TestExampleDataStructureAndContent:
     ):
         """Test direct comparison of entities DataFrame from DB and CSV without type conversion."""
         # Get entities from database
-        db_entities = get_entities_df(test_db_setup["connection"])
+        db_entities = test_db_setup["db_handler"].get_entities_df()
 
         # Print the types to see what they actually are
         print("\nEntity types:")

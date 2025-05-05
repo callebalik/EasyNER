@@ -4,13 +4,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Union, Optional
 
 from easyner.io.converters.abstract_converter import AbstractConverter
-from easyner.io.database.db_utils import (
-    initialize_db,
-    create_tables,
-    insert_data,
-    create_indices,
-    get_table_count,
-)
+from easyner.io.database.duckdb_handler import DuckDBHandler
 
 
 class JsonToDuckConverter(AbstractConverter):
@@ -43,8 +37,16 @@ class JsonToDuckConverter(AbstractConverter):
         else:
             self.db_file = db_file
 
-        self.connection = connection
+        # Initialize the DuckDB handler to handle database operations
+        if connection:
+            self.db_handler = DuckDBHandler(":memory:")
+            self.db_handler.connection = connection
+        else:
+            self.db_handler = DuckDBHandler(self.db_file)
+
+        self.connection = self.db_handler.connection
         self._converted_files = []
+        self._is_memory_db = (self.db_file == ":memory:")
 
     def list_convertible_files(self) -> List[Path]:
         """List all JSON files in the source directory"""
@@ -138,19 +140,14 @@ class JsonToDuckConverter(AbstractConverter):
         # Check if we should use an in-memory database
         use_memory_db = kwargs.get("use_memory_db", False)
 
-        # Initialize database if not provided
-        if not self.connection:
-            if use_memory_db:
-                db_path = ":memory:"
-            else:
-                # Ensure the parent directory exists
-                os.makedirs(os.path.dirname(self.db_file), exist_ok=True)
-                db_path = self.db_file
-
-            self.connection = initialize_db(database_path=db_path)
+        # Initialize database if in-memory database requested
+        if use_memory_db and not self._is_memory_db:
+            self.db_handler = DuckDBHandler(":memory:")
+            self.connection = self.db_handler.connection
+            self._is_memory_db = True
 
         # Create database tables
-        create_tables(self.connection)
+        self.db_handler.create_tables()
 
         # Process all JSON files
         convertible_files = self.list_convertible_files()
@@ -163,9 +160,8 @@ class JsonToDuckConverter(AbstractConverter):
         for file_path in convertible_files:
             data = self._process_json_file(file_path)
 
-            # Insert data into database
-            insert_data(
-                self.connection,
+            # Insert data into database using the db_handler
+            self.db_handler.insert_data(
                 data["articles"],
                 data["sentences"],
                 data["entities"],
@@ -180,12 +176,12 @@ class JsonToDuckConverter(AbstractConverter):
             total_entities += len(data["entities"])
 
         # Create indices for better performance
-        create_indices(self.connection)
+        self.db_handler.create_indices()
 
-        # Get final counts
-        article_count = get_table_count(self.connection, "articles")
-        sentence_count = get_table_count(self.connection, "sentences")
-        entity_count = get_table_count(self.connection, "entities")
+        # Get final counts using the db_handler
+        article_count = self.db_handler.get_table_count("articles")
+        sentence_count = self.db_handler.get_table_count("sentences")
+        entity_count = self.db_handler.get_table_count("entities")
 
         # Return statistics
         result = {
