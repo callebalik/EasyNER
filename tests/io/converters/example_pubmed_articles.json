@@ -1,0 +1,407 @@
+{
+  "466744": {
+    "title": "Comparison of aflatoxin B1 and aflatoxin G1 binding to cellular macromolecules in vitro, in vivo and after peracid oxidation; characterisation of the major nucleic acid adducts.",
+    "sentences": [
+      {
+        "text": "A comparison between [14C]aflatoxin B1 (AFB1) and [14C]aflatoxin G1 (AFG1) binding to rat liver and kidney cellular macromolecules has shown AFG1-DNA and-ribosomal RNA binding to be lower in both organs.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "For both mycotoxins more was bound to nucleic acids than to protein.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Two hours after intraperitoneal injection (60 microgram/100 g) of [14C] AFB1, 40 ng, 151 ng/mg.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Loss of radioactivity bound to liver DNA for both",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "[14C]AFB1 and protein respectively and for [14C]AFG1 the respective figures were 10, 7 and 1 ng/mg.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Loss of liver bound radioactivity to DNA for both [14C]AFG1 and [14C]AFG1 appeared to be biphasic indicating that an enzymic DNA repair process may be operating.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "In vitro binding studies also showed less AFG1 was bound to exogenous DNA after microsomal activation than AFB1.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "This difference was not a result of differences in the chemical reactivity of the \"ultimate\" electrophilic species, the respective expoxides, since chemical activation studies using 3-chloroperbenzoic acid showed similar amounts of AFG1 and AFB1 to be converted to the epoxides and to bind to DNA.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Studies on the distribution coefficients of the two mycotoxins showed AFB1 to be more lipophilic than AFG1 and this may be an important factor in determining the weaker carcinogenicity of the latter compound.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Characterisation of the major AFG1-DNA adduct formed in vitro, in vivo and after peracid oxidation showed it to have the structure trans-9,10-dihydro-9-(7-guanyl)-10-hydroxy-aflatoxin G1.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "This adduct is similar to that obtained from AFB1 by activation in vivo, in vitro and after peracid oxidation.",
+        "entities": [],
+        "entity_spans": []
+      }
+    ]
+  },
+  "466745": {
+    "title": "Quantum chemical studies of polycyclic aromatic hydrocarbons and their metabolites: correlations to carcinogenicity.",
+    "sentences": [
+      {
+        "text": "In the context of the bay region hypothesis for polycyclic aromatic hydrocarbon (PAH) carcinogenesis, molecular properties were calculated for seventeen polycyclic aromatic hydrocarbons related to (1) intrinsic substrate reactivities towards activating and detoxifying metabolism and (2) the stabilities of the putative carbocation ultimate carcinogens.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "All-valence electron methods were used, avoiding the inherent difficulties found in the pi-electron methods.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "The calculated substrate reactivities were found to predict major metabolites successfully, supporting the validity of their use in attempted correlations with observed carcinogenic potencies.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Positive correlations were found between observed carcinogenic potencies and (1) the reactivities of the parent polycyclic aromatic hydrocarbons towards the initial distal bay region epoxidation and (2) the stabilities of the diol epoxide carbocations.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "The reactivities of the distal bay region diol epoxides, were high for both carcinogenic and non-carcinogenic compounds, implying that the second epoxidation does not determine relative carcinogenic activity.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Support for a possible alternative hypothesis, that polycyclic aromatic hydrocarbons are activated by one electron oxidation, was also found.",
+        "entities": [],
+        "entity_spans": []
+      }
+    ]
+  },
+  "466746": {
+    "title": "The action of rat cytosol enzymes on some methylated nucleic acid components produced by the carcinogenic N-nitroso compounds.",
+    "sentences": [
+      {
+        "text": "The stabilities of several alkylated nucleic acid components have been examined in the presence of cytosol extracts from a variety of rat tissues.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "An activity capable of demethylating O6-methyldeoxyguanosine was readily detectable in all tissues examined; arranged in approximate order of decreasing specific activity these are as follows: small intestine, spleen, kidney, lung, liver, skin, heart and brain.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "The in vitro requirements for the activity derived from liver and the observations that O6-methylguanine and its deoxynucleoside 5'-monophosphate are insensitive to the action of these extracts suggests that this activity may be due to an enzyme which resembles adenosine deaminase.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "In contrast to the ready degradation of O6-methyldeoxyguanosine the corresponding ethyl derivative was degraded very much more slowly but there was no evidence for other activities against the O4- and O2-methyldeoxythymidines.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Similarly, no demethylation of the N-substituted deoxynucleosides, 3-methyldeoxycytidine 3-methldeoxythymidine, 1-methyldeoxyadenosine and 7-methyldeoxyguanosine, was detected.",
+        "entities": [],
+        "entity_spans": []
+      }
+    ]
+  },
+  "466750": {
+    "title": "Atopic disease in ulcerative colitis and Crohn's disease.",
+    "sentences": [
+      {
+        "text": "Three hundred patients with ulcerative colitis, 200 with Crohn's disease and matched control subjects completed questionnaires about atopic disease.",
+        "entities": [
+          "ulcerative colitis",
+          "crohn's disease",
+          "atopic disease"
+        ],
+        "entity_spans": [
+          [
+            28,
+            46
+          ],
+          [
+            57,
+            72
+          ],
+          [
+            133,
+            147
+          ]
+        ]
+      },
+      {
+        "text": "They were asked whether they had ever suffered from asthma, hay fever, allergic rhinitis or eczema; in ulcerative colitis all of these features occurred with twice the frequency, but in Crohn's disease only eczema was more common than in controls.",
+        "entities": [
+          "asthma",
+          "hay fever",
+          "allergic rhinitis",
+          "eczema",
+          "ulcerative colitis",
+          "crohn's disease",
+          "eczema"
+        ],
+        "entity_spans": [
+          [
+            52,
+            58
+          ],
+          [
+            60,
+            69
+          ],
+          [
+            71,
+            88
+          ],
+          [
+            92,
+            98
+          ],
+          [
+            103,
+            121
+          ],
+          [
+            186,
+            201
+          ],
+          [
+            207,
+            213
+          ]
+        ]
+      }
+    ]
+  },
+  "466751": {
+    "title": "'Barn allergy': asthma and rhinitis due to storage mites.",
+    "sentences": [
+      {
+        "text": "The differential diagnosis of asthma in farm workers is between a type I hypersensitivity to a pollen or dust allergen and a type III hypersensitivity to mould antigens.",
+        "entities": [
+          "asthma",
+          "hypersensitivity",
+          "hypersensitivity"
+        ],
+        "entity_spans": [
+          [
+            30,
+            36
+          ],
+          [
+            73,
+            89
+          ],
+          [
+            134,
+            150
+          ]
+        ]
+      },
+      {
+        "text": "We describe asthma and rhinitis, and not farmer's lung, in a farming population due to the non-pyroglyphid grain storage mite.",
+        "entities": [
+          "asthma",
+          "rhinitis"
+        ],
+        "entity_spans": [
+          [
+            12,
+            18
+          ],
+          [
+            23,
+            31
+          ]
+        ]
+      },
+      {
+        "text": "Before a diagnosis of farmers' lung due to mouldy hay is made in any patient whether or not precipitins to Micropolyspora faeni are present, skin tests for storage mite should be made.",
+        "entities": [
+          "farmers'lung",
+          "micropolyspora faeni"
+        ],
+        "entity_spans": [
+          [
+            22,
+            35
+          ],
+          [
+            107,
+            127
+          ]
+        ]
+      },
+      {
+        "text": "If these are positive a diagnosis of 'barn allergy' should be considered and a trial of sodium cromoglycate be given.",
+        "entities": [
+          "barn allergy"
+        ],
+        "entity_spans": [
+          [
+            38,
+            50
+          ]
+        ]
+      }
+    ]
+  },
+  "466753": {
+    "title": "Intravenous NAB 365 (clenbuterol) and terbutaline in exercise-induced bronchospasm (EIB).",
+    "sentences": [
+      {
+        "text": "In a single-blind, placebo-controlled, cross-over study, the effects of intravenous 20 micrograms NAB 365 (clenbuterol) and intravenous 250 microgram terbutaline were compared in nine asthmatic patients with bronchospasm induced by exercise.",
+        "entities": [
+          "asthmatic",
+          "bronchospasm"
+        ],
+        "entity_spans": [
+          [
+            184,
+            193
+          ],
+          [
+            208,
+            220
+          ]
+        ]
+      },
+      {
+        "text": "The exercise consisted of treadmill running.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "The two beta-adrenergic bronchodilator drugs effectively prevented post-exercise bronchospasm in eight of the nine patients.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "The effects were superior to those in the untreated group and in the placebo-treated group.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Six of the patients treated with terbutaline complained of adverse reactions (tremor, palpitation, tachycardia).",
+        "entities": [
+          "tremor",
+          "palpitation",
+          "tachycardia"
+        ],
+        "entity_spans": [
+          [
+            78,
+            84
+          ],
+          [
+            86,
+            97
+          ],
+          [
+            99,
+            110
+          ]
+        ]
+      },
+      {
+        "text": "No adverse reactions were observed after clenbuterol.",
+        "entities": [],
+        "entity_spans": []
+      }
+    ]
+  },
+  "466754": {
+    "title": "Analysis of the non-immunological activity of allergen extracts in cutaneous tests.",
+    "sentences": [
+      {
+        "text": "The technique proposed by the National Institute for Biological Standards and Control, London (NIBSC, 1977) for the control of allergenic extracts for non-immunological activity in skin tests has proved to be both sensitive and useful.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "We have observed 'false positive' results to substances such as merthiolate or glycerine and also to lyophilised preparations with sugar, notably glucose, as the carrier substance.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Other factors studied in 'false positive' reactions to a given extract were pH, osmotic pressure and the presence of traces of endotoxins or histamine.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Individually none of these provided satisfactory explanations for the false positive reactions and the use of antagonists or inhibitors of the release of chemical mediators only confirmed the complexity of the non-immunological reaction and the participation of factors other than histamine.",
+        "entities": [],
+        "entity_spans": []
+      }
+    ]
+  },
+  "466752": {
+    "title": "Mite allergen content in commercial extracts and in bed dust determined by radioallergosorbent tests.",
+    "sentences": [
+      {
+        "text": "Radioallergosorbent (RAST) direct binding and inhibition type assays were used to quantitate the mite (Dermatophagoides pteronyssinus) allergen content of four commercial mite extracts and a laboratory prepared extract from freeze-dried mites.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "The content of mite allergen in extracts prepared from twenty samples of dust vacuumed from bedding was measured by RAST inhibition assay.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "The four commercial mite extracts designated A, B, C and D, and the laboratory extract, designated L, contained 52, 265, 108, 1.5 and 581 arbitrary units of allergen/ml for the direct binding assay and 128, 111, 217, approximately 1 and 1083 arbitrary, but different, units of allergen/ml for the inhibition assay respectively.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Qualitative differences between at least two extracts were suggested by the different slopes obtained when allergen binding of anti IgE was plotted against the volume of extract used in the direct binding assay.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "Differences in slope between the two extracts were also apparent when they were used in the inhibition assay.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "The quantities of mite allergen/gm of bed dust expressed in arbitrary units for the inhibition assay were 24 to 457 (mean 129) units.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "These quantities are similar to and sometimes greater than the quantity in 1 ml of mite extract and so confirm bed dust as a potent source of mite allergen.",
+        "entities": [],
+        "entity_spans": []
+      },
+      {
+        "text": "There was no significant correlation between the weight of dust, the numbers of dead and live mites and the allergen content of dust.",
+        "entities": [],
+        "entity_spans": []
+      }
+    ]
+  },
+  "466755": {
+    "title": "Observations on the aetiology and natural history of stinging insect sensitivity: application of measurements of venom-specific IgE.",
+    "sentences": []
+  }
+}
