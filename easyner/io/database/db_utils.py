@@ -1,5 +1,6 @@
 import duckdb
 import pandas as pd
+import warnings
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Union
 
@@ -149,11 +150,47 @@ def get_article_entity_stats(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     return con.execute(query).fetchdf()
 
 
+def get_articles_df(connection) -> pd.DataFrame:
+    """
+    Get all articles from the database as a DataFrame.
+
+    Args:
+        connection: DuckDB connection object
+
+    Returns:
+        DataFrame containing article data
+    """
+    result = connection.execute("SELECT article_id, title FROM articles")
+    return result.fetchdf()
+
+
+def get_articles_as_dict_list(connection) -> List[Dict[str, Any]]:
+    """
+    Get all articles from the database as a list of dictionaries.
+
+    Args:
+        connection: DuckDB connection object
+
+    Returns:
+        List of dictionaries containing article data
+    """
+    warnings.warn(
+        "The get_articles_as_dict_list method is not covered by tests and may have unexpected behavior.",
+        UserWarning,
+        stacklevel=2,
+    )
+    rows = connection.execute(
+        "SELECT article_id, title FROM articles"
+    ).fetchall()
+    return [{"article_id": row[0], "title": row[1]} for row in rows]
+
+
 def get_articles(
     connection, as_df: bool = True
 ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
     """
     Get all articles from the database.
+    This is a wrapper method for backward compatibility.
 
     Args:
         connection: DuckDB connection object
@@ -162,12 +199,50 @@ def get_articles(
     Returns:
         DataFrame or list of article dictionaries
     """
-    result = connection.execute("SELECT article_id, title FROM articles")
     if as_df:
-        return result.fetchdf()
+        return get_articles_df(connection)
     else:
-        rows = result.fetchall()
-        return [{"article_id": row[0], "title": row[1]} for row in rows]
+        return get_articles_as_dict_list(connection)
+
+
+def get_sentences_df(connection) -> pd.DataFrame:
+    """
+    Get all sentences from the database as a DataFrame.
+
+    Args:
+        connection: DuckDB connection object
+
+    Returns:
+        DataFrame containing sentence data
+    """
+    result = connection.execute(
+        "SELECT article_id, sentence_id, text FROM sentences"
+    )
+    return result.fetchdf()
+
+
+def get_sentences_as_dict_list(connection) -> List[Dict[str, Any]]:
+    """
+    Get all sentences from the database as a list of dictionaries.
+
+    Args:
+        connection: DuckDB connection object
+
+    Returns:
+        List of dictionaries containing sentence data
+    """
+    warnings.warn(
+        "The get_sentences_as_dict_list method is not covered by tests and may have unexpected behavior.",
+        UserWarning,
+        stacklevel=2,
+    )
+    rows = connection.execute(
+        "SELECT article_id, sentence_id, text FROM sentences"
+    ).fetchall()
+    return [
+        {"article_id": row[0], "sentence_id": row[1], "text": row[2]}
+        for row in rows
+    ]
 
 
 def get_sentences(
@@ -175,6 +250,7 @@ def get_sentences(
 ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
     """
     Get all sentences from the database.
+    This is a wrapper method for backward compatibility.
 
     Args:
         connection: DuckDB connection object
@@ -183,17 +259,64 @@ def get_sentences(
     Returns:
         DataFrame or list of sentence dictionaries
     """
-    result = connection.execute(
-        "SELECT article_id, sentence_id, text FROM sentences"
-    )
     if as_df:
-        return result.fetchdf()
+        return get_sentences_df(connection)
     else:
-        rows = result.fetchall()
-        return [
-            {"article_id": row[0], "sentence_id": row[1], "text": row[2]}
-            for row in rows
-        ]
+        return get_sentences_as_dict_list(connection)
+
+
+def get_entities_df(connection) -> pd.DataFrame:
+    """
+    Get all entities from the database as a DataFrame.
+
+    Args:
+        connection: DuckDB connection object
+
+    Returns:
+        DataFrame containing entity data
+    """
+    query = """
+        SELECT article_id, sentence_id, entity, start_pos, end_pos,
+               inference_model, inference_model_metadata
+        FROM entities
+    """
+    result = connection.execute(query)
+    return result.fetchdf()
+
+
+def get_entities_as_dict_list(connection) -> List[Dict[str, Any]]:
+    """
+    Get all entities from the database as a list of dictionaries.
+
+    Args:
+        connection: DuckDB connection object
+
+    Returns:
+        List of dictionaries containing entity data
+    """
+    warnings.warn(
+        "The get_entities_as_dict_list method is not covered by tests and may have unexpected behavior.",
+        UserWarning,
+        stacklevel=2,
+    )
+    query = """
+        SELECT article_id, sentence_id, entity, start_pos, end_pos,
+               inference_model, inference_model_metadata
+        FROM entities
+    """
+    rows = connection.execute(query).fetchall()
+    return [
+        {
+            "article_id": row[0],
+            "sentence_id": row[1],
+            "entity": row[2],
+            "start_pos": row[3],
+            "end_pos": row[4],
+            "inference_model": row[5],
+            "inference_model_metadata": row[6],
+        }
+        for row in rows
+    ]
 
 
 def get_entities(
@@ -201,6 +324,7 @@ def get_entities(
 ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
     """
     Get all entities from the database.
+    This is a wrapper method for backward compatibility.
 
     Args:
         connection: DuckDB connection object
@@ -209,26 +333,7 @@ def get_entities(
     Returns:
         DataFrame or list of entity dictionaries
     """
-    query = """
-        SELECT article_id, sentence_id, entity, start_pos, end_pos,
-               inference_model, inference_model_metadata
-        FROM entities
-    """
-    result = connection.execute(query)
-
     if as_df:
-        return result.fetchdf()
+        return get_entities_df(connection)
     else:
-        rows = result.fetchall()
-        return [
-            {
-                "article_id": row[0],
-                "sentence_id": row[1],
-                "entity": row[2],
-                "start_pos": row[3],
-                "end_pos": row[4],
-                "inference_model": row[5],
-                "inference_model_metadata": row[6],
-            }
-            for row in rows
-        ]
+        return get_entities_as_dict_list(connection)
