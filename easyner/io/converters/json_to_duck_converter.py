@@ -5,6 +5,11 @@ from typing import List, Dict, Any, Union, Optional
 
 from easyner.io.converters.base import BaseConverter
 from easyner.io.database.duckdb_handler import DuckDBHandler
+from easyner.io.database.repositories import (
+    ArticleRepository,
+    SentenceRepository,
+    EntityRepository,
+)
 
 
 class JsonToDuckConverter(BaseConverter):
@@ -160,11 +165,14 @@ class JsonToDuckConverter(BaseConverter):
         for file_path in convertible_files:
             data = self._process_json_file(file_path)
 
-            # Insert data into database using the db_handler
-            self.db_handler.insert_data(
-                data["articles"],
-                data["sentences"],
-                data["entities"],
+            ArticleRepository(connection=self.connection).insert_many(
+                data["articles"]
+            )
+            SentenceRepository(connection=self.connection).insert_many(
+                data["sentences"]
+            )
+            EntityRepository(connection=self.connection).insert_many(
+                data["entities"]
             )
 
             # Track processed files
