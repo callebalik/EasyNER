@@ -1,0 +1,1 @@
+CREATE SEQUENCE IF NOT EXISTS entity_id_seq;
