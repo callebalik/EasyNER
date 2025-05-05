@@ -55,15 +55,33 @@ def create_indices(con: duckdb.DuckDBPyConnection) -> None:
 
 def insert_data(
     con: duckdb.DuckDBPyConnection,
-    articles_data: List[Dict[str, Any]],
-    sentences_data: List[Dict[str, Any]],
-    entities_data: List[Dict[str, Any]],
+    articles_data: Union[List[Dict[str, Any]], pd.DataFrame],
+    sentences_data: Union[List[Dict[str, Any]], pd.DataFrame],
+    entities_data: Union[List[Dict[str, Any]], pd.DataFrame],
 ) -> None:
-    """Insert data into database tables using DataFrames"""
-    # Convert to DataFrames
-    articles_df = pd.DataFrame(articles_data)
-    sentences_df = pd.DataFrame(sentences_data)
-    entities_df = pd.DataFrame(entities_data)
+    """Insert data into database tables using DataFrames
+
+    Args:
+        con: DuckDB connection
+        articles_data: Articles data as DataFrame or list of dicts
+        sentences_data: Sentences data as DataFrame or list of dicts
+        entities_data: Entities data as DataFrame or list of dicts
+    """
+    # Convert to DataFrames if needed
+    if not isinstance(articles_data, pd.DataFrame):
+        articles_df = pd.DataFrame(articles_data)
+    else:
+        articles_df = articles_data
+
+    if not isinstance(sentences_data, pd.DataFrame):
+        sentences_df = pd.DataFrame(sentences_data)
+    else:
+        sentences_df = sentences_data
+
+    if not isinstance(entities_data, pd.DataFrame):
+        entities_df = pd.DataFrame(entities_data)
+    else:
+        entities_df = entities_data
 
     # Register DataFrames as views
     con.register("articles_df", articles_df)
@@ -131,68 +149,86 @@ def get_article_entity_stats(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     return con.execute(query).fetchdf()
 
 
-def get_articles(connection) -> List[Dict[str, Any]]:
+def get_articles(
+    connection, as_df: bool = True
+) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
     """
     Get all articles from the database.
 
     Args:
         connection: DuckDB connection object
+        as_df: Return as DataFrame if True, otherwise as list of dicts (default: True)
 
     Returns:
-        List of article dictionaries
+        DataFrame or list of article dictionaries
     """
-    result = connection.execute(
-        "SELECT article_id, title FROM articles"
-    ).fetchall()
-    return [{"article_id": row[0], "title": row[1]} for row in result]
+    result = connection.execute("SELECT article_id, title FROM articles")
+    if as_df:
+        return result.fetchdf()
+    else:
+        rows = result.fetchall()
+        return [{"article_id": row[0], "title": row[1]} for row in rows]
 
 
-def get_sentences(connection) -> List[Dict[str, Any]]:
+def get_sentences(
+    connection, as_df: bool = True
+) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
     """
     Get all sentences from the database.
 
     Args:
         connection: DuckDB connection object
+        as_df: Return as DataFrame if True, otherwise as list of dicts (default: True)
 
     Returns:
-        List of sentence dictionaries
+        DataFrame or list of sentence dictionaries
     """
     result = connection.execute(
         "SELECT article_id, sentence_id, text FROM sentences"
-    ).fetchall()
-    return [
-        {"article_id": row[0], "sentence_id": row[1], "text": row[2]}
-        for row in result
-    ]
+    )
+    if as_df:
+        return result.fetchdf()
+    else:
+        rows = result.fetchall()
+        return [
+            {"article_id": row[0], "sentence_id": row[1], "text": row[2]}
+            for row in rows
+        ]
 
 
-def get_entities(connection) -> List[Dict[str, Any]]:
+def get_entities(
+    connection, as_df: bool = True
+) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
     """
     Get all entities from the database.
 
     Args:
         connection: DuckDB connection object
+        as_df: Return as DataFrame if True, otherwise as list of dicts (default: True)
 
     Returns:
-        List of entity dictionaries
+        DataFrame or list of entity dictionaries
     """
-    result = connection.execute(
-        """
+    query = """
         SELECT article_id, sentence_id, entity, start_pos, end_pos,
                inference_model, inference_model_metadata
         FROM entities
     """
-    ).fetchall()
+    result = connection.execute(query)
 
-    return [
-        {
-            "article_id": row[0],
-            "sentence_id": row[1],
-            "entity": row[2],
-            "start_pos": row[3],
-            "end_pos": row[4],
-            "inference_model": row[5],
-            "inference_model_metadata": row[6],
-        }
-        for row in result
-    ]
+    if as_df:
+        return result.fetchdf()
+    else:
+        rows = result.fetchall()
+        return [
+            {
+                "article_id": row[0],
+                "sentence_id": row[1],
+                "entity": row[2],
+                "start_pos": row[3],
+                "end_pos": row[4],
+                "inference_model": row[5],
+                "inference_model_metadata": row[6],
+            }
+            for row in rows
+        ]
