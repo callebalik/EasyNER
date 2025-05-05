@@ -1,0 +1,36 @@
+"""
+Schema definitions for EasyNer database tables.
+
+This package contains SQL schema definitions for tables used in the EasyNer application.
+"""
+
+from pathlib import Path
+from ..utils.sql_utils import read_sql_file
+
+SCHEMA_DIR = Path(__file__).parent
+
+# Schema file paths
+ARTICLES_SCHEMA = SCHEMA_DIR / "articles.sql"
+SENTENCES_SCHEMA = SCHEMA_DIR / "sentences.sql"
+ENTITY_SEQUENCE_SCHEMA = SCHEMA_DIR / "entity_sequence.sql"
+ENTITIES_SCHEMA = SCHEMA_DIR / "entities.sql"
+
+# SQL schema statements - loaded at import time using the utility function
+ARTICLES_TABLE_SQL = read_sql_file(ARTICLES_SCHEMA)
+SENTENCES_TABLE_SQL = read_sql_file(SENTENCES_SCHEMA)
+ENTITY_SEQUENCE_SQL = read_sql_file(ENTITY_SEQUENCE_SCHEMA)
+ENTITIES_TABLE_SQL = read_sql_file(ENTITIES_SCHEMA)
+
+__all__ = [
+    # SQL statements (preferred usage)
+    "ARTICLES_TABLE_SQL",
+    "SENTENCES_TABLE_SQL",
+    "ENTITY_SEQUENCE_SQL",
+    "ENTITIES_TABLE_SQL",
+    # File paths (for backward compatibility)
+    "SCHEMA_DIR",
+    "ARTICLES_SCHEMA",
+    "SENTENCES_SCHEMA",
+    "ENTITY_SEQUENCE_SCHEMA",
+    "ENTITIES_SCHEMA",
+]
