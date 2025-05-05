@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
 
 
-class AbstractConverter(ABC):
+class BaseConverter(ABC):
     """Abstract base class for file converters"""
 
     def __init__(

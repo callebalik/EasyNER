@@ -3,11 +3,11 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any, Union, Optional
 
-from easyner.io.converters.abstract_converter import AbstractConverter
+from easyner.io.converters.base import BaseConverter
 from easyner.io.database.duckdb_handler import DuckDBHandler
 
 
-class JsonToDuckConverter(AbstractConverter):
+class JsonToDuckConverter(BaseConverter):
     """Converter to transform JSON data into DuckDB database"""
 
     def __init__(
@@ -46,7 +46,7 @@ class JsonToDuckConverter(AbstractConverter):
 
         self.connection = self.db_handler.connection
         self._converted_files = []
-        self._is_memory_db = (self.db_file == ":memory:")
+        self._is_memory_db = self.db_file == ":memory:"
 
     def list_convertible_files(self) -> List[Path]:
         """List all JSON files in the source directory"""
