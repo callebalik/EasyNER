@@ -26,7 +26,7 @@ def example_json_file(example_files_dir):
 @pytest.fixture
 def example_articles_csv(example_files_dir):
     """Return the path to the expected articles output CSV."""
-    csv_file = example_files_dir / "articles.csv"
+    csv_file = example_files_dir / "pubmed_articles.csv"
     if not csv_file.exists():
         pytest.skip(f"Expected articles CSV file {csv_file} not found")
     return csv_file
@@ -35,7 +35,7 @@ def example_articles_csv(example_files_dir):
 @pytest.fixture
 def example_sentences_csv(example_files_dir):
     """Return the path to the expected sentences output CSV."""
-    csv_file = example_files_dir / "sentences.csv"
+    csv_file = example_files_dir / "pubmed_sentences.csv"
     if not csv_file.exists():
         pytest.skip(f"Expected sentences CSV file {csv_file} not found")
     return csv_file
@@ -44,7 +44,7 @@ def example_sentences_csv(example_files_dir):
 @pytest.fixture
 def example_entities_csv(example_files_dir):
     """Return the path to the expected entities output CSV."""
-    csv_file = example_files_dir / "entities.csv"
+    csv_file = example_files_dir / "pubmed_entities.csv"
     if not csv_file.exists():
         pytest.skip(f"Expected entities CSV file {csv_file} not found")
     return csv_file
