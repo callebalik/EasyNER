@@ -1,10 +1,20 @@
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Any, Dict, List, Tuple, Optional, Union
 import pandas as pd
 from easyner.io.handlers.json_handler import JsonHandler
 import logging
 import json
 import os
 from jsonschema import validate, ValidationError
+from easyner.io.database.utils.column_names import (
+    ARTICLE_ID,
+    TITLE,
+    TEXT,
+    SENTENCE_ID,
+    START_CHAR,
+    END_CHAR,
+    INFERENCE_MODEL,
+    INFERENCE_MODEL_METADATA,
+)
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -78,8 +88,8 @@ class PubMedJsonHandler(JsonHandler):
         """Extract article information from article data with optimized memory usage"""
         # Pre-allocate dictionary with common fields
         article = {
-            "article_id": article_id,  # Already converted to integer
-            "title": article_data.get("title", ""),
+            ARTICLE_ID: article_id,  # Already converted to integer
+            TITLE: article_data.get("title", ""),
             "abstract": article_data.get("abstract", ""),
         }
 
@@ -98,10 +108,10 @@ class PubMedJsonHandler(JsonHandler):
         """Extract sentence information from sentence data"""
         # Use integer position for proper ordering
         sentence = {
-            "sentence_id": sent_idx,  # Use integer as sentence_id (unique within article)
-            "article_id": article_id,  # Already an integer
+            SENTENCE_ID: sent_idx,  # Use integer as sentence_id (unique within article)
+            ARTICLE_ID: article_id,  # Already an integer
             "position": sent_idx,  # Order within article
-            "text": sentence_data.get("text", ""),
+            TEXT: sentence_data.get("text", ""),
         }
 
         # Add tokens if available
@@ -163,11 +173,11 @@ class PubMedJsonHandler(JsonHandler):
             result.append(
                 {
                     "entity_id": ent_idx,
-                    "sentence_id": sent_idx,  # Integer sentence ID
-                    "article_id": article_id,
-                    "text": entity_text,
-                    "start_char": int(span[0]) if len(span) > 0 else None,
-                    "end_char": int(span[1]) if len(span) > 1 else None,
+                    SENTENCE_ID: sent_idx,  # Integer sentence ID
+                    ARTICLE_ID: article_id,
+                    TEXT: entity_text,
+                    START_CHAR: int(span[0]) if len(span) > 0 else None,
+                    END_CHAR: int(span[1]) if len(span) > 1 else None,
                     "entity_name": (
                         entity_names[ent_idx]
                         if ent_idx < len(entity_names)
@@ -178,9 +188,7 @@ class PubMedJsonHandler(JsonHandler):
 
         return result
 
-    def extract_all_dataframes(
-        self, data: Dict
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def extract_all_dicts(self, data: Dict) -> Dict[str, List[Dict[str, Any]]]:
         """
         Extract articles, sentences, and entities from PubMed JSON in a single pass
 
@@ -188,7 +196,7 @@ class PubMedJsonHandler(JsonHandler):
             data: Loaded JSON data
 
         Returns:
-            Tuple of (articles_df, sentences_df, entities_df)
+            Dictionary containing articles, sentences, and entities data
         """
         articles = []
         sentences = []
@@ -225,10 +233,42 @@ class PubMedJsonHandler(JsonHandler):
                 )
                 entities.extend(sent_entities)
 
-        # Create DataFrames
-        articles_df = pd.DataFrame(articles) if articles else pd.DataFrame()
-        sentences_df = pd.DataFrame(sentences) if sentences else pd.DataFrame()
-        entities_df = pd.DataFrame(entities) if entities else pd.DataFrame()
+        return {
+            "articles": articles,
+            "sentences": sentences,
+            "entities": entities,
+        }
+
+    def extract_all_dataframes(
+        self, data: Dict
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """
+        Extract articles, sentences, and entities from PubMed JSON into dataframes
+
+        Args:
+            data: Loaded JSON data
+
+        Returns:
+            Tuple of (articles_df, sentences_df, entities_df)
+        """
+        extracted_data = self.extract_all_dicts(data)
+
+        # Create DataFrames from the dictionary data
+        articles_df = (
+            pd.DataFrame(extracted_data["articles"])
+            if extracted_data["articles"]
+            else pd.DataFrame()
+        )
+        sentences_df = (
+            pd.DataFrame(extracted_data["sentences"])
+            if extracted_data["sentences"]
+            else pd.DataFrame()
+        )
+        entities_df = (
+            pd.DataFrame(extracted_data["entities"])
+            if extracted_data["entities"]
+            else pd.DataFrame()
+        )
 
         return (articles_df, sentences_df, entities_df)
 

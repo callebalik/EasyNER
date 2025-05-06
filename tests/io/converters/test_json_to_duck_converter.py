@@ -4,6 +4,17 @@ import pytest
 
 from easyner.io.converters.json_to_duck_converter import JsonToDuckConverter
 from easyner.io.database.duckdb_handler import DuckDBHandler
+from easyner.io.database.utils.column_names import (
+    ARTICLE_ID,
+    SENTENCE_ID,
+    TEXT,
+    START_CHAR,
+    END_CHAR,
+    INFERENCE_MODEL,
+    INFERENCE_MODEL_METADATA,
+    TITLE,
+    ENTITY_ID,
+)
 
 
 def test_list_convertible_files(temp_dir, test_json_file):
@@ -113,7 +124,7 @@ class TestExampleDataStructureAndContent:
         articles_data = test_db_setup["db_handler"].get_articles_df()
 
         # Sort by article_id for consistent ordering
-        return articles_data.sort_values("article_id").reset_index(drop=True)
+        return articles_data.sort_values(ARTICLE_ID).reset_index(drop=True)
 
     @pytest.fixture
     def db_sentences(self, test_db_setup):
@@ -122,7 +133,7 @@ class TestExampleDataStructureAndContent:
 
         # Sort by article_id and sentence_id for consistent ordering
         return sentences_data.sort_values(
-            ["article_id", "sentence_id"]
+            [ARTICLE_ID, SENTENCE_ID]
         ).reset_index(drop=True)
 
     @pytest.fixture
@@ -132,30 +143,30 @@ class TestExampleDataStructureAndContent:
 
         # Get only the columns we want to compare
         entity_cols = [
-            "article_id",
-            "sentence_id",
-            "entity",
-            "start_pos",
-            "end_pos",
+            ARTICLE_ID,
+            SENTENCE_ID,
+            TEXT,
+            START_CHAR,
+            END_CHAR,
         ]
 
         # If inference columns exist, include them
-        for col in ["inference_model", "inference_model_metadata"]:
+        for col in [INFERENCE_MODEL, INFERENCE_MODEL_METADATA]:
             if col in entities_data.columns:
                 entity_cols.append(col)
 
         # Convert numeric columns to ensure consistent types
-        if "start_pos" in entities_data.columns:
-            entities_data["start_pos"] = pd.to_numeric(
-                entities_data["start_pos"]
+        if START_CHAR in entities_data.columns:
+            entities_data[START_CHAR] = pd.to_numeric(
+                entities_data[START_CHAR]
             )
-        if "end_pos" in entities_data.columns:
-            entities_data["end_pos"] = pd.to_numeric(entities_data["end_pos"])
+        if END_CHAR in entities_data.columns:
+            entities_data[END_CHAR] = pd.to_numeric(entities_data[END_CHAR])
 
         # Sort and extract only the columns we want to compare
         return (
             entities_data[entity_cols]
-            .sort_values(["article_id", "sentence_id", "entity", "start_pos"])
+            .sort_values([ARTICLE_ID, SENTENCE_ID, TEXT, START_CHAR])
             .reset_index(drop=True)
         )
 
@@ -163,15 +174,13 @@ class TestExampleDataStructureAndContent:
     def exp_articles(self, expected_articles_df):
         """Prepare expected articles data for comparison."""
         df = expected_articles_df.copy()
-        return df.sort_values("article_id").reset_index(drop=True)
+        return df.sort_values(ARTICLE_ID).reset_index(drop=True)
 
     @pytest.fixture
     def exp_sentences(self, expected_sentences_df):
         """Prepare expected sentences data for comparison."""
         df = expected_sentences_df.copy()
-        return df.sort_values(["article_id", "sentence_id"]).reset_index(
-            drop=True
-        )
+        return df.sort_values([ARTICLE_ID, SENTENCE_ID]).reset_index(drop=True)
 
     @pytest.fixture
     def exp_entities(self, expected_entities_df):
@@ -180,27 +189,27 @@ class TestExampleDataStructureAndContent:
 
         # Get only the relevant columns
         entity_cols = [
-            "article_id",
-            "sentence_id",
-            "entity",
-            "start_pos",
-            "end_pos",
+            ARTICLE_ID,
+            SENTENCE_ID,
+            TEXT,
+            START_CHAR,
+            END_CHAR,
         ]
 
         # If inference columns exist, include them
-        for col in ["inference_model", "inference_model_metadata"]:
+        for col in [INFERENCE_MODEL, INFERENCE_MODEL_METADATA]:
             if col in df.columns:
                 entity_cols.append(col)
 
         # Convert numeric columns
-        if "start_pos" in df.columns:
-            df["start_pos"] = pd.to_numeric(df["start_pos"])
-        if "end_pos" in df.columns:
-            df["end_pos"] = pd.to_numeric(df["end_pos"])
+        if START_CHAR in df.columns:
+            df[START_CHAR] = pd.to_numeric(df[START_CHAR])
+        if END_CHAR in df.columns:
+            df[END_CHAR] = pd.to_numeric(df[END_CHAR])
 
         return (
             df[[col for col in entity_cols if col in df.columns]]
-            .sort_values(["article_id", "sentence_id", "entity", "start_pos"])
+            .sort_values([ARTICLE_ID, SENTENCE_ID, TEXT, START_CHAR])
             .reset_index(drop=True)
         )
 
@@ -218,13 +227,13 @@ class TestExampleDataStructureAndContent:
         assert len(db_articles) == len(exp_articles)
 
         # For articles, verify titles match for each article_id
-        for article_id in exp_articles["article_id"]:
+        for article_id in exp_articles[ARTICLE_ID]:
             expected_title = exp_articles[
-                exp_articles["article_id"] == article_id
-            ]["title"].iloc[0]
-            actual_title = db_articles[
-                db_articles["article_id"] == article_id
-            ]["title"].iloc[0]
+                exp_articles[ARTICLE_ID] == article_id
+            ][TITLE].iloc[0]
+            actual_title = db_articles[db_articles[ARTICLE_ID] == article_id][
+                TITLE
+            ].iloc[0]
             assert (
                 expected_title == actual_title
             ), f"Title mismatch for article {article_id}"
@@ -236,19 +245,19 @@ class TestExampleDataStructureAndContent:
 
         # For sentences, verify text matches for each article_id and sentence_id pair
         for _, expected_row in exp_sentences.iterrows():
-            article_id = expected_row["article_id"]
-            sentence_id = expected_row["sentence_id"]
-            expected_text = expected_row["text"]
+            article_id = expected_row[ARTICLE_ID]
+            sentence_id = expected_row[SENTENCE_ID]
+            expected_text = expected_row[TEXT]
 
             actual_sentences = db_sentences[
-                (db_sentences["article_id"] == article_id)
-                & (db_sentences["sentence_id"] == sentence_id)
+                (db_sentences[ARTICLE_ID] == article_id)
+                & (db_sentences[SENTENCE_ID] == sentence_id)
             ]
 
             assert (
                 len(actual_sentences) == 1
             ), f"Sentence not found: {article_id}/{sentence_id}"
-            assert actual_sentences.iloc[0]["text"] == expected_text
+            assert actual_sentences.iloc[0][TEXT] == expected_text
 
     def test_entities(self, db_entities, exp_entities):
         """Test that entities in the database match the expected entities from CSV."""
@@ -257,18 +266,18 @@ class TestExampleDataStructureAndContent:
 
         # For entities, verify each entity is present with correct attributes
         for _, expected_row in exp_entities.iterrows():
-            article_id = expected_row["article_id"]
-            sentence_id = expected_row["sentence_id"]
-            entity = expected_row["entity"]
-            start_pos = expected_row["start_pos"]
-            end_pos = expected_row["end_pos"]
+            article_id = expected_row[ARTICLE_ID]
+            sentence_id = expected_row[SENTENCE_ID]
+            entity_text = expected_row[TEXT]
+            start_char = expected_row[START_CHAR]
+            end_char = expected_row[END_CHAR]
 
             matching = db_entities[
-                (db_entities["article_id"] == article_id)
-                & (db_entities["sentence_id"] == sentence_id)
-                & (db_entities["entity"] == entity)
-                & (db_entities["start_pos"] == start_pos)
-                & (db_entities["end_pos"] == end_pos)
+                (db_entities[ARTICLE_ID] == article_id)
+                & (db_entities[SENTENCE_ID] == sentence_id)
+                & (db_entities[TEXT] == entity_text)
+                & (db_entities[START_CHAR] == start_char)
+                & (db_entities[END_CHAR] == end_char)
             ]
 
             # Assert that exactly one match was found
@@ -282,9 +291,9 @@ class TestExampleDataStructureAndContent:
         entity_names = ["asthma", "eczema"]
 
         for entity_name in entity_names:
-            db_count = len(db_entities[db_entities["entity"] == entity_name])
+            db_count = len(db_entities[db_entities[TEXT] == entity_name])
             expected_count = len(
-                exp_entities[exp_entities["entity"] == entity_name]
+                exp_entities[exp_entities[TEXT] == entity_name]
             )
             assert (
                 db_count == expected_count
@@ -299,23 +308,21 @@ class TestExampleDataStructureAndContent:
 
         # Print the types to see what they actually are
         print("\nArticle ID types:")
-        print(f"Database article_id type: {db_articles['article_id'].dtype}")
-        print(
-            f"CSV article_id type: {expected_articles_df['article_id'].dtype}"
-        )
+        print(f"Database article_id type: {db_articles[ARTICLE_ID].dtype}")
+        print(f"CSV article_id type: {expected_articles_df[ARTICLE_ID].dtype}")
 
         # Sort both DataFrames by article_id for consistent comparison
-        db_articles_sorted = db_articles.sort_values("article_id").reset_index(
+        db_articles_sorted = db_articles.sort_values(ARTICLE_ID).reset_index(
             drop=True
         )
         expected_articles_sorted = expected_articles_df.sort_values(
-            "article_id"
+            ARTICLE_ID
         ).reset_index(drop=True)
 
         # Direct pandas frame_equal comparison with check_dtype=False
         pd.testing.assert_frame_equal(
-            db_articles_sorted[["article_id", "title"]],
-            expected_articles_sorted[["article_id", "title"]],
+            db_articles_sorted[[ARTICLE_ID, TITLE]],
+            expected_articles_sorted[[ARTICLE_ID, TITLE]],
             check_dtype=False,
         )
         print("Articles DataFrame comparison passed!")
@@ -329,29 +336,27 @@ class TestExampleDataStructureAndContent:
 
         # Print the types to see what they actually are
         print("\nSentence ID types:")
-        print(f"Database article_id type: {db_sentences['article_id'].dtype}")
+        print(f"Database article_id type: {db_sentences[ARTICLE_ID].dtype}")
         print(
-            f"CSV article_id type: {expected_sentences_df['article_id'].dtype}"
+            f"CSV article_id type: {expected_sentences_df[ARTICLE_ID].dtype}"
         )
+        print(f"Database sentence_id type: {db_sentences[SENTENCE_ID].dtype}")
         print(
-            f"Database sentence_id type: {db_sentences['sentence_id'].dtype}"
-        )
-        print(
-            f"CSV sentence_id type: {expected_sentences_df['sentence_id'].dtype}"
+            f"CSV sentence_id type: {expected_sentences_df[SENTENCE_ID].dtype}"
         )
 
         # Sort both DataFrames by article_id and sentence_id for consistent comparison
         db_sentences_sorted = db_sentences.sort_values(
-            ["article_id", "sentence_id"]
+            [ARTICLE_ID, SENTENCE_ID]
         ).reset_index(drop=True)
         expected_sentences_sorted = expected_sentences_df.sort_values(
-            ["article_id", "sentence_id"]
+            [ARTICLE_ID, SENTENCE_ID]
         ).reset_index(drop=True)
 
         # Direct pandas frame_equal comparison with check_dtype=False
         pd.testing.assert_frame_equal(
-            db_sentences_sorted[["article_id", "sentence_id", "text"]],
-            expected_sentences_sorted[["article_id", "sentence_id", "text"]],
+            db_sentences_sorted[[ARTICLE_ID, SENTENCE_ID, TEXT]],
+            expected_sentences_sorted[[ARTICLE_ID, SENTENCE_ID, TEXT]],
             check_dtype=False,
         )
         print("Sentences DataFrame comparison passed!")
@@ -365,26 +370,24 @@ class TestExampleDataStructureAndContent:
 
         # Print the types to see what they actually are
         print("\nEntity types:")
-        print(f"Database article_id type: {db_entities['article_id'].dtype}")
+        print(f"Database article_id type: {db_entities[ARTICLE_ID].dtype}")
+        print(f"CSV article_id type: {expected_entities_df[ARTICLE_ID].dtype}")
+        print(f"Database sentence_id type: {db_entities[SENTENCE_ID].dtype}")
         print(
-            f"CSV article_id type: {expected_entities_df['article_id'].dtype}"
-        )
-        print(f"Database sentence_id type: {db_entities['sentence_id'].dtype}")
-        print(
-            f"CSV sentence_id type: {expected_entities_df['sentence_id'].dtype}"
+            f"CSV sentence_id type: {expected_entities_df[SENTENCE_ID].dtype}"
         )
 
         # Get relevant columns for entities comparison
         entity_cols = [
-            "article_id",
-            "sentence_id",
-            "entity",
-            "start_pos",
-            "end_pos",
+            ARTICLE_ID,
+            SENTENCE_ID,
+            TEXT,
+            START_CHAR,
+            END_CHAR,
         ]
 
         # Add inference columns if they exist in both DataFrames
-        for col in ["inference_model", "inference_model_metadata"]:
+        for col in [INFERENCE_MODEL, INFERENCE_MODEL_METADATA]:
             if (
                 col in db_entities.columns
                 and col in expected_entities_df.columns
@@ -397,24 +400,24 @@ class TestExampleDataStructureAndContent:
 
         # Convert numeric columns to ensure they're the same type
         for df in [db_entities_copy, expected_entities_copy]:
-            if "start_pos" in df.columns:
-                df["start_pos"] = pd.to_numeric(df["start_pos"])
-            if "end_pos" in df.columns:
-                df["end_pos"] = pd.to_numeric(df["end_pos"])
+            if START_CHAR in df.columns:
+                df[START_CHAR] = pd.to_numeric(df[START_CHAR])
+            if END_CHAR in df.columns:
+                df[END_CHAR] = pd.to_numeric(df[END_CHAR])
 
         # Drop entity_id from expected DataFrame if present (it's not in DB result)
-        if "entity_id" in expected_entities_copy.columns:
+        if ENTITY_ID in expected_entities_copy.columns:
             expected_entities_copy = expected_entities_copy.drop(
-                columns=["entity_id"]
+                columns=[ENTITY_ID]
             )
 
         # Sort both DataFrames for consistent comparison
         db_entities_sorted = db_entities_copy.sort_values(
-            ["article_id", "sentence_id", "entity", "start_pos"]
+            [ARTICLE_ID, SENTENCE_ID, TEXT, START_CHAR]
         ).reset_index(drop=True)
 
         expected_entities_sorted = expected_entities_copy.sort_values(
-            ["article_id", "sentence_id", "entity", "start_pos"]
+            [ARTICLE_ID, SENTENCE_ID, TEXT, START_CHAR]
         ).reset_index(drop=True)
 
         # Extract only columns present in both DataFrames

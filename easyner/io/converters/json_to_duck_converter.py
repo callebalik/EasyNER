@@ -10,6 +10,18 @@ from easyner.io.database.repositories import (
     SentenceRepository,
     EntityRepository,
 )
+from easyner.io.database.utils.column_names import (
+    ARTICLE_ID,
+    SENTENCE_ID,
+    TEXT,
+    START_CHAR,
+    END_CHAR,
+    INFERENCE_MODEL,
+    INFERENCE_MODEL_METADATA,
+    TITLE,
+)
+from easyner.io import get_io_handler
+from easyner.io.handlers import PubMedJsonHandler
 
 
 class JsonToDuckConverter(BaseConverter):
@@ -88,8 +100,8 @@ class JsonToDuckConverter(BaseConverter):
             # Articles table
             articles_data.append(
                 {
-                    "article_id": article_id,
-                    "title": article_content.get("title", ""),
+                    ARTICLE_ID: article_id,
+                    TITLE: article_content.get("title", ""),
                 }
             )
 
@@ -99,9 +111,9 @@ class JsonToDuckConverter(BaseConverter):
             for sentence_idx, sentence in enumerate(sentences):
                 sentences_data.append(
                     {
-                        "article_id": article_id,
-                        "sentence_id": sentence_idx,
-                        "text": sentence.get("text", ""),
+                        ARTICLE_ID: article_id,
+                        SENTENCE_ID: sentence_idx,
+                        TEXT: sentence.get("text", ""),
                     }
                 )
 
@@ -112,13 +124,13 @@ class JsonToDuckConverter(BaseConverter):
                 # Extend entities_data with all valid entities at once
                 entities_data.extend(
                     {
-                        "article_id": article_id,
-                        "sentence_id": sentence_idx,
-                        "entity": entity,
-                        "start_pos": span[0] if span else None,
-                        "end_pos": span[1] if span else None,
-                        "inference_model": None,
-                        "inference_model_metadata": None,
+                        ARTICLE_ID: article_id,
+                        SENTENCE_ID: sentence_idx,
+                        TEXT: entity,
+                        START_CHAR: span[0] if span else None,
+                        END_CHAR: span[1] if span else None,
+                        INFERENCE_MODEL: None,
+                        INFERENCE_MODEL_METADATA: None,
                     }
                     for entity, span in zip(entities, entity_spans)
                     if entity  # Skip empty entities
@@ -162,8 +174,12 @@ class JsonToDuckConverter(BaseConverter):
         total_entities = 0
 
         # Process each file
+        io_handler = PubMedJsonHandler()
         for file_path in convertible_files:
-            data = self._process_json_file(file_path)
+            json_data = io_handler.read(str(file_path))
+            data = io_handler.extract_all_dicts(json_data)
+
+            # Ensure entity field names match the schema
 
             ArticleRepository(connection=self.connection).insert_many(
                 data["articles"]

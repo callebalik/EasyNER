@@ -4,6 +4,11 @@ import logging
 import warnings
 
 from easyner.io.database.utils.transaction import transactional
+from easyner.io.database.utils.column_names import (
+    ARTICLE_ID,
+    TITLE,
+    ARTICLES_TABLE,
+)
 
 from .base import Repository
 from ..connection import DatabaseConnection
@@ -51,9 +56,8 @@ class ArticleRepository(Repository):
             DataFrame containing article data
         """
         try:
-            result = self.connection.execute(
-                "SELECT article_id, title FROM articles"
-            )
+            query = f"SELECT {ARTICLE_ID}, {TITLE} FROM {ARTICLES_TABLE}"
+            result = self.connection.execute(query)
             return result.fetchdf()
         except Exception as e:
             self.logger.error(f"Error retrieving articles as DataFrame: {e}")
@@ -67,10 +71,9 @@ class ArticleRepository(Repository):
             List of dictionaries containing article data
         """
         try:
-            rows = self.connection.execute(
-                "SELECT article_id, title FROM articles"
-            ).fetchall()
-            return [{"article_id": row[0], "title": row[1]} for row in rows]
+            query = f"SELECT {ARTICLE_ID}, {TITLE} FROM {ARTICLES_TABLE}"
+            rows = self.connection.execute(query).fetchall()
+            return [{ARTICLE_ID: row[0], TITLE: row[1]} for row in rows]
         except Exception as e:
             self.logger.error(
                 f"Error retrieving articles as dictionary list: {e}"
@@ -89,12 +92,12 @@ class ArticleRepository(Repository):
         """
         try:
             result = self.connection.execute(
-                "SELECT article_id, title FROM articles WHERE article_id = ?",
+                f"SELECT {ARTICLE_ID}, {TITLE} FROM {ARTICLES_TABLE} WHERE {ARTICLE_ID} = ?",
                 [article_id],
             )
             row = result.fetchone()
             if row:
-                return {"article_id": row[0], "title": row[1]}
+                return {ARTICLE_ID: row[0], TITLE: row[1]}
             return None
         except Exception as e:
             self.logger.error(f"Error retrieving article by ID: {e}")
@@ -109,8 +112,8 @@ class ArticleRepository(Repository):
         """
         try:
             self.connection.execute(
-                "INSERT INTO articles (article_id, title) VALUES (?, ?)",
-                [article["article_id"], article["title"]],
+                f"INSERT INTO {ARTICLES_TABLE} ({ARTICLE_ID}, {TITLE}) VALUES (?, ?)",
+                [article[ARTICLE_ID], article[TITLE]],
             )
         except Exception as e:
             self.logger.error(f"Error inserting article: {e}")
@@ -131,7 +134,7 @@ class ArticleRepository(Repository):
             if isinstance(articles, pd.DataFrame):
                 self.connection.register("articles_df", articles)
                 self.connection.execute(
-                    "INSERT INTO articles SELECT * FROM articles_df"
+                    f"INSERT INTO {ARTICLES_TABLE} SELECT * FROM articles_df"
                 )
             else:
                 # For list of dictionaries, process each one

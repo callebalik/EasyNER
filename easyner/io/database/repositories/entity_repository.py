@@ -4,6 +4,19 @@ import logging
 import warnings
 
 from easyner.io.database.utils.transaction import transactional
+from easyner.io.database.utils.column_names import (
+    ARTICLE_ID,
+    SENTENCE_ID,
+    TEXT,
+    START_CHAR,
+    END_CHAR,
+    INFERENCE_MODEL,
+    INFERENCE_MODEL_METADATA,
+    ENTITIES_TABLE,
+    ARTICLES_TABLE,  # Added for get_entity_stats
+    SENTENCES_TABLE,  # Added for get_entity_stats
+    TITLE,  # Added for get_entity_stats
+)
 
 from .base import Repository
 from ..connection import DatabaseConnection
@@ -51,10 +64,10 @@ class EntityRepository(Repository):
             DataFrame containing entity data
         """
         try:
-            query = """
-                SELECT article_id, sentence_id, entity, start_pos, end_pos,
-                    inference_model, inference_model_metadata
-                FROM entities
+            query = f"""
+                SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT}, {START_CHAR}, {END_CHAR},
+                    {INFERENCE_MODEL}, {INFERENCE_MODEL_METADATA}
+                FROM {ENTITIES_TABLE}
             """
             result = self.connection.execute(query)
             return result.fetchdf()
@@ -70,21 +83,21 @@ class EntityRepository(Repository):
             List of dictionaries containing entity data
         """
         try:
-            query = """
-                SELECT article_id, sentence_id, entity, start_pos, end_pos,
-                    inference_model, inference_model_metadata
-                FROM entities
+            query = f"""
+                SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT}, {START_CHAR}, {END_CHAR},
+                    {INFERENCE_MODEL}, {INFERENCE_MODEL_METADATA}
+                FROM {ENTITIES_TABLE}
             """
             rows = self.connection.execute(query).fetchall()
             return [
                 {
-                    "article_id": row[0],
-                    "sentence_id": row[1],
-                    "entity": row[2],
-                    "start_pos": row[3],
-                    "end_pos": row[4],
-                    "inference_model": row[5],
-                    "inference_model_metadata": row[6],
+                    ARTICLE_ID: row[0],
+                    SENTENCE_ID: row[1],
+                    TEXT: row[2],
+                    START_CHAR: row[3],
+                    END_CHAR: row[4],
+                    INFERENCE_MODEL: row[5],
+                    INFERENCE_MODEL_METADATA: row[6],
                 }
                 for row in rows
             ]
@@ -108,11 +121,11 @@ class EntityRepository(Repository):
             DataFrame or list of entity dictionaries for the specified article
         """
         try:
-            query = """
-                SELECT article_id, sentence_id, entity, start_pos, end_pos,
-                    inference_model, inference_model_metadata
-                FROM entities
-                WHERE article_id = ?
+            query = f"""
+                SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT}, {START_CHAR}, {END_CHAR},
+                    {INFERENCE_MODEL}, {INFERENCE_MODEL_METADATA}
+                FROM {ENTITIES_TABLE}
+                WHERE {ARTICLE_ID} = ?
             """
             result = self.connection.execute(query, [article_id])
 
@@ -122,13 +135,13 @@ class EntityRepository(Repository):
                 rows = result.fetchall()
                 return [
                     {
-                        "article_id": row[0],
-                        "sentence_id": row[1],
-                        "entity": row[2],
-                        "start_pos": row[3],
-                        "end_pos": row[4],
-                        "inference_model": row[5],
-                        "inference_model_metadata": row[6],
+                        ARTICLE_ID: row[0],
+                        SENTENCE_ID: row[1],
+                        TEXT: row[2],
+                        START_CHAR: row[3],
+                        END_CHAR: row[4],
+                        INFERENCE_MODEL: row[5],
+                        INFERENCE_MODEL_METADATA: row[6],
                     }
                     for row in rows
                 ]
@@ -151,11 +164,11 @@ class EntityRepository(Repository):
             DataFrame or list of entity dictionaries for the specified sentence
         """
         try:
-            query = """
-                SELECT article_id, sentence_id, entity, start_pos, end_pos,
-                    inference_model, inference_model_metadata
-                FROM entities
-                WHERE article_id = ? AND sentence_id = ?
+            query = f"""
+                SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT}, {START_CHAR}, {END_CHAR},
+                    {INFERENCE_MODEL}, {INFERENCE_MODEL_METADATA}
+                FROM {ENTITIES_TABLE}
+                WHERE {ARTICLE_ID} = ? AND {SENTENCE_ID} = ?
             """
             result = self.connection.execute(query, [article_id, sentence_id])
 
@@ -165,13 +178,13 @@ class EntityRepository(Repository):
                 rows = result.fetchall()
                 return [
                     {
-                        "article_id": row[0],
-                        "sentence_id": row[1],
-                        "entity": row[2],
-                        "start_pos": row[3],
-                        "end_pos": row[4],
-                        "inference_model": row[5],
-                        "inference_model_metadata": row[6],
+                        ARTICLE_ID: row[0],
+                        SENTENCE_ID: row[1],
+                        TEXT: row[2],
+                        START_CHAR: row[3],
+                        END_CHAR: row[4],
+                        INFERENCE_MODEL: row[5],
+                        INFERENCE_MODEL_METADATA: row[6],
                     }
                     for row in rows
                 ]
@@ -187,21 +200,21 @@ class EntityRepository(Repository):
             entity: Entity data as a dictionary with required entity fields
         """
         try:
-            query = """
-                INSERT INTO entities (article_id, sentence_id, entity, start_pos, end_pos,
-                                     inference_model, inference_model_metadata)
+            query = f"""
+                INSERT INTO {ENTITIES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}, {START_CHAR}, {END_CHAR},
+                                     {INFERENCE_MODEL}, {INFERENCE_MODEL_METADATA})
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """
             self.connection.execute(
                 query,
                 [
-                    entity["article_id"],
-                    entity["sentence_id"],
-                    entity["entity"],
-                    entity["start_pos"],
-                    entity["end_pos"],
-                    entity.get("inference_model"),  # Optional fields
-                    entity.get("inference_model_metadata"),
+                    entity[ARTICLE_ID],
+                    entity[SENTENCE_ID],
+                    entity[TEXT],
+                    entity[START_CHAR],
+                    entity[END_CHAR],
+                    entity.get(INFERENCE_MODEL),  # Optional fields
+                    entity.get(INFERENCE_MODEL_METADATA),
                 ],
             )
         except Exception as e:
@@ -223,11 +236,11 @@ class EntityRepository(Repository):
             if isinstance(entities, pd.DataFrame):
                 self.connection.register("entities_df", entities)
                 self.connection.execute(
-                    """
-                    INSERT INTO entities (article_id, sentence_id, entity, start_pos, end_pos,
-                                         inference_model, inference_model_metadata)
-                    SELECT article_id, sentence_id, entity, start_pos, end_pos,
-                           inference_model, inference_model_metadata
+                    f"""
+                    INSERT INTO {ENTITIES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}, {START_CHAR}, {END_CHAR},
+                                         {INFERENCE_MODEL}, {INFERENCE_MODEL_METADATA})
+                    SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT}, {START_CHAR}, {END_CHAR},
+                           {INFERENCE_MODEL}, {INFERENCE_MODEL_METADATA}
                     FROM entities_df
                     """
                 )
@@ -247,14 +260,14 @@ class EntityRepository(Repository):
             DataFrame with entity statistics by article
         """
         try:
-            query = """
-                SELECT a.article_id, a.title,
-                       COUNT(DISTINCT s.sentence_id) AS sentence_count,
-                       COUNT(e.entity) AS entity_count
-                FROM articles a
-                LEFT JOIN sentences s ON a.article_id = s.article_id
-                LEFT JOIN entities e ON s.article_id = e.article_id AND s.sentence_id = e.sentence_id
-                GROUP BY a.article_id, a.title
+            query = f"""
+                SELECT a.{ARTICLE_ID}, a.{TITLE},
+                       COUNT(DISTINCT s.{SENTENCE_ID}) AS sentence_count,
+                       COUNT(e.{TEXT}) AS entity_count
+                FROM {ARTICLES_TABLE} a
+                LEFT JOIN {SENTENCES_TABLE} s ON a.{ARTICLE_ID} = s.{ARTICLE_ID}
+                LEFT JOIN {ENTITIES_TABLE} e ON s.{ARTICLE_ID} = e.{ARTICLE_ID} AND s.{SENTENCE_ID} = e.{SENTENCE_ID}
+                GROUP BY a.{ARTICLE_ID}, a.{TITLE}
                 ORDER BY entity_count DESC
             """
             return self.connection.execute(query).fetchdf()

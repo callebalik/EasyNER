@@ -1,4 +1,4 @@
-entity_id,article_id,sentence_id,entity,start_pos,end_pos,inference_model,inference_model_metadata
+entity_id,article_id,sentence_id,text,start_char,end_char,inference_model,inference_model_metadata
 1,466750,0,ulcerative colitis,28,46,,
 2,466750,0,crohn's disease,57,72,,
 3,466750,0,atopic disease,133,147,,

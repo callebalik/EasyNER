@@ -4,6 +4,12 @@ import logging
 import warnings
 
 from easyner.io.database.utils.transaction import transactional
+from easyner.io.database.utils.column_names import (
+    ARTICLE_ID,
+    SENTENCE_ID,
+    TEXT,
+    SENTENCES_TABLE,
+)
 
 from .base import Repository
 from ..connection import DatabaseConnection
@@ -52,7 +58,7 @@ class SentenceRepository(Repository):
         """
         try:
             result = self.connection.execute(
-                "SELECT article_id, sentence_id, text FROM sentences"
+                f"SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {SENTENCES_TABLE}"
             )
             return result.fetchdf()
         except Exception as e:
@@ -68,10 +74,10 @@ class SentenceRepository(Repository):
         """
         try:
             rows = self.connection.execute(
-                "SELECT article_id, sentence_id, text FROM sentences"
+                f"SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {SENTENCES_TABLE}"
             ).fetchall()
             return [
-                {"article_id": row[0], "sentence_id": row[1], "text": row[2]}
+                {ARTICLE_ID: row[0], SENTENCE_ID: row[1], TEXT: row[2]}
                 for row in rows
             ]
         except Exception as e:
@@ -95,7 +101,7 @@ class SentenceRepository(Repository):
         """
         try:
             result = self.connection.execute(
-                "SELECT article_id, sentence_id, text FROM sentences WHERE article_id = ?",
+                f"SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {SENTENCES_TABLE} WHERE {ARTICLE_ID} = ?",
                 [article_id],
             )
 
@@ -105,9 +111,9 @@ class SentenceRepository(Repository):
                 rows = result.fetchall()
                 return [
                     {
-                        "article_id": row[0],
-                        "sentence_id": row[1],
-                        "text": row[2],
+                        ARTICLE_ID: row[0],
+                        SENTENCE_ID: row[1],
+                        TEXT: row[2],
                     }
                     for row in rows
                 ]
@@ -130,15 +136,15 @@ class SentenceRepository(Repository):
         """
         try:
             result = self.connection.execute(
-                "SELECT article_id, sentence_id, text FROM sentences WHERE article_id = ? AND sentence_id = ?",
+                f"SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {SENTENCES_TABLE} WHERE {ARTICLE_ID} = ? AND {SENTENCE_ID} = ?",
                 [article_id, sentence_id],
             )
             row = result.fetchone()
             if row:
                 return {
-                    "article_id": row[0],
-                    "sentence_id": row[1],
-                    "text": row[2],
+                    ARTICLE_ID: row[0],
+                    SENTENCE_ID: row[1],
+                    TEXT: row[2],
                 }
             return None
         except Exception as e:
@@ -154,11 +160,11 @@ class SentenceRepository(Repository):
         """
         try:
             self.connection.execute(
-                "INSERT INTO sentences (article_id, sentence_id, text) VALUES (?, ?, ?)",
+                f"INSERT INTO {SENTENCES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}) VALUES (?, ?, ?)",
                 [
-                    sentence["article_id"],
-                    sentence["sentence_id"],
-                    sentence["text"],
+                    sentence[ARTICLE_ID],
+                    sentence[SENTENCE_ID],
+                    sentence[TEXT],
                 ],
             )
         except Exception as e:
@@ -180,7 +186,7 @@ class SentenceRepository(Repository):
             if isinstance(sentences, pd.DataFrame):
                 self.connection.register("sentences_df", sentences)
                 self.connection.execute(
-                    "INSERT INTO sentences SELECT * FROM sentences_df"
+                    f"INSERT INTO {SENTENCES_TABLE} SELECT * FROM sentences_df"
                 )
             else:
                 # For list of dictionaries, process each one
@@ -198,11 +204,11 @@ class SentenceRepository(Repository):
             DataFrame with article_id and sentence count
         """
         try:
-            query = """
-                SELECT article_id, COUNT(*) as sentence_count
-                FROM sentences
-                GROUP BY article_id
-                ORDER BY article_id
+            query = f"""
+                SELECT {ARTICLE_ID}, COUNT(*) as sentence_count
+                FROM {SENTENCES_TABLE}
+                GROUP BY {ARTICLE_ID}
+                ORDER BY {ARTICLE_ID}
             """
             return self.connection.execute(query).fetchdf()
         except Exception as e:
