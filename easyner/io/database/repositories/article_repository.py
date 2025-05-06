@@ -119,27 +119,93 @@ class ArticleRepository(Repository):
             self.logger.error(f"Error inserting article: {e}")
             raise
 
+    def _execute_insert_many(
+        self, articles: Union[List[Dict[str, Any]], pd.DataFrame]
+    ) -> None:
+        """
+        Core logic to insert multiple articles. Not transactional by itself.
+        """
+        if not isinstance(articles, (list, pd.DataFrame)):
+            self.logger.error(
+                "Invalid type for articles: Expected list of dictionaries or DataFrame."
+            )
+            raise TypeError(
+                "articles must be a list of dictionaries or a pandas DataFrame."
+            )
+
+        if isinstance(articles, list):
+            if not articles:  # Handle empty list
+                return
+            # Ensure all elements are dictionaries
+            if not all(isinstance(a, dict) for a in articles):
+                self.logger.error(
+                    "Invalid format for articles list: Expected list of dictionaries."
+                )
+                raise ValueError(
+                    "All items in articles list must be dictionaries."
+                )
+            df = pd.DataFrame(articles)
+        else:  # isinstance(articles, pd.DataFrame)
+            df = articles
+
+        if df.empty:
+            return
+
+        # Ensure required columns are present
+        required_cols = {ARTICLE_ID, TITLE}
+        if not required_cols.issubset(df.columns):
+            missing_cols = required_cols - set(df.columns)
+            self.logger.error(
+                f"DataFrame is missing required columns for articles: {missing_cols}"
+            )
+            raise ValueError(
+                f"DataFrame for articles is missing columns: {missing_cols}"
+            )
+
+        # Use a unique view name to avoid conflicts if called multiple times in one transaction
+        view_name = f"temp_articles_df_{id(df)}"
+        try:
+            # Select only the required columns for registration to avoid issues with extra columns
+            self.connection.register(view_name, df[list(required_cols)])
+            self.connection.execute(
+                f"INSERT INTO {ARTICLES_TABLE} ({ARTICLE_ID}, {TITLE}) SELECT {ARTICLE_ID}, {TITLE} FROM {view_name}"
+            )
+        finally:
+            self.connection.unregister(view_name)  # Ensure cleanup
+
     @transactional
     def insert_many(
         self, articles: Union[List[Dict[str, Any]], pd.DataFrame]
     ) -> None:
         """
-        Insert multiple articles into the database.
+        Insert multiple articles into the database. This method is transactional.
+        Use this for standalone batch insertions.
 
         Args:
             articles: List of article dictionaries or DataFrame containing article data
         """
         try:
-            # If given a DataFrame, register it as a view
-            if isinstance(articles, pd.DataFrame):
-                self.connection.register("articles_df", articles)
-                self.connection.execute(
-                    f"INSERT INTO {ARTICLES_TABLE} SELECT * FROM articles_df"
-                )
-            else:
-                # For list of dictionaries, process each one
-                for article in articles:
-                    self.insert(article)
+            self._execute_insert_many(articles)
         except Exception as e:
             self.logger.error(f"Error batch inserting articles: {e}")
+            # The @transactional decorator will handle rollback
+            raise
+
+    def insert_many_within_transaction(
+        self, articles: Union[List[Dict[str, Any]], pd.DataFrame]
+    ) -> None:
+        """
+        Insert multiple articles as part of an existing, externally managed transaction.
+        This method is NOT transactional by itself.
+
+        Args:
+            articles: List of article dictionaries or DataFrame containing article data
+        """
+        try:
+            self._execute_insert_many(articles)
+        except Exception as e:
+            self.logger.error(
+                f"Error batch inserting articles within an existing transaction: {e}"
+            )
+            # Let the external transaction handler decide on rollback
             raise

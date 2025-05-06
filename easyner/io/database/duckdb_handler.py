@@ -177,14 +177,14 @@ class DuckDBHandler(IOHandler):
             )
             self._write_data(connection, df, table_name, if_exists)
 
-    def create_tables(self) -> None:
+    def create_base_tables(self) -> None:
         """
         Create all database tables using SQL files.
 
         This method delegates to the TableManager to create
         the necessary tables in the database.
         """
-        self.table_manager.create_tables()
+        self.table_manager.create_base_tables()
 
     def create_indices(self) -> None:
         """
@@ -347,3 +347,28 @@ class DuckDBHandler(IOHandler):
             DataFrame or list of entity dictionaries
         """
         return self.entity_repository.get_all(as_df=as_df)
+
+    def get_conversion_log_df(self) -> pd.DataFrame:
+        """
+        Get the conversion log from the database as a DataFrame.
+
+        Returns:
+            DataFrame containing conversion log data, or an empty DataFrame if the log is empty or table doesn't exist.
+        """
+        try:
+            # Check if the table exists to prevent errors if it hasn't been created yet
+            # (though create_base_tables should handle this in normal flow)
+            query_exists = "SELECT count(*) FROM information_schema.tables WHERE table_name = 'conversion_log'"
+            table_exists = self.connection.execute(query_exists).fetchone()[0]
+            if not table_exists:
+                self.logger.warning(
+                    "Conversion log table does not exist. Returning empty DataFrame."
+                )
+                return pd.DataFrame()
+
+            return self.connection.execute(
+                "SELECT * FROM conversion_log"
+            ).fetchdf()
+        except Exception as e:
+            self.logger.error(f"Error fetching conversion log: {e}")
+            return pd.DataFrame()  # Return empty DataFrame on error

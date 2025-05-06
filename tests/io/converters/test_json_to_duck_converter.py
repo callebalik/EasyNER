@@ -15,6 +15,7 @@ from easyner.io.database.utils.column_names import (
     TITLE,
     ENTITY_ID,
 )
+import json
 
 
 def test_list_convertible_files(temp_dir, test_json_file):
@@ -42,7 +43,7 @@ def test_convert_to_db(temp_dir, test_json_file):
     result = converter.convert()
 
     # Check results
-    assert result["files_processed"] == 1
+    assert result["files_processed_this_run"] == 1
     assert result["article_count"] == 2
     assert result["sentence_count"] == 3
     assert result["entity_count"] == 5
@@ -78,9 +79,132 @@ def test_convert_with_memory_db(temp_dir, test_json_file):
     result = converter.convert(use_memory_db=True)
 
     # Check results
-    assert result["files_processed"] == 1
+    assert result["files_processed_this_run"] == 1
     assert result["article_count"] == 2
     assert result["database_path"] == ":memory:"
+
+
+def test_idempotency_no_reprocessing(temp_dir, test_json_file):
+    """Test that running convert multiple times without reprocess flag doesn't reprocess files."""
+    output_dir = temp_dir / "output_idempotency_no_reprocess"
+    output_dir.mkdir(exist_ok=True)
+    db_path = output_dir / "idem_no_reprocess.db"
+
+    converter = JsonToDuckConverter(temp_dir, output_dir, db_file=str(db_path))
+
+    # First run
+    result1 = converter.convert()
+    assert result1["files_processed_this_run"] == 1
+    assert result1["article_count"] == 2  # From test_json_file
+    assert result1["sentence_count"] == 3
+    assert result1["entity_count"] == 5
+
+    # Check conversion log
+    log_df1 = converter.db_handler.get_conversion_log_df()
+    assert len(log_df1[log_df1["status"] == "converted"]) == 1
+
+    # Second run (should not reprocess)
+    result2 = converter.convert()  # _reprocess is False by default
+    assert result2["files_processed_this_run"] == 0
+    assert result2["articles_added_this_run"] == 0
+    assert result2["sentences_added_this_run"] == 0
+    assert result2["entities_added_this_run"] == 0
+    # Total counts in DB should remain the same
+    assert result2["article_count"] == 2
+    assert result2["sentence_count"] == 3
+    assert result2["entity_count"] == 5
+
+    # Conversion log should still have 1 converted entry
+    log_df2 = converter.db_handler.get_conversion_log_df()
+    assert len(log_df2[log_df2["status"] == "converted"]) == 1
+    # Ensure timestamps or other details weren't unnecessarily updated for the already converted file
+    # This might require comparing log_df1 and log_df2 for the specific file entry if precise.
+    # For simplicity, we check the count of 'converted' status.
+
+
+def test_idempotency_with_reprocess_flag(temp_dir, test_json_file):
+    """Test that the reprocess flag forces reconversion."""
+    output_dir = temp_dir / "output_idempotency_reprocess"
+    output_dir.mkdir(exist_ok=True)
+    db_path = output_dir / "idem_reprocess.db"
+
+    converter = JsonToDuckConverter(temp_dir, output_dir, db_file=str(db_path))
+
+    # First run
+    result1 = converter.convert()
+    assert result1["files_processed_this_run"] == 1
+    assert result1["article_count"] == 2
+
+    # Second run with reprocess=True
+    # Note: The converter instance needs to be re-initialized or its _reprocess flag set
+    # For this test, let's re-initialize to ensure clean state for the _reprocess attribute handling
+    converter_reprocess = JsonToDuckConverter(
+        temp_dir, output_dir, db_file=str(db_path), reprocess=True
+    )
+    result2 = converter_reprocess.convert()
+
+    assert result2["files_processed_this_run"] == 1  # File is processed again
+    # Counts of items added in this run should reflect the file's content
+    assert result2["articles_added_this_run"] == 2
+    assert result2["sentences_added_this_run"] == 3
+    assert result2["entities_added_this_run"] == 5
+
+    # Total counts in DB should remain the same (data is overwritten/re-inserted, not duplicated)
+    assert result2["article_count"] == 2
+    assert result2["sentence_count"] == 3
+    assert result2["entity_count"] == 5
+
+    # Conversion log should still reflect 1 file as converted, possibly with updated timestamp
+    log_df2 = converter_reprocess.db_handler.get_conversion_log_df()
+    assert len(log_df2[log_df2["status"] == "converted"]) == 1
+
+
+def test_idempotency_adding_new_files(temp_dir, test_data):
+    """Test processing new files after an initial run."""
+    output_dir = temp_dir / "output_idempotency_new_files"
+    output_dir.mkdir(exist_ok=True)
+    db_path = output_dir / "idem_new_files.db"
+
+    # Create initial file
+    file1_path = temp_dir / "articles1.json"
+    with open(file1_path, "w") as f:
+        json.dump({"1": test_data["1"]}, f)  # Only first article
+
+    converter = JsonToDuckConverter(temp_dir, output_dir, db_file=str(db_path))
+
+    # First run (only file1.json)
+    result1 = converter.convert()
+    assert result1["files_processed_this_run"] == 1
+    assert result1["article_count"] == 1
+    # Expected sentences and entities from test_data["1"]
+    # test_data["1"] has 2 sentences, 2+1=3 entities
+    assert result1["sentence_count"] == 2
+    assert result1["entity_count"] == 3
+
+    # Add a new file
+    file2_path = temp_dir / "articles2.json"
+    with open(file2_path, "w") as f:
+        json.dump({"2": test_data["2"]}, f)  # Only second article
+
+    # Second run (should process only file2.json)
+    # Create a new converter instance or ensure the existing one re-scans files correctly
+    # For BaseConverter, list_unconverted_files re-scans each time.
+    result2 = converter.convert()
+    assert result2["files_processed_this_run"] == 1  # Only the new file
+    # Articles added should be from the new file
+    assert result2["articles_added_this_run"] == 1
+    # Sentences and entities from test_data["2"]
+    # test_data["2"] has 1 sentence, 2 entities
+    assert result2["sentences_added_this_run"] == 1
+    assert result2["entities_added_this_run"] == 2
+
+    # Total counts in DB should be cumulative
+    assert result2["article_count"] == 2
+    assert result2["sentence_count"] == 2 + 1  # Sentences from file1 + file2
+    assert result2["entity_count"] == 3 + 2  # Entities from file1 + file2
+
+    log_df = converter.db_handler.get_conversion_log_df()
+    assert len(log_df[log_df["status"] == "converted"]) == 2
 
 
 class TestExampleDataStructureAndContent:
@@ -216,7 +340,7 @@ class TestExampleDataStructureAndContent:
     def test_database_setup(self, test_db_setup):
         """Test that the database was set up correctly."""
         assert test_db_setup["db_path"].exists()
-        assert test_db_setup["result"]["files_processed"] == 1
+        assert test_db_setup["result"]["files_processed_this_run"] == 1
         assert test_db_setup["result"]["article_count"] > 0
         assert test_db_setup["result"]["sentence_count"] > 0
         assert test_db_setup["result"]["entity_count"] > 0

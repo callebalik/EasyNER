@@ -221,35 +221,125 @@ class EntityRepository(Repository):
             self.logger.error(f"Error inserting entity: {e}")
             raise
 
+    def _execute_insert_many(
+        self, entities: Union[List[Dict[str, Any]], pd.DataFrame]
+    ) -> None:
+        """
+        Core logic to insert multiple entities. Not transactional by itself.
+        """
+        if not isinstance(entities, (list, pd.DataFrame)):
+            self.logger.error(
+                "Invalid type for entities: Expected list of dictionaries or DataFrame."
+            )
+            raise TypeError(
+                "entities must be a list of dictionaries or a pandas DataFrame."
+            )
+
+        if isinstance(entities, list):
+            if not entities:  # Handle empty list
+                return
+            if not all(isinstance(e, dict) for e in entities):
+                self.logger.error(
+                    "Invalid format for entities list: Expected list of dictionaries."
+                )
+                raise ValueError(
+                    "All items in entities list must be dictionaries."
+                )
+            df = pd.DataFrame(entities)
+        else:  # isinstance(entities, pd.DataFrame)
+            df = entities
+
+        if df.empty:
+            return
+
+        required_cols = {ARTICLE_ID, SENTENCE_ID, TEXT, START_CHAR, END_CHAR}
+        # Optional columns that might be present
+        optional_cols = {INFERENCE_MODEL, INFERENCE_MODEL_METADATA}
+
+        if not required_cols.issubset(df.columns):
+            missing_cols = required_cols - set(df.columns)
+            self.logger.error(
+                f"DataFrame is missing required columns for entities: {missing_cols}"
+            )
+            raise ValueError(
+                f"DataFrame for entities is missing columns: {missing_cols}"
+            )
+
+        # Determine which optional columns are actually in the DataFrame
+        present_optional_cols = list(optional_cols.intersection(df.columns))
+        cols_to_insert = list(required_cols) + present_optional_cols
+
+        # Construct column names string for SQL query
+        sql_column_names = ", ".join(cols_to_insert)
+
+        # Select only the columns that will be inserted
+        df_to_register = df[
+            cols_to_insert
+        ].copy()  # Use .copy() to avoid SettingWithCopyWarning
+
+        # Handle potential NaN values in optional columns if they are numeric,
+        # or ensure they are suitable for DB insertion (e.g. None for text)
+        for col in present_optional_cols:
+            # If a column is all NaN, DuckDB might infer it as float, then fail on string insert.
+            # Convert to object to allow None/NULL.
+            if df_to_register[col].isnull().all():
+                df_to_register[col] = None
+            elif (
+                pd.api.types.is_numeric_dtype(df_to_register[col].dtype)
+                and df_to_register[col].isnull().any()
+            ):
+                # For numeric columns with NaNs that are not all NaNs,
+                # convert to a type that supports NaNs suitable for DuckDB (e.g., float or allow DuckDB to handle with None)
+                # This step might be nuanced based on exact DB schema and desired NaN representation (e.g., NULL vs. a specific number)
+                # For simplicity, if it's numeric and has NaNs, we ensure they are treated as None for SQL NULL.
+                df_to_register[col] = df_to_register[col].where(
+                    pd.notnull(df_to_register[col]), None
+                )
+
+        view_name = f"temp_entities_df_{id(df_to_register)}"
+        try:
+            self.connection.register(view_name, df_to_register)
+            self.connection.execute(
+                f"INSERT INTO {ENTITIES_TABLE} ({sql_column_names}) SELECT {sql_column_names} FROM {view_name}"
+            )
+        finally:
+            self.connection.unregister(view_name)
+
     @transactional
     def insert_many(
         self, entities: Union[List[Dict[str, Any]], pd.DataFrame]
     ) -> None:
         """
-        Insert multiple entities into the database.
+        Insert multiple entities into the database. This method is transactional.
+        Use this for standalone batch insertions.
 
         Args:
             entities: List of entity dictionaries or DataFrame containing entity data
         """
         try:
-            # If given a DataFrame, register it as a view
-            if isinstance(entities, pd.DataFrame):
-                self.connection.register("entities_df", entities)
-                self.connection.execute(
-                    f"""
-                    INSERT INTO {ENTITIES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}, {START_CHAR}, {END_CHAR},
-                                         {INFERENCE_MODEL}, {INFERENCE_MODEL_METADATA})
-                    SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT}, {START_CHAR}, {END_CHAR},
-                           {INFERENCE_MODEL}, {INFERENCE_MODEL_METADATA}
-                    FROM entities_df
-                    """
-                )
-            else:
-                # For list of dictionaries, process each one
-                for entity in entities:
-                    self.insert(entity)
+            self._execute_insert_many(entities)
         except Exception as e:
             self.logger.error(f"Error batch inserting entities: {e}")
+            # The @transactional decorator will handle rollback
+            raise
+
+    def insert_many_within_transaction(
+        self, entities: Union[List[Dict[str, Any]], pd.DataFrame]
+    ) -> None:
+        """
+        Insert multiple entities as part of an existing, externally managed transaction.
+        This method is NOT transactional by itself.
+
+        Args:
+            entities: List of entity dictionaries or DataFrame containing entity data
+        """
+        try:
+            self._execute_insert_many(entities)
+        except Exception as e:
+            self.logger.error(
+                f"Error batch inserting entities within an existing transaction: {e}"
+            )
+            # Let the external transaction handler decide on rollback
             raise
 
     def get_entity_stats(self) -> pd.DataFrame:

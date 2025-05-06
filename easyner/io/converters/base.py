@@ -31,14 +31,37 @@ class BaseConverter(ABC):
         """
         pass
 
+    @abstractmethod
     def list_converted_files(self) -> List[Path]:
         """
         List all files that have already been converted
 
         Returns:
-            List of files already converted, empty list if tracking not supported
+            List of files already converted
         """
-        return []
+        pass
+
+    def list_unconverted_files(self) -> List[Path]:
+        """
+        List all files in the source directory that have not been converted yet.
+        Default implementation compares convertible files with converted files.
+        """
+        try:
+            convertible_files_set = {
+                p.resolve() for p in self.list_convertible_files()
+            }
+            converted_files_set = {
+                p.resolve() for p in self.list_converted_files()
+            }
+
+            unconverted_paths = list(
+                convertible_files_set - converted_files_set
+            )
+            return [Path(p) for p in unconverted_paths]
+        except Exception as e:
+            # Log error or handle as appropriate for your application
+            print(f"Error listing unconverted files: {e}")
+            return []
 
     @abstractmethod
     def convert(self, **kwargs) -> Dict[str, Any]:

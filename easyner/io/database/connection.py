@@ -120,6 +120,22 @@ class DatabaseConnection(IDatabaseConnection):
             self.logger.error(f"Error registering object: {e}")
             raise
 
+    def unregister(self, name: str) -> None:
+        """
+        Unregister an object from the connection
+
+        Args:
+            name: Name of the object to unregister
+        """
+        if self._connection is None:
+            self.connect()
+
+        try:
+            self._connection.unregister(name)
+        except Exception as e:
+            self.logger.error(f"Error unregistering object: {e}")
+            raise
+
     def begin_transaction(self) -> None:
         """
         Begin a database transaction.

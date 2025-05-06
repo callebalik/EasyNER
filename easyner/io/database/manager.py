@@ -35,7 +35,7 @@ class TableManager:
         self.connection = connection
 
     @transactional
-    def create_tables(self) -> None:
+    def create_base_tables(self) -> None:
         """
         Create all database tables using SQL statements.
 

@@ -3,6 +3,7 @@ SQL file utility functions for database operations.
 """
 
 from pathlib import Path
+import hashlib
 from typing import Union, Optional
 
 
@@ -26,3 +27,33 @@ def read_sql_file(file_path: Union[str, Path]) -> str:
     path = Path(file_path) if isinstance(file_path, str) else file_path
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def get_file_hash(
+    file_path: Union[str, Path],
+    algorithm: str = "sha256",
+    buffer_size: int = 65536,
+) -> str:
+    """
+    Calculate a hash of a file's contents.
+
+    Args:
+        file_path: Path to the file to hash
+        algorithm: Hash algorithm to use (default: sha256)
+        buffer_size: Buffer size for reading file chunks (default: 64KB)
+
+    Returns:
+        The hexadecimal digest of the file hash
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist
+        IOError: If there's an issue reading the file
+    """
+    path = Path(file_path) if isinstance(file_path, str) else file_path
+    hash_obj = hashlib.new(algorithm)
+
+    with open(path, "rb") as f:
+        while chunk := f.read(buffer_size):
+            hash_obj.update(chunk)
+
+    return hash_obj.hexdigest()

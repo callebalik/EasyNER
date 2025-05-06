@@ -171,29 +171,95 @@ class SentenceRepository(Repository):
             self.logger.error(f"Error inserting sentence: {e}")
             raise
 
+    def _execute_insert_many(
+        self, sentences: Union[List[Dict[str, Any]], pd.DataFrame]
+    ) -> None:
+        """
+        Core logic to insert multiple sentences. Not transactional by itself.
+        """
+        if not isinstance(sentences, (list, pd.DataFrame)):
+            self.logger.error(
+                "Invalid type for sentences: Expected list of dictionaries or DataFrame."
+            )
+            raise TypeError(
+                "sentences must be a list of dictionaries or a pandas DataFrame."
+            )
+
+        if isinstance(sentences, list):
+            if not sentences:  # Handle empty list
+                return
+            # Ensure all elements are dictionaries
+            if not all(isinstance(s, dict) for s in sentences):
+                self.logger.error(
+                    "Invalid format for sentences list: Expected list of dictionaries."
+                )
+                raise ValueError(
+                    "All items in sentences list must be dictionaries."
+                )
+            df = pd.DataFrame(sentences)
+        else:  # isinstance(sentences, pd.DataFrame)
+            df = sentences
+
+        if df.empty:
+            return
+
+        # Ensure required columns are present
+        required_cols = {ARTICLE_ID, SENTENCE_ID, TEXT}
+        if not required_cols.issubset(df.columns):
+            missing_cols = required_cols - set(df.columns)
+            self.logger.error(
+                f"DataFrame is missing required columns for sentences: {missing_cols}"
+            )
+            raise ValueError(
+                f"DataFrame for sentences is missing columns: {missing_cols}"
+            )
+
+        # Use a unique view name to avoid conflicts if called multiple times in one transaction
+        view_name = f"temp_sentences_df_{id(df)}"
+        try:
+            # Select only the required columns for registration
+            self.connection.register(view_name, df[list(required_cols)])
+            self.connection.execute(
+                f"INSERT INTO {SENTENCES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}) SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {view_name}"
+            )
+        finally:
+            self.connection.unregister(view_name)  # Ensure cleanup
+
     @transactional
     def insert_many(
         self, sentences: Union[List[Dict[str, Any]], pd.DataFrame]
     ) -> None:
         """
-        Insert multiple sentences into the database.
+        Insert multiple sentences into the database. This method is transactional.
+        Use this for standalone batch insertions.
 
         Args:
             sentences: List of sentence dictionaries or DataFrame containing sentence data
         """
         try:
-            # If given a DataFrame, register it as a view
-            if isinstance(sentences, pd.DataFrame):
-                self.connection.register("sentences_df", sentences)
-                self.connection.execute(
-                    f"INSERT INTO {SENTENCES_TABLE} SELECT * FROM sentences_df"
-                )
-            else:
-                # For list of dictionaries, process each one
-                for sentence in sentences:
-                    self.insert(sentence)
+            self._execute_insert_many(sentences)
         except Exception as e:
             self.logger.error(f"Error batch inserting sentences: {e}")
+            # The @transactional decorator will handle rollback
+            raise
+
+    def insert_many_within_transaction(
+        self, sentences: Union[List[Dict[str, Any]], pd.DataFrame]
+    ) -> None:
+        """
+        Insert multiple sentences as part of an existing, externally managed transaction.
+        This method is NOT transactional by itself.
+
+        Args:
+            sentences: List of sentence dictionaries or DataFrame containing sentence data
+        """
+        try:
+            self._execute_insert_many(sentences)
+        except Exception as e:
+            self.logger.error(
+                f"Error batch inserting sentences within an existing transaction: {e}"
+            )
+            # Let the external transaction handler decide on rollback
             raise
 
     def get_sentence_count_by_article(self) -> pd.DataFrame:

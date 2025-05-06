@@ -15,11 +15,15 @@ SENTENCES_SCHEMA = SCHEMA_DIR / "sentences.sql"
 ENTITY_SEQUENCE_SCHEMA = SCHEMA_DIR / "entity_sequence.sql"
 ENTITIES_SCHEMA = SCHEMA_DIR / "entities.sql"
 
+CONVERSION_LOG_SCHEMA = SCHEMA_DIR / "conversion_log.sql"
+
 # SQL schema statements - loaded at import time using the utility function
 ARTICLES_TABLE_SQL = read_sql_file(ARTICLES_SCHEMA)
 SENTENCES_TABLE_SQL = read_sql_file(SENTENCES_SCHEMA)
 ENTITY_SEQUENCE_SQL = read_sql_file(ENTITY_SEQUENCE_SCHEMA)
 ENTITIES_TABLE_SQL = read_sql_file(ENTITIES_SCHEMA)
+# Conversion log schema
+CONVERSION_LOG_TABLE_SQL = read_sql_file(CONVERSION_LOG_SCHEMA)
 
 __all__ = [
     # SQL statements (preferred usage)
