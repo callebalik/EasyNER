@@ -77,8 +77,17 @@ class JsonToDuckConverter(BaseConverter):
         self._converted_files = []
 
     def list_convertible_files(self) -> List[Path]:
-        """List all JSON files in the source directory"""
-        return list(self.source_dir.glob(self.file_pattern))
+        """List all JSON files in the source directory and sort them by batch index"""
+        files = list(self.source_dir.glob(self.file_pattern))
+
+        # Use safe_batch_file_index_sort to sort files
+        str_files = [str(f) for f in files]
+        sorted_str_files = safe_batch_file_index_sort(str_files)
+
+        # Convert back to Path objects
+        sorted_files = [Path(f) for f in sorted_str_files]
+
+        return sorted_files
 
     def list_converted_files(self) -> List[Path]:
         """List all files that have already been successfully converted by querying the database."""
