@@ -46,7 +46,7 @@ def get_batch_file_index(batch_file: str) -> int:
             )
         return int(match.group(1))
 
-    print(f"Error extracting index from {batch_file}")
+    logging.error(f"Error extracting index from {batch_file}")
     raise ValueError(
         "Batch filenames must contain a pure numeric index before the extension"
     )
@@ -212,3 +212,30 @@ def _remove_all_files_from_dir(dir_path: str):
     except OSError as e:
         print(f"Error while clearing files from {dir_path}: {e}")
         raise
+
+
+def safe_batch_file_index_sort(file_list: List[str]) -> List[str]:
+    """
+    Sort files by batch index with fallback to lexicographical sorting.
+
+    Parameters:
+    -----------
+    file_list: List[str]
+        List of files to sort
+
+    Returns:
+    --------
+    List[str]: Sorted list of files
+    """
+    if not file_list:
+        return []
+
+    # First try to extract batch indices for all files
+    try:
+        return sorted(file_list, key=get_batch_file_index)
+    except ValueError:
+        # Fall back to lexicographical sorting if batch indices can't be extracted
+        logging.warning(
+            "Couldn't sort by batch index. Using lexicographical sort."
+        )
+        return sorted(file_list)
