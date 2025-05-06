@@ -16,7 +16,8 @@ class BaseConverter(ABC):
 
         Args:
             source_dir: Directory containing files to be converted
-            target_dir: Directory where converted files will be stored (if applicable)
+            target_dir: Directory where converted files will be stored
+            (if applicable)
         """
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir) if target_dir else None
@@ -24,7 +25,8 @@ class BaseConverter(ABC):
     @abstractmethod
     def list_convertible_files(self) -> List[Path]:
         """
-        List all files in the source directory that can be converted by this converter
+        List eligible files for conversion by this converter
+        in the source directory
 
         Returns:
             List of file paths that can be converted
@@ -43,8 +45,7 @@ class BaseConverter(ABC):
 
     def list_unconverted_files(self) -> List[Path]:
         """
-        List all files in the source directory that have not been converted yet.
-        Default implementation compares convertible files with converted files.
+        List unconverted files in source directory
         """
         try:
             convertible_files_set = {
@@ -69,7 +70,8 @@ class BaseConverter(ABC):
         Convert the source files according to converter implementation
 
         Args:
-            **kwargs: Additional arguments specific to the converter implementation
+            **kwargs: Additional arguments specific to the converter
+            implementation
 
         Returns:
             Dictionary containing information about the conversion process
