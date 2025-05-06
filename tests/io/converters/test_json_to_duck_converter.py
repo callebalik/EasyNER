@@ -123,7 +123,7 @@ def test_idempotency_no_reprocessing(temp_dir, test_json_file):
 
 
 def test_idempotency_with_reprocess_flag(temp_dir, test_json_file):
-    """Test that the reprocess flag forces reconversion."""
+    """Test that the reprocess flag forces reconversion of all files."""
     output_dir = temp_dir / "output_idempotency_reprocess"
     output_dir.mkdir(exist_ok=True)
     db_path = output_dir / "idem_reprocess.db"
@@ -136,25 +136,27 @@ def test_idempotency_with_reprocess_flag(temp_dir, test_json_file):
     assert result1["article_count"] == 2
 
     # Second run with reprocess=True
-    # Note: The converter instance needs to be re-initialized or its _reprocess flag set
-    # For this test, let's re-initialize to ensure clean state for the _reprocess attribute handling
     converter_reprocess = JsonToDuckConverter(
         temp_dir, output_dir, db_file=str(db_path), reprocess=True
     )
     result2 = converter_reprocess.convert()
 
-    assert result2["files_processed_this_run"] == 1  # File is processed again
-    # Counts of items added in this run should reflect the file's content
+    # Key change: Files processed should be ALL files (not just the ones that weren't processed before)
+    assert (
+        result2["files_processed_this_run"] == 1
+    )  # All files are reprocessed
+
+    # Counts of items added in this run should reflect all data being reprocessed
     assert result2["articles_added_this_run"] == 2
     assert result2["sentences_added_this_run"] == 3
     assert result2["entities_added_this_run"] == 5
 
-    # Total counts in DB should remain the same (data is overwritten/re-inserted, not duplicated)
+    # Total counts in DB should remain the same (data is replaced, not duplicated)
     assert result2["article_count"] == 2
     assert result2["sentence_count"] == 3
     assert result2["entity_count"] == 5
 
-    # Conversion log should still reflect 1 file as converted, possibly with updated timestamp
+    # Conversion log should still reflect 1 file as converted (with updated timestamp)
     log_df2 = converter_reprocess.db_handler.get_conversion_log_df()
     assert len(log_df2[log_df2["status"] == "converted"]) == 1
 
