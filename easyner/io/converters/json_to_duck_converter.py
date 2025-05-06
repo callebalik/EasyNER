@@ -15,6 +15,7 @@ from easyner.io.database.repositories import (
 from easyner.io.database.schemas import CONVERSION_LOG_TABLE_SQL
 from easyner.io.database.utils.sql_utils import get_file_hash
 from easyner.io.handlers import PubMedJsonHandler
+from easyner.io.utils import safe_batch_file_index_sort
 
 # Set up logger for the converter
 logger = logging.getLogger(__name__)
@@ -187,7 +188,32 @@ class JsonToDuckConverter(BaseConverter):
         self.db_handler.create_base_tables()
 
         # Get files to process
+        all_convertible_files = self.list_convertible_files()
+        already_converted_files = (
+            self.list_converted_files() if not reprocess else []
+        )
         files_to_process = self.list_unconverted_files()
+
+        # Display a summary table of conversion statistics
+        table_width = 60
+        logger.info("=" * table_width)
+        logger.info(f"{'CONVERSION SUMMARY':^{table_width}}")
+        logger.info("=" * table_width)
+        logger.info(
+            f"{'Total convertible files:':<40} {len(all_convertible_files):>20}"
+        )
+        logger.info(
+            f"{'Already converted files:':<40} {len(already_converted_files):>20}"
+        )
+        logger.info(
+            f"{'Files to be converted now:':<40} {len(files_to_process):>20}"
+        )
+        logger.info("-" * table_width)
+        if reprocess:
+            logger.info(
+                f"{'Reprocessing mode active - all files will be converted':^{table_width}}"
+            )
+        logger.info("=" * table_width)
 
         # Track statistics
         total_articles = 0
@@ -196,49 +222,79 @@ class JsonToDuckConverter(BaseConverter):
 
         # Process each file with progress bar
         io_handler = PubMedJsonHandler()
-        for file_path in tqdm(
-            files_to_process, desc="Converting JSON->Duckdb", unit="file"
-        ):
-            logger.info(f"Processing file: {file_path}")
 
-            try:
-                # Load and parse JSON data
-                json_data = io_handler.read(str(file_path))
-                data = io_handler.extract_all_dicts(json_data)
+        # Variable to track if a transaction is active
+        transaction_active = False
 
-                # Process in a transaction
+        try:
+            for file_path in tqdm(
+                files_to_process, desc="Converting JSON->Duckdb", unit="file"
+            ):
+                logger.info(f"Processing file: {file_path}")
+
                 try:
-                    self.connection.begin_transaction()
+                    # Load and parse JSON data
+                    json_data = io_handler.read(str(file_path))
+                    data = io_handler.extract_all_dicts(json_data)
 
-                    # Insert data into tables
-                    ArticleRepository(
-                        connection=self.connection
-                    ).insert_many_within_transaction(data["articles"])
-                    SentenceRepository(
-                        connection=self.connection
-                    ).insert_many_within_transaction(data["sentences"])
-                    EntityRepository(
-                        connection=self.connection
-                    ).insert_many_within_transaction(data["entities"])
+                    # Process in a transaction
+                    try:
+                        self.connection.begin_transaction()
+                        transaction_active = True
 
-                    self.connection.commit()
-                    self._log_conversion(file_path, "converted")
-                    processed_files.append(file_path)
+                        # Insert data into tables
+                        ArticleRepository(
+                            connection=self.connection
+                        ).insert_many_within_transaction(data["articles"])
+                        SentenceRepository(
+                            connection=self.connection
+                        ).insert_many_within_transaction(data["sentences"])
+                        EntityRepository(
+                            connection=self.connection
+                        ).insert_many_within_transaction(data["entities"])
 
-                    # Update counts
-                    total_articles += len(data["articles"])
-                    total_sentences += len(data["sentences"])
-                    total_entities += len(data["entities"])
+                        self.connection.commit()
+                        transaction_active = False
+                        self._log_conversion(file_path, "converted")
+                        processed_files.append(file_path)
 
+                        # Update counts
+                        total_articles += len(data["articles"])
+                        total_sentences += len(data["sentences"])
+                        total_entities += len(data["entities"])
+
+                    except Exception as e:
+                        if transaction_active:
+                            self.connection.rollback()
+                            transaction_active = False
+                        logger.error(f"Error processing file {file_path}: {e}")
+                        self._log_conversion(file_path, "failed_conversion")
                 except Exception as e:
-                    self.connection.rollback()
-                    logger.error(f"Error processing file {file_path}: {e}")
-                    self._log_conversion(file_path, "failed_conversion")
-            except Exception as e:
-                logger.error(
-                    f"Failed to read or parse JSON file {file_path}: {e}"
-                )
-                self._log_conversion(file_path, "failed_parsing")
+                    logger.error(
+                        f"Failed to read or parse JSON file {file_path}: {e}"
+                    )
+                    self._log_conversion(file_path, "failed_parsing")
+
+        except KeyboardInterrupt:
+            logger.info("Keyboard interrupt detected. Gracefully stopping...")
+            if transaction_active:
+                logger.info("Rolling back current transaction...")
+                self.connection.rollback()
+            logger.info("Conversion stopped by user.")
+            # Return partial results
+            return {
+                "files_processed_this_run": len(processed_files),
+                "articles_added_this_run": total_articles,
+                "sentences_added_this_run": total_sentences,
+                "entities_added_this_run": total_entities,
+                "processed_files_this_run_paths": [
+                    str(f) for f in processed_files
+                ],
+                "database_path": (
+                    self.db_file if not self._is_memory_db else ":memory:"
+                ),
+                "status": "interrupted",
+            }
 
         # Create indices for better performance
         self.db_handler.create_indices()
@@ -263,6 +319,7 @@ class JsonToDuckConverter(BaseConverter):
             "database_path": (
                 self.db_file if not self._is_memory_db else ":memory:"
             ),
+            "status": "completed",
         }
 
         if not self._is_memory_db:
@@ -292,3 +349,126 @@ class JsonToDuckConverter(BaseConverter):
                 logger.error(
                     f"Error recreating conversion log table: {log_error}"
                 )
+
+
+def main(args=None):
+    """Command-line entry point for the converter"""
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(
+        description="Convert JSON files to DuckDB database for EasyNER"
+    )
+    parser.add_argument(
+        "source_dir",
+        type=str,
+        help="Directory containing JSON files to convert",
+    )
+    parser.add_argument(
+        "target_dir",
+        type=str,
+        help="Directory where the DuckDB database will be stored",
+    )
+    parser.add_argument(
+        "--db-file",
+        type=str,
+        default=None,
+        help="Custom database filename (default: 'easyner.db' in target_dir)",
+    )
+    parser.add_argument(
+        "--file-pattern",
+        type=str,
+        default="*.json",
+        help="Pattern to match JSON files (default: '*.json')",
+    )
+    parser.add_argument(
+        "--reprocess",
+        action="store_true",
+        help="Reprocess already converted files",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default="INFO",
+        help="Set the logging level (default: INFO)",
+    )
+
+    if args is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(args)
+
+    # Set up logging based on command line arguments
+    log_level = getattr(logging, args.log_level)
+    logger.setLevel(log_level)
+
+    # Log the arguments
+    logger.info(f"Source directory: {args.source_dir}")
+    logger.info(f"Target directory: {args.target_dir}")
+    logger.info(f"DB File: {args.db_file or 'default (easyner.db)'}")
+    logger.info(f"File pattern: {args.file_pattern}")
+    logger.info(f"Reprocess: {args.reprocess}")
+
+    try:
+        # Create the converter and run the conversion
+        converter = JsonToDuckConverter(
+            source_dir=args.source_dir,
+            target_dir=args.target_dir,
+            db_file=args.db_file,
+            file_pattern=args.file_pattern,
+            reprocess=args.reprocess,
+        )
+
+        try:
+            result = converter.convert()
+
+            # Check if conversion was interrupted
+            if result.get("status") == "interrupted":
+                logger.info("Conversion was interrupted by user.")
+                logger.info(
+                    f"Files processed before interruption: {result['files_processed_this_run']}"
+                )
+                logger.info(
+                    f"Articles added before interruption: {result['articles_added_this_run']}"
+                )
+                logger.info(f"Database path: {result['database_path']}")
+                return 130  # Standard exit code for SIGINT
+
+            # Print statistics for completed conversion
+            logger.info("Conversion completed successfully!")
+            logger.info(
+                f"Files processed: {result['files_processed_this_run']}"
+            )
+            logger.info(f"Articles added: {result['articles_added_this_run']}")
+            logger.info(
+                f"Sentences added: {result['sentences_added_this_run']}"
+            )
+            logger.info(f"Entities added: {result['entities_added_this_run']}")
+            logger.info(
+                f"Total articles in database: {result['article_count']}"
+            )
+            logger.info(
+                f"Total sentences in database: {result['sentence_count']}"
+            )
+            logger.info(
+                f"Total entities in database: {result['entity_count']}"
+            )
+            logger.info(f"Database path: {result['database_path']}")
+
+            return 0
+
+        except KeyboardInterrupt:
+            logger.info("Conversion interrupted by user. Exiting gracefully.")
+            return 130  # Standard exit code for SIGINT
+
+    except Exception as e:
+        logger.error(f"Error during conversion: {e}")
+        import traceback
+
+        logger.debug(traceback.format_exc())
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
