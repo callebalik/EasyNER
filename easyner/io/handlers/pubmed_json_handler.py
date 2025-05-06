@@ -1,7 +1,10 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Union
 import pandas as pd
 from easyner.io.handlers.json_handler import JsonHandler
 import logging
+import json
+import os
+from jsonschema import validate, ValidationError
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -20,7 +23,7 @@ class PubMedJsonHandler(JsonHandler):
         """Extract article information from article data with optimized memory usage"""
         # Pre-allocate dictionary with common fields
         article = {
-            "article_id": article_id,
+            "article_id": article_id,  # Already converted to integer
             "title": article_data.get("title", ""),
             "abstract": article_data.get("abstract", ""),
         }
@@ -35,13 +38,13 @@ class PubMedJsonHandler(JsonHandler):
         return article
 
     def _process_sentence(
-        self, article_id: str, sent_idx: int, sentence_data: Dict
+        self, article_id: int, sent_idx: int, sentence_data: Dict
     ) -> Dict:
         """Extract sentence information from sentence data"""
         # Use integer position for proper ordering
         sentence = {
-            "sentence_id": int(sent_idx),  # Integer ID within article
-            "article_id": article_id,  # PMID
+            "sentence_id": sent_idx,  # Use integer as sentence_id (unique within article)
+            "article_id": article_id,  # Already an integer
             "position": sent_idx,  # Order within article
             "text": sentence_data.get("text", ""),
         }
@@ -54,13 +57,12 @@ class PubMedJsonHandler(JsonHandler):
         return sentence
 
     def _process_entities(
-        self, article_id: str, sent_idx: int, sentence_data: Dict
+        self, article_id: int, sent_idx: int, sentence_data: Dict
     ) -> List[Dict]:
         """Extract entity information from sentence data"""
-        entities = []
         entity_list = sentence_data.get("entities", [])
         if not entity_list:
-            return entities
+            return []
 
         entity_spans = sentence_data.get("entity_spans", [])
 
@@ -70,49 +72,56 @@ class PubMedJsonHandler(JsonHandler):
                 f"Skipping entities in article {article_id}, sentence {sent_idx}: "
                 f"Found {len(entity_list)} entities but no entity spans"
             )
-            return entities
+            return []
 
-        # Check if entity list and spans have mismatched lengths
-        if len(entity_list) > len(entity_spans):
+        # Log warning for mismatched lengths
+        if len(entity_list) != len(entity_spans):
             logger.warning(
                 f"Mismatched entity data in article {article_id}, sentence {sent_idx}: "
                 f"Found {len(entity_list)} entities but only {len(entity_spans)} spans"
             )
+            # Skip processing when there's a mismatch in counts
+            if len(entity_list) > len(entity_spans):
+                return []
 
         # Get these just once per sentence
-        entity_ids = sentence_data.get("ids", [])
         entity_names = sentence_data.get("names", [])
 
-        # Process all entities in one batch
-        for ent_idx, (entity_text, span) in enumerate(
-            zip(entity_list, entity_spans)
-        ):
+        # Process entities
+        result = []
+
+        # Only process when entity list and spans match in length
+        for ent_idx in range(len(entity_list)):
+            entity_text = entity_list[ent_idx]
+
+            # Skip empty entities and log warning
             if not entity_text:
                 logger.warning(
-                    f"Empty entity text at position {ent_idx} in article {article_id}, "
-                    f"sentence {sent_idx} - skipping"
+                    f"Empty entity text at position {ent_idx} in article {article_id}"
                 )
                 continue
 
-            # Build entity dict in one operation to minimize dict creations
-            entity = {
-                "entity_id": ent_idx,  # Integer ID within sentence
-                "sentence_id": int(sent_idx),  # Reference to parent sentence
-                "article_id": article_id,  # PMID
-                "text": entity_text,
-                "start_char": span[0] if len(span) > 0 else None,
-                "end_char": span[1] if len(span) > 1 else None,
-            }
+            # Get the span for this entity
+            span = entity_spans[ent_idx]
 
-            # Add entity ID and name only if available
-            if ent_idx < len(entity_ids):
-                entity["entity_id_value"] = entity_ids[ent_idx]
-            if ent_idx < len(entity_names):
-                entity["entity_name"] = entity_names[ent_idx]
+            # Create entity object
+            result.append(
+                {
+                    "entity_id": ent_idx,
+                    "sentence_id": sent_idx,  # Integer sentence ID
+                    "article_id": article_id,
+                    "text": entity_text,
+                    "start_char": int(span[0]) if len(span) > 0 else None,
+                    "end_char": int(span[1]) if len(span) > 1 else None,
+                    "entity_name": (
+                        entity_names[ent_idx]
+                        if ent_idx < len(entity_names)
+                        else None
+                    ),
+                }
+            )
 
-            entities.append(entity)
-
-        return entities
+        return result
 
     def extract_all_dataframes(
         self, data: Dict
@@ -131,7 +140,16 @@ class PubMedJsonHandler(JsonHandler):
         entities = []
 
         # Process all data in a single pass
-        for article_id, article_data in data.items():
+        for article_id_str, article_data in data.items():
+            # Convert article_id to integer once at the beginning
+            try:
+                article_id = int(article_id_str)
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"Could not convert article_id '{article_id_str}' to integer, using as is"
+                )
+                article_id = article_id_str
+
             # Process article
             article = self._process_article(article_id, article_data)
             articles.append(article)
@@ -152,12 +170,12 @@ class PubMedJsonHandler(JsonHandler):
                 )
                 entities.extend(sent_entities)
 
-        # Create all DataFrames at once
-        return (
-            pd.DataFrame(articles),
-            pd.DataFrame(sentences),
-            pd.DataFrame(entities),
-        )
+        # Create DataFrames
+        articles_df = pd.DataFrame(articles) if articles else pd.DataFrame()
+        sentences_df = pd.DataFrame(sentences) if sentences else pd.DataFrame()
+        entities_df = pd.DataFrame(entities) if entities else pd.DataFrame()
+
+        return (articles_df, sentences_df, entities_df)
 
     def extract_articles_dataframe(self, data: Dict) -> pd.DataFrame:
         """
@@ -198,5 +216,92 @@ class PubMedJsonHandler(JsonHandler):
         _, _, entities_df = self.extract_all_dataframes(data)
         return entities_df
 
+    def get_sentence_count(self, data: Dict) -> int:
+        """
+        Get the total number of sentences across all articles
 
-# %%
+        Args:
+            data: Loaded JSON data
+
+        Returns:
+            Total number of sentences
+        """
+        count = 0
+        for article_data in data.values():
+            count += len(article_data.get("sentences", []))
+        return count
+
+    def get_entity_count(self, data: Dict) -> int:
+        """
+        Get the total number of entities across all articles and sentences
+
+        Args:
+            data: Loaded JSON data
+
+        Returns:
+            Total number of entities
+        """
+        count = 0
+        for article_data in data.values():
+            for sentence in article_data.get("sentences", []):
+                count += len(sentence.get("entities", []))
+        return count
+
+    def filter_articles_by_metadata(
+        self, data: Dict, filter_criteria: Dict
+    ) -> Dict:
+        """
+        Filter articles by metadata fields
+
+        Args:
+            data: Loaded JSON data
+            filter_criteria: Dictionary of metadata field names and values to match
+
+        Returns:
+            Filtered dictionary of articles
+        """
+        result = {}
+
+        for article_id, article_data in data.items():
+            metadata = article_data.get("metadata", {})
+            if all(
+                metadata.get(key) == value
+                for key, value in filter_criteria.items()
+            ):
+                result[article_id] = article_data
+
+        return result
+
+    def export_to_csv(
+        self, data: Dict, output_dir: str, prefix: str = "pubmed"
+    ) -> Dict:
+        """
+        Export PubMed data to CSV files (articles, sentences, entities)
+
+        Args:
+            data: Loaded JSON data
+            output_dir: Directory to write CSV files
+            prefix: Prefix for the CSV filenames
+
+        Returns:
+            Dictionary with paths to the output files
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        articles_df, sentences_df, entities_df = self.extract_all_dataframes(
+            data
+        )
+
+        articles_path = os.path.join(output_dir, f"{prefix}_articles.csv")
+        sentences_path = os.path.join(output_dir, f"{prefix}_sentences.csv")
+        entities_path = os.path.join(output_dir, f"{prefix}_entities.csv")
+
+        articles_df.to_csv(articles_path, index=False)
+        sentences_df.to_csv(sentences_path, index=False)
+        entities_df.to_csv(entities_path, index=False)
+
+        return {
+            "articles": articles_path,
+            "sentences": sentences_path,
+            "entities": entities_path,
+        }
