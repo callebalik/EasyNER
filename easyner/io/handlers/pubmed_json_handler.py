@@ -15,11 +15,66 @@ class PubMedJsonHandler(JsonHandler):
     Specialized JsonHandler for PubMed data with methods to extract articles, sentences, and entities.
     """
 
-    def __init__(self, encoding="utf-8"):
-        """Initialize the PubMed JSON handler with encoding"""
-        super().__init__(encoding=encoding)
+    # Directory containing the schema
+    SCHEMA_DIR = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "schemas"
+    )
+    SCHEMA_FILE = "pubmed.schema.json"
+    EXTENSION = "json"
 
-    def _process_article(self, article_id: str, article_data: Dict) -> Dict:
+    def __init__(self, encoding="utf-8", validate_schema=True):
+        """
+        Initialize the PubMed JSON handler with encoding
+
+        Args:
+            encoding: Character encoding for file operations
+            validate_schema: Whether to validate data against the PubMed schema
+        """
+        super().__init__(encoding=encoding)
+        self.validate_schema = validate_schema
+        self.schema = None
+
+        # Load the schema if validation is enabled
+        if validate_schema:
+            try:
+                schema_path = os.path.join(self.SCHEMA_DIR, self.SCHEMA_FILE)
+                with open(schema_path, "r", encoding=encoding) as f:
+                    self.schema = json.load(f)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to load PubMed schema: {str(e)}. Schema validation disabled."
+                )
+                self.validate_schema = False
+
+    def read(self, file_path: str, timeout=180, **kwargs):
+        """
+        Read and validate PubMed JSON data from a file
+
+        Args:
+            file_path: Path to the JSON file
+            timeout: Timeout in seconds for reading operation
+            **kwargs: Additional arguments for reading
+
+        Returns:
+            Parsed JSON data
+        """
+        data = super().read(file_path, timeout, **kwargs)
+
+        # Validate against schema if enabled
+        if self.validate_schema and self.schema is not None:
+            try:
+                validate(instance=data, schema=self.schema)
+                logger.debug(
+                    f"Successfully validated {file_path} against PubMed schema"
+                )
+            except ValidationError as e:
+                logger.warning(
+                    f"Schema validation failed for {file_path}: {str(e)}"
+                )
+
+        return data
+
+    def _process_article(self, article_id: int, article_data: Dict) -> Dict:
         """Extract article information from article data with optimized memory usage"""
         # Pre-allocate dictionary with common fields
         article = {
