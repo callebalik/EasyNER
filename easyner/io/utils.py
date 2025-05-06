@@ -34,8 +34,8 @@ def get_batch_file_index(batch_file: str) -> int:
     if match:
         # If match is preceded by numeric characters anywhere in the name raise warning about ambigous batch filename
         if re.search(r"\d", name_part[: -len(match.group(1))]):
-            print(
-                f"Warning: Ambiguous batch filename '{filename}'. "
+            logging.warning(
+                f"Ambiguous batch filename '{filename}'. "
                 "Batch number should be at the end of the filename."
             )
 
