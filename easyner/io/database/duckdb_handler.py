@@ -17,10 +17,9 @@ from .repositories import (
 from .utils.transaction import transactional
 
 
-class DuckDBHandler(IOHandler):
+class DuckDBHandler:
     """
     DuckDBHandler is a class that provides methods to read and write data to and from DuckDB databases.
-    It inherits from the IOHandler class and implements the read and write methods for DuckDB.
 
     This class serves as a facade for the database subsystem, coordinating access to various
     repository classes that handle specific database operations.
@@ -31,7 +30,6 @@ class DuckDBHandler(IOHandler):
         db_path: Optional[str] = ":memory:",
         threads: int = 4,
         memory_limit: str = "1GB",
-        encoding="utf-8",
     ):
         """
         Initialize the DuckDB handler
@@ -42,7 +40,6 @@ class DuckDBHandler(IOHandler):
             memory_limit: Memory limit for DuckDB
             encoding: Encoding to use for file operations
         """
-        super().__init__(encoding=encoding)
         self.logger = logging.getLogger(__name__)
 
         # Create component instances using dependency injection
