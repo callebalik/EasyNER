@@ -2,7 +2,7 @@ import os
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Union, Optional
-
+from tqdm import tqdm
 
 from easyner.io.converters.base import BaseConverter
 from easyner.io.database.duckdb_handler import DuckDBHandler
@@ -170,7 +170,7 @@ class JsonToDuckConverter(BaseConverter):
 
         # Handle reprocessing - drop and recreate all tables
         if reprocess:
-            print("Reprocessing: dropping and recreating all tables")
+            logger.info("Reprocessing: dropping and recreating all tables")
             self._drop_tables()
             self._converted_files = []  # Reset in-memory tracking
 
@@ -181,7 +181,7 @@ class JsonToDuckConverter(BaseConverter):
                         "DELETE FROM conversion_log WHERE status = 'converted';"
                     )
                 except Exception as e:
-                    print(f"Error clearing conversion log: {e}")
+                    logger.error(f"Error clearing conversion log: {e}")
 
         # Create database tables
         self.db_handler.create_base_tables()
@@ -194,10 +194,12 @@ class JsonToDuckConverter(BaseConverter):
         total_sentences = 0
         total_entities = 0
 
-        # Process each file
+        # Process each file with progress bar
         io_handler = PubMedJsonHandler()
-        for file_path in files_to_process:
-            print(f"Processing file: {file_path}")
+        for file_path in tqdm(
+            files_to_process, desc="Converting JSON->Duckdb", unit="file"
+        ):
+            logger.info(f"Processing file: {file_path}")
 
             try:
                 # Load and parse JSON data
@@ -230,10 +232,12 @@ class JsonToDuckConverter(BaseConverter):
 
                 except Exception as e:
                     self.connection.rollback()
-                    print(f"Error processing file {file_path}: {e}")
+                    logger.error(f"Error processing file {file_path}: {e}")
                     self._log_conversion(file_path, "failed_conversion")
             except Exception as e:
-                print(f"Failed to read or parse JSON file {file_path}: {e}")
+                logger.error(
+                    f"Failed to read or parse JSON file {file_path}: {e}"
+                )
                 self._log_conversion(file_path, "failed_parsing")
 
         # Create indices for better performance
@@ -280,9 +284,11 @@ class JsonToDuckConverter(BaseConverter):
             # Recreate the conversion log table immediately
             self.connection.execute(CONVERSION_LOG_TABLE_SQL)
         except Exception as e:
-            print(f"Error dropping tables: {e}")
+            logger.error(f"Error dropping tables: {e}")
             # Even if some tables fail to drop, make sure conversion log exists
             try:
                 self.connection.execute(CONVERSION_LOG_TABLE_SQL)
             except Exception as log_error:
-                print(f"Error recreating conversion log table: {log_error}")
+                logger.error(
+                    f"Error recreating conversion log table: {log_error}"
+                )
