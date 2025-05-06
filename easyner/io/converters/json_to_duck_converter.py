@@ -15,7 +15,7 @@ from easyner.io.database.repositories import (
 from easyner.io.database.schemas import CONVERSION_LOG_TABLE_SQL
 from easyner.io.database.utils.sql_utils import get_file_hash
 from easyner.io.handlers import PubMedJsonHandler
-from easyner.io.utils import safe_batch_file_index_sort
+from easyner.io.utils import safe_batch_file_index_sort, filter_batch_files
 
 # Set up logger for the converter
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ if not logger.handlers:
     # Add console handler if none exists
     handler = logging.StreamHandler()
     handler.setFormatter(
-        logging.Formatter("%(levelname)s - %(name)s: %(message)s")
+        logging.Formatter("%(levelname)s - JSON->Duck: %(message)s")
     )
     logger.addHandler(handler)
 
@@ -40,6 +40,8 @@ class JsonToDuckConverter(BaseConverter):
         db_file: Optional[str] = None,
         file_pattern: str = "*.json",
         reprocess: bool = False,
+        batch_start_index: Optional[int] = None,
+        batch_end_index: Optional[int] = None,
     ):
         """
         Initialize the JSON to DuckDB converter
@@ -51,10 +53,14 @@ class JsonToDuckConverter(BaseConverter):
             db_file: Custom database filename (optional, default is 'easyner.db')
             file_pattern: Pattern to match JSON files (default: "*.json")
             reprocess: Whether to reprocess already converted files (default: False)
+            batch_start_index: Only process files with batch index >= this value (optional)
+            batch_end_index: Only process files with batch index <= this value (optional)
         """
         super().__init__(source_dir, target_dir)
         self.file_pattern = file_pattern
         self._reprocess = reprocess
+        self.batch_start_index = batch_start_index
+        self.batch_end_index = batch_end_index
 
         # Set up db_file path - if not provided, create one in target_dir
         if db_file is None:
@@ -83,6 +89,25 @@ class JsonToDuckConverter(BaseConverter):
         # Use safe_batch_file_index_sort to sort files
         str_files = [str(f) for f in files]
         sorted_str_files = safe_batch_file_index_sort(str_files)
+
+        # Apply batch index filtering if specified
+        if (
+            self.batch_start_index is not None
+            or self.batch_end_index is not None
+        ):
+            try:
+                sorted_str_files = filter_batch_files(
+                    sorted_str_files,
+                    start=self.batch_start_index,
+                    end=self.batch_end_index,
+                )
+                logger.info(
+                    f"Applied batch filtering: start={self.batch_start_index}, end={self.batch_end_index}. "
+                    f"{len(sorted_str_files)} files remain."
+                )
+            except ValueError as e:
+                logger.error(f"Error filtering batch files: {e}")
+                # Continue with unfiltered files if there's an error
 
         # Convert back to Path objects
         sorted_files = [Path(f) for f in sorted_str_files]
@@ -156,6 +181,10 @@ class JsonToDuckConverter(BaseConverter):
                     (default: False)
                 reprocess (bool): Override instance reprocess flag
                     (default: None - use instance flag)
+                batch_start_index (int): Override instance batch_start_index
+                    (default: None - use instance value)
+                batch_end_index (int): Override instance batch_end_index
+                    (default: None - use instance value)
 
         Returns:
             Dictionary containing statistics about the conversion
@@ -168,6 +197,16 @@ class JsonToDuckConverter(BaseConverter):
             if reprocess_override is None
             else reprocess_override
         )
+
+        # Process batch index filter overrides
+        batch_start = kwargs.get("batch_start_index", self.batch_start_index)
+        batch_end = kwargs.get("batch_end_index", self.batch_end_index)
+
+        # Only update instance variables if values provided are different
+        if batch_start != self.batch_start_index:
+            self.batch_start_index = batch_start
+        if batch_end != self.batch_end_index:
+            self.batch_end_index = batch_end
 
         processed_files = []
 
@@ -396,6 +435,18 @@ def main(args=None):
         help="Reprocess already converted files",
     )
     parser.add_argument(
+        "--batch-start",
+        type=int,
+        default=None,
+        help="Only process files with batch index >= this value",
+    )
+    parser.add_argument(
+        "--batch-end",
+        type=int,
+        default=None,
+        help="Only process files with batch index <= this value",
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -418,6 +469,10 @@ def main(args=None):
     logger.info(f"DB File: {args.db_file or 'default (easyner.db)'}")
     logger.info(f"File pattern: {args.file_pattern}")
     logger.info(f"Reprocess: {args.reprocess}")
+    if args.batch_start is not None or args.batch_end is not None:
+        logger.info(
+            f"Batch index range: {args.batch_start} to {args.batch_end}"
+        )
 
     try:
         # Create the converter and run the conversion
@@ -427,6 +482,8 @@ def main(args=None):
             db_file=args.db_file,
             file_pattern=args.file_pattern,
             reprocess=args.reprocess,
+            batch_start_index=args.batch_start,
+            batch_end_index=args.batch_end,
         )
 
         try:
