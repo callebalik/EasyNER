@@ -37,6 +37,7 @@ dependencies:
   - mypy
   - black
   - flake8
+  - argcomplete
   - pip:
     - nltk==3.8.1
     - orjson
