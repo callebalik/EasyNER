@@ -256,27 +256,23 @@ class JsonToDuckConverter(BaseConverter):
         )
         files_to_process = self.list_unconverted_files()
 
-        # Display a summary table of conversion statistics
-        table_width = 60
+        # Display a summary table of conversion statistics - keep existing code
+        table_width = 50
         logger.info("=" * table_width)
         logger.info(f"{'CONVERSION SUMMARY':^{table_width}}")
         logger.info("=" * table_width)
+        # Add these lines to show detailed statistics with alignment
         logger.info(
-            f"{'Total convertible files:':<40} {len(all_convertible_files):>20}"
+            f"{'Total convertible files:':<30} | {len(all_convertible_files):>10}"
         )
         logger.info(
-            f"{'Already converted files:':<40} {len(already_converted_files):>20}"
+            f"{'Already converted files:':<30} | {len(already_converted_files):>10}"
         )
         logger.info(
-            f"{'Files to be converted now:':<40} {len(files_to_process):>20}"
+            f"{'Files to be converted now:':<30} | {len(files_to_process):>10}"
         )
         logger.info("-" * table_width)
-        if reprocess:
-            logger.info(
-                f"{'Reprocessing mode active - all files will be converted':^{table_width}}"
-            )
         logger.info("=" * table_width)
-
         # Track statistics
         total_articles = 0
         total_sentences = 0
