@@ -1,14 +1,14 @@
 import pandas as pd
-from typing import Dict, List, Any, Union, Optional
+from typing import Dict, List, Any, Union, Optional, Set
 import logging
-import warnings
 
-from easyner.io.database.utils.transaction import transactional
 from easyner.io.database.utils.column_names import (
     ARTICLE_ID,
     TITLE,
     ARTICLES_TABLE,
 )
+
+from easyner.io.database.schemas import ARTICLES_TABLE_SQL
 
 from .base import Repository
 from ..connection import DatabaseConnection
@@ -17,19 +17,36 @@ from ..connection import DatabaseConnection
 class ArticleRepository(Repository):
     """
     Repository for managing article data in the database.
-
     Provides methods to retrieve, insert, and query article records.
     """
 
-    def __init__(self, connection: DatabaseConnection):
+    @property
+    def table_name(self) -> str:
+        return ARTICLES_TABLE
+
+    @property
+    def table_sql_stmt(self) -> str:
+        return ARTICLES_TABLE_SQL
+
+    @property
+    def required_columns(self) -> Set[str]:
+        return {ARTICLE_ID, TITLE}
+
+    def _get_required_columns(self) -> Set[str]:
+        """Return the required columns for article insertion."""
+        return {ARTICLE_ID, TITLE}
+
+    def _build_insert_query(self, view_name: str) -> str:
         """
-        Initialize ArticleRepository.
+        Build SQL insert query for articles.
 
         Args:
-            connection: Database connection object
+            view_name: Name of the temporary view
+
+        Returns:
+            SQL query for article insertion
         """
-        self.logger = logging.getLogger(__name__)
-        self.connection = connection
+        return f"INSERT INTO {ARTICLES_TABLE} ({ARTICLE_ID}, {TITLE}) SELECT {ARTICLE_ID}, {TITLE} FROM {view_name}"
 
     def get_all(
         self, as_df: bool = True
@@ -103,113 +120,18 @@ class ArticleRepository(Repository):
             self.logger.error(f"Error retrieving article by ID: {e}")
             raise
 
-    def insert(self, article: Dict[str, Any]) -> None:
+    def insert(self, item: Dict[str, Any]) -> None:
         """
         Insert an article into the database.
 
         Args:
-            article: Article data as a dictionary with 'article_id' and 'title' keys
+            item: Article data as a dictionary with 'article_id' and 'title' keys
         """
         try:
             self.connection.execute(
                 f"INSERT INTO {ARTICLES_TABLE} ({ARTICLE_ID}, {TITLE}) VALUES (?, ?)",
-                [article[ARTICLE_ID], article[TITLE]],
+                [item[ARTICLE_ID], item[TITLE]],
             )
         except Exception as e:
             self.logger.error(f"Error inserting article: {e}")
-            raise
-
-    def _execute_insert_many(
-        self, articles: Union[List[Dict[str, Any]], pd.DataFrame]
-    ) -> None:
-        """
-        Core logic to insert multiple articles. Not transactional by itself.
-        """
-        if not isinstance(articles, (list, pd.DataFrame)):
-            self.logger.error(
-                "Invalid type for articles: Expected list of dictionaries or DataFrame."
-            )
-            raise TypeError(
-                "articles must be a list of dictionaries or a pandas DataFrame."
-            )
-
-        if isinstance(articles, list):
-            if not articles:  # Handle empty list
-                return
-            # Ensure all elements are dictionaries
-            if not all(isinstance(a, dict) for a in articles):
-                self.logger.error(
-                    "Invalid format for articles list: Expected list of dictionaries."
-                )
-                raise ValueError(
-                    "All items in articles list must be dictionaries."
-                )
-            df = pd.DataFrame(articles)
-        else:  # isinstance(articles, pd.DataFrame)
-            df = articles
-
-        if df.empty:
-            return
-
-        # Ensure required columns are present
-        required_cols = {ARTICLE_ID, TITLE}
-        if not required_cols.issubset(df.columns):
-            missing_cols = required_cols - set(df.columns)
-            self.logger.error(
-                f"DataFrame is missing required columns for articles: {missing_cols}"
-            )
-            raise ValueError(
-                f"DataFrame for articles is missing columns: {missing_cols}"
-            )
-
-        # Use a unique view name to avoid conflicts if called multiple times in one transaction
-        view_name = f"temp_articles_df_{id(df)}"
-        try:
-            # Select only the required columns for registration to avoid issues with extra columns
-            self.connection.register(view_name, df[list(required_cols)])
-            self.connection.execute(
-                f"INSERT OR IGNORE INTO {ARTICLES_TABLE} ({ARTICLE_ID}, {TITLE}) SELECT {ARTICLE_ID}, {TITLE} FROM {view_name}"
-            )
-        finally:
-            self.connection.unregister(view_name)  # Ensure cleanup
-
-    @transactional
-    def insert_many_transactional(
-        self,
-        articles: Union[List[Dict[str, Any]], pd.DataFrame],
-    ) -> None:
-        """
-        Transactional wrapper of insert many.
-        Use this for standalone batch insertions.
-
-        Args:
-            articles: List of article dictionaries or DataFrame containing article data
-
-        Raises:
-            Exception: If there is an error during the insertion process so the
-            calling context (e.g., @transactional decorator  or an external
-            transaction manager) can handle it, e.g., by rolling back.
-        """
-        # Exceptions from insert_many_within_transaction will propagate
-        # to the @transactional decorator, which handles rollback and logging of the rollback.
-        self.insert_many_non_transactional(articles)
-
-    def insert_many_non_transactional(
-        self, articles: Union[List[Dict[str, Any]], pd.DataFrame]
-    ) -> None:
-        """
-        Insert multiple articles.
-        NOT transactional -> This should mostly not be used as standalone
-        Recommended usage is for externally managed transactions
-
-        Args:
-            articles: List of article dictionaries or DataFrame containing article data
-        """
-        try:
-            self._execute_insert_many(articles)
-        except Exception as e:
-            self.logger.error(
-                f"Error batch inserting articles within an existing transaction: {e}"
-            )
-
             raise
