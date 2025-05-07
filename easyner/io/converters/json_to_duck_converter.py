@@ -3,6 +3,11 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Union, Optional
 from tqdm import tqdm
+import time
+import psutil
+import queue
+import threading
+import concurrent.futures
 
 from easyner.io.converters.base import BaseConverter
 from easyner.io.database.duckdb_handler import DuckDBHandler
@@ -18,15 +23,20 @@ from easyner.io.handlers import PubMedJsonHandler
 from easyner.io.utils import safe_batch_file_index_sort, filter_batch_files
 
 # Set up logger for the converter
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger("easyner.io.converters.json_to_duck_converter")
+
+# Only add handler if not already configured to avoid duplicates
 if not logger.handlers:
-    # Add console handler if none exists
+    # Reset the logger's handlers to avoid duplicates
+    logger.handlers = []
+    # Add console handler with custom formatter
     handler = logging.StreamHandler()
     handler.setFormatter(
         logging.Formatter("%(levelname)s - JSON->Duck: %(message)s")
     )
     logger.addHandler(handler)
+    # Prevent propagation to root logger to avoid duplicate messages
+    logger.propagate = False
 
 
 class JsonToDuckConverter(BaseConverter):
@@ -42,6 +52,7 @@ class JsonToDuckConverter(BaseConverter):
         reprocess: bool = False,
         batch_start_index: Optional[int] = None,
         batch_end_index: Optional[int] = None,
+        memory_limit: str = None,  # Add this parameter
     ):
         """
         Initialize the JSON to DuckDB converter
@@ -55,6 +66,7 @@ class JsonToDuckConverter(BaseConverter):
             reprocess: Whether to reprocess already converted files (default: False)
             batch_start_index: Only process files with batch index >= this value (optional)
             batch_end_index: Only process files with batch index <= this value (optional)
+            memory_limit: Memory limit for DuckDB (optional, default is 50% of system memory or 4096MB)
         """
         super().__init__(source_dir, target_dir)
         self.file_pattern = file_pattern
@@ -68,12 +80,23 @@ class JsonToDuckConverter(BaseConverter):
         else:
             self.db_file = db_file
 
+        # Determine a good default memory limit if none was provided
+        if memory_limit is None:
+            # Use 50% of available system memory by default, with a reasonable cap
+            system_memory_mb = psutil.virtual_memory().total // (1024 * 1024)
+            memory_limit = f"{min(system_memory_mb // 2, 4096)}MB"
+            logger.info(
+                f"Auto-configured DuckDB memory limit to {memory_limit}"
+            )
+
         # Initialize the DuckDB handler to handle database operations
         if connection:
             self.db_handler = DuckDBHandler(":memory:")
             self.db_handler.connection = connection
         else:
-            self.db_handler = DuckDBHandler(self.db_file)
+            self.db_handler = DuckDBHandler(
+                self.db_file, memory_limit=memory_limit
+            )
 
         self.connection = self.db_handler.connection
         self._is_memory_db = self.db_file == ":memory:"
@@ -100,10 +123,6 @@ class JsonToDuckConverter(BaseConverter):
                     sorted_str_files,
                     start=self.batch_start_index,
                     end=self.batch_end_index,
-                )
-                logger.info(
-                    f"Applied batch filtering: start={self.batch_start_index}, end={self.batch_end_index}. "
-                    f"{len(sorted_str_files)} files remain."
                 )
             except ValueError as e:
                 logger.error(f"Error filtering batch files: {e}")
@@ -173,23 +192,12 @@ class JsonToDuckConverter(BaseConverter):
 
     def convert(self, **kwargs) -> Dict[str, Any]:
         """
-        Convert JSON files to DuckDB database
+        Convert JSON files to DuckDB database with memory-aware processing
 
-        Args:
-            **kwargs: Additional arguments
-                use_memory_db (bool): Use an in-memory database instead of a file
-                    (default: False)
-                reprocess (bool): Override instance reprocess flag
-                    (default: None - use instance flag)
-                batch_start_index (int): Override instance batch_start_index
-                    (default: None - use instance value)
-                batch_end_index (int): Override instance batch_end_index
-                    (default: None - use instance value)
-
-        Returns:
-            Dictionary containing statistics about the conversion
+        This implementation uses a queue-based approach to manage memory usage
+        while respecting DuckDB's concurrency model.
         """
-        # Process kwargs
+        # Process kwargs - keep existing initialization code
         use_memory_db = kwargs.get("use_memory_db", False)
         reprocess_override = kwargs.get("reprocess")
         reprocess = (
@@ -198,15 +206,21 @@ class JsonToDuckConverter(BaseConverter):
             else reprocess_override
         )
 
-        # Process batch index filter overrides
+        # Process batch index filter overrides - keep existing code
         batch_start = kwargs.get("batch_start_index", self.batch_start_index)
         batch_end = kwargs.get("batch_end_index", self.batch_end_index)
 
-        # Only update instance variables if values provided are different
         if batch_start != self.batch_start_index:
             self.batch_start_index = batch_start
         if batch_end != self.batch_end_index:
             self.batch_end_index = batch_end
+
+        # Set up memory monitoring parameters
+        max_memory_percent = kwargs.get("max_memory_percent", 70)
+        max_queue_size = kwargs.get("max_queue_size", 30)
+        max_reader_threads = min(
+            kwargs.get("max_reader_threads", 6), os.cpu_count() or 2
+        )
 
         processed_files = []
 
@@ -221,7 +235,7 @@ class JsonToDuckConverter(BaseConverter):
         if reprocess:
             logger.info("Reprocessing: dropping and recreating all tables")
             self._drop_tables()
-            self._converted_files = []  # Reset in-memory tracking
+            self._converted_files = []
 
             if not self._is_memory_db:
                 # Clear conversion log for persistent DB
@@ -235,7 +249,7 @@ class JsonToDuckConverter(BaseConverter):
         # Create database tables
         self.db_handler.create_base_tables()
 
-        # Get files to process
+        # Get files to process - keep existing code
         all_convertible_files = self.list_convertible_files()
         already_converted_files = (
             self.list_converted_files() if not reprocess else []
@@ -268,70 +282,230 @@ class JsonToDuckConverter(BaseConverter):
         total_sentences = 0
         total_entities = 0
 
-        # Process each file with progress bar
-        io_handler = PubMedJsonHandler()
+        # Create processing queue for files
+        data_queue = queue.Queue(maxsize=max_queue_size)
+        stop_event = threading.Event()
+        db_lock = (
+            threading.Lock()
+        )  # Lock for database operations to ensure thread safety
 
-        # Variable to track if a transaction is active
-        transaction_active = False
+        # Function to check memory usage
+        def check_memory():
+            memory_info = psutil.virtual_memory()
+            return memory_info.percent
 
-        try:
-            for file_path in tqdm(
-                files_to_process, desc="Converting JSON->Duckdb", unit="file"
-            ):
-                logger.info(f"Processing file: {file_path}")
+        # Function to read a file and add it to the queue
+        def read_file(file_path):
+            try:
+                logger.info(f"Reading file: {file_path}")
+                # Read and parse JSON data
+                io_handler = PubMedJsonHandler()
+                json_data = io_handler.read(str(file_path))
+                data = io_handler.extract_all_dicts(json_data)
 
-                try:
-                    # Load and parse JSON data
-                    json_data = io_handler.read(str(file_path))
-                    data = io_handler.extract_all_dicts(json_data)
-
-                    # Process in a transaction
+                # Put data in queue, waiting if queue is full
+                while not stop_event.is_set():
                     try:
-                        self.connection.begin_transaction()
-                        transaction_active = True
+                        # If memory is too high, wait before trying to add more to queue
+                        memory_percent = check_memory()
+                        if memory_percent > max_memory_percent:
+                            logger.warning(
+                                f"Memory usage at {memory_percent}% - waiting before adding more data"
+                            )
+                            time.sleep(2)
+                            continue
 
-                        # Insert data into tables
-                        ArticleRepository(
-                            connection=self.connection
-                        ).insert_many_within_transaction(data["articles"])
-                        SentenceRepository(
-                            connection=self.connection
-                        ).insert_many_within_transaction(data["sentences"])
-                        EntityRepository(
-                            connection=self.connection
-                        ).insert_many_within_transaction(data["entities"])
+                        data_queue.put((file_path, data), timeout=1.0)
+                        break
+                    except queue.Full:
+                        if stop_event.is_set():
+                            return None
+                        time.sleep(0.5)
 
-                        self.connection.commit()
-                        transaction_active = False
-                        self._log_conversion(file_path, "converted")
-                        processed_files.append(file_path)
+                return file_path
 
-                        # Update counts
-                        total_articles += len(data["articles"])
-                        total_sentences += len(data["sentences"])
-                        total_entities += len(data["entities"])
+            except Exception as e:
+                logger.error(
+                    f"Failed to read or parse JSON file {file_path}: {e}"
+                )
+                self._log_conversion(file_path, "failed_parsing")
+                return None
 
-                    except Exception as e:
-                        if transaction_active:
-                            self.connection.rollback()
+        # Database consumer function - respects DuckDB's concurrency model
+        def process_database():
+            nonlocal total_articles, total_sentences, total_entities, processed_files
+            transaction_active = False
+
+            while not stop_event.is_set() or not data_queue.empty():
+                try:
+                    # Get next item with timeout to allow checking stop_event
+                    try:
+                        file_path, data = data_queue.get(timeout=1.0)
+                    except queue.Empty:
+                        continue
+
+                    # Process with database lock to ensure thread safety with DuckDB
+                    with db_lock:
+                        try:
+                            # Begin transaction
+                            self.connection.begin_transaction()
+                            transaction_active = True
+
+                            # Insert data into tables
+                            ArticleRepository(
+                                connection=self.connection
+                            ).insert_many_within_transaction(data["articles"])
+                            SentenceRepository(
+                                connection=self.connection
+                            ).insert_many_within_transaction(data["sentences"])
+                            EntityRepository(
+                                connection=self.connection
+                            ).insert_many_within_transaction(data["entities"])
+
+                            # Commit transaction
+                            self.connection.commit()
                             transaction_active = False
-                        logger.error(f"Error processing file {file_path}: {e}")
-                        self._log_conversion(file_path, "failed_conversion")
+
+                            # Log success
+                            self._log_conversion(file_path, "converted")
+                            processed_files.append(file_path)
+
+                            # Update counts
+                            total_articles += len(data["articles"])
+                            total_sentences += len(data["sentences"])
+                            total_entities += len(data["entities"])
+
+                        except Exception as e:
+                            if transaction_active:
+                                self.connection.rollback()
+                                transaction_active = False
+                            logger.error(
+                                f"Error processing file {file_path}: {e}"
+                            )
+                            self._log_conversion(
+                                file_path, "failed_conversion"
+                            )
+
+                    # Mark task as done
+                    data_queue.task_done()
+
                 except Exception as e:
                     logger.error(
-                        f"Failed to read or parse JSON file {file_path}: {e}"
+                        f"Unexpected error in database processor: {e}"
                     )
-                    self._log_conversion(file_path, "failed_parsing")
+
+        # Start the database consumer thread
+        db_thread = threading.Thread(target=process_database, daemon=True)
+        db_thread.start()
+
+        try:
+            with tqdm(
+                total=len(files_to_process),
+                desc="Converting JSON->Duckdb",
+                unit="file",
+            ) as pbar:
+                # Function to update progress bar with queue info
+                def update_progress_description():
+                    queue_size = data_queue.qsize()
+                    memory_percent = check_memory()
+                    pbar.set_description(
+                        f"Converting JSON->Duckdb [Queue: {queue_size}/{max_queue_size}, Mem: {memory_percent:.0f}%]"
+                    )
+
+                # Use ThreadPoolExecutor for reading files
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=max_reader_threads
+                ) as executor:
+                    futures = {}
+                    remaining_files = list(files_to_process)
+
+                    # Submit initial batch of files
+                    initial_batch_size = min(
+                        max_reader_threads, len(remaining_files)
+                    )
+                    for _ in range(initial_batch_size):
+                        if not remaining_files:
+                            break
+                        file_path = remaining_files.pop(0)
+                        future = executor.submit(read_file, file_path)
+                        futures[future] = file_path
+
+                    # Update progress description initially
+                    update_progress_description()
+
+                    # Process results and submit new files as needed
+                    while futures and not stop_event.is_set():
+                        # Wait for a future to complete
+                        done, _ = concurrent.futures.wait(
+                            futures,
+                            timeout=2.0,
+                            return_when=concurrent.futures.FIRST_COMPLETED,
+                        )
+
+                        # Update the progress bar description with queue info
+                        update_progress_description()
+
+                        if not done:
+                            # Check memory usage and possibly adjust queue size
+                            memory_percent = check_memory()
+                            if memory_percent > max_memory_percent + 5:
+                                # Memory pressure is high, we might need to wait
+                                logger.warning(
+                                    f"Memory usage at {memory_percent}% - waiting before processing more files"
+                                )
+                                time.sleep(2)
+                            continue
+
+                        # Process completed futures
+                        for future in done:
+                            file_path = futures.pop(future)
+                            result = future.result()
+
+                            if result:  # File was processed
+                                pbar.update(1)
+                                # Update description after progress update
+                                update_progress_description()
+
+                            # Check if we should submit another file
+                            if (
+                                remaining_files
+                                and check_memory() < max_memory_percent
+                            ):
+                                next_file = remaining_files.pop(0)
+                                next_future = executor.submit(
+                                    read_file, next_file
+                                )
+                                futures[next_future] = next_file
+
+                    # Wait for all data to be processed
+                    data_queue.join()
 
         except KeyboardInterrupt:
+            # Force clear the progress bar by moving to a new line
+            print("\n", flush=True)
+
             logger.info("Keyboard interrupt detected. Gracefully stopping...")
-            if transaction_active:
-                logger.info("Rolling back current transaction...")
-                self.connection.rollback()
-            logger.info("Conversion stopped by user.")
-            # Return partial results
+            stop_event.set()
+
+            # Give immediate feedback that we're working on stopping
+            print("Please wait while cleaning up...", flush=True)
+
+            if db_thread.is_alive():
+                # Set a shorter timeout for better user experience
+                db_thread.join(timeout=5)
+                if db_thread.is_alive():
+                    logger.info(
+                        "Database operations still running in background."
+                    )
+
+            # Return partial results with immediately available information
+            processed_count = len(processed_files)
+            logger.info(
+                f"Processed {processed_count} files before interruption."
+            )
+
             return {
-                "files_processed_this_run": len(processed_files),
+                "files_processed_this_run": processed_count,
                 "articles_added_this_run": total_articles,
                 "sentences_added_this_run": total_sentences,
                 "entities_added_this_run": total_entities,
@@ -344,15 +518,28 @@ class JsonToDuckConverter(BaseConverter):
                 "status": "interrupted",
             }
 
-        # Create indices for better performance
+        except Exception as e:
+            logger.error(f"Error during conversion: {e}")
+            stop_event.set()
+            raise
+
+        finally:
+            # Ensure all threads are signaled to stop
+            stop_event.set()
+
+            # Ensure database thread completes
+            if db_thread.is_alive():
+                db_thread.join(timeout=10)
+
+        # Create indices for better performance - keep existing code
         self.db_handler.create_indices()
 
-        # Get final counts
+        # Get final counts - keep existing code
         article_count = self.db_handler.get_table_count("articles")
         sentence_count = self.db_handler.get_table_count("sentences")
         entity_count = self.db_handler.get_table_count("entities")
 
-        # Return statistics
+        # Return statistics - keep existing code
         result = {
             "files_processed_this_run": len(processed_files),
             "articles_added_this_run": total_articles,
