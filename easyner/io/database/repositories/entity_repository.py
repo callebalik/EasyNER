@@ -300,7 +300,7 @@ class EntityRepository(Repository):
         try:
             self.connection.register(view_name, df_to_register)
             self.connection.execute(
-                f"INSERT INTO {ENTITIES_TABLE} ({sql_column_names}) SELECT {sql_column_names} FROM {view_name}"
+                f"INSERT OR IGNORE INTO {ENTITIES_TABLE} ({sql_column_names}) SELECT {sql_column_names} FROM {view_name}"
             )
         finally:
             self.connection.unregister(view_name)

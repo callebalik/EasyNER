@@ -220,7 +220,7 @@ class SentenceRepository(Repository):
             # Select only the required columns for registration
             self.connection.register(view_name, df[list(required_cols)])
             self.connection.execute(
-                f"INSERT INTO {SENTENCES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}) SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {view_name}"
+                f"INSERT OR IGNORE INTO {SENTENCES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}) SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {view_name}"
             )
         finally:
             self.connection.unregister(view_name)  # Ensure cleanup

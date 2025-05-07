@@ -168,7 +168,7 @@ class ArticleRepository(Repository):
             # Select only the required columns for registration to avoid issues with extra columns
             self.connection.register(view_name, df[list(required_cols)])
             self.connection.execute(
-                f"INSERT INTO {ARTICLES_TABLE} ({ARTICLE_ID}, {TITLE}) SELECT {ARTICLE_ID}, {TITLE} FROM {view_name}"
+                f"INSERT OR IGNORE INTO {ARTICLES_TABLE} ({ARTICLE_ID}, {TITLE}) SELECT {ARTICLE_ID}, {TITLE} FROM {view_name}"
             )
         finally:
             self.connection.unregister(view_name)  # Ensure cleanup
