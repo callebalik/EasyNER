@@ -306,7 +306,7 @@ class EntityRepository(Repository):
             self.connection.unregister(view_name)
 
     @transactional
-    def insert_many(
+    def insert_many_transactional(
         self, entities: Union[List[Dict[str, Any]], pd.DataFrame]
     ) -> None:
         """
@@ -323,7 +323,7 @@ class EntityRepository(Repository):
             # The @transactional decorator will handle rollback
             raise
 
-    def insert_many_within_transaction(
+    def insert_many_non_transactional(
         self, entities: Union[List[Dict[str, Any]], pd.DataFrame]
     ) -> None:
         """

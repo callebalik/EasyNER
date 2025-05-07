@@ -226,7 +226,7 @@ class SentenceRepository(Repository):
             self.connection.unregister(view_name)  # Ensure cleanup
 
     @transactional
-    def insert_many(
+    def insert_many_transactional(
         self, sentences: Union[List[Dict[str, Any]], pd.DataFrame]
     ) -> None:
         """
@@ -243,7 +243,7 @@ class SentenceRepository(Repository):
             # The @transactional decorator will handle rollback
             raise
 
-    def insert_many_within_transaction(
+    def insert_many_non_transactional(
         self, sentences: Union[List[Dict[str, Any]], pd.DataFrame]
     ) -> None:
         """

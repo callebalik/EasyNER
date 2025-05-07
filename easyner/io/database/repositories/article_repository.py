@@ -174,29 +174,33 @@ class ArticleRepository(Repository):
             self.connection.unregister(view_name)  # Ensure cleanup
 
     @transactional
-    def insert_many(
-        self, articles: Union[List[Dict[str, Any]], pd.DataFrame]
+    def insert_many_transactional(
+        self,
+        articles: Union[List[Dict[str, Any]], pd.DataFrame],
     ) -> None:
         """
-        Insert multiple articles into the database. This method is transactional.
+        Transactional wrapper of insert many.
         Use this for standalone batch insertions.
 
         Args:
             articles: List of article dictionaries or DataFrame containing article data
-        """
-        try:
-            self._execute_insert_many(articles)
-        except Exception as e:
-            self.logger.error(f"Error batch inserting articles: {e}")
-            # The @transactional decorator will handle rollback
-            raise
 
-    def insert_many_within_transaction(
+        Raises:
+            Exception: If there is an error during the insertion process so the
+            calling context (e.g., @transactional decorator  or an external
+            transaction manager) can handle it, e.g., by rolling back.
+        """
+        # Exceptions from insert_many_within_transaction will propagate
+        # to the @transactional decorator, which handles rollback and logging of the rollback.
+        self.insert_many_non_transactional(articles)
+
+    def insert_many_non_transactional(
         self, articles: Union[List[Dict[str, Any]], pd.DataFrame]
     ) -> None:
         """
-        Insert multiple articles as part of an existing, externally managed transaction.
-        This method is NOT transactional by itself.
+        Insert multiple articles.
+        NOT transactional -> This should mostly not be used as standalone
+        Recommended usage is for externally managed transactions
 
         Args:
             articles: List of article dictionaries or DataFrame containing article data
@@ -207,5 +211,5 @@ class ArticleRepository(Repository):
             self.logger.error(
                 f"Error batch inserting articles within an existing transaction: {e}"
             )
-            # Let the external transaction handler decide on rollback
+
             raise

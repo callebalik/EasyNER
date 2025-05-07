@@ -350,13 +350,13 @@ class JsonToDuckConverter(BaseConverter):
                             # Insert data into tables
                             ArticleRepository(
                                 connection=self.connection
-                            ).insert_many_within_transaction(data["articles"])
+                            ).insert_many_non_transactional(data["articles"])
                             SentenceRepository(
                                 connection=self.connection
-                            ).insert_many_within_transaction(data["sentences"])
+                            ).insert_many_non_transactional(data["sentences"])
                             EntityRepository(
                                 connection=self.connection
-                            ).insert_many_within_transaction(data["entities"])
+                            ).insert_many_non_transactional(data["entities"])
 
                             # Commit transaction
                             self.connection.commit()
