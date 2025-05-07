@@ -47,13 +47,14 @@ def main():
         converter_info = CONVERTERS[args.converter]
         module = importlib.import_module(converter_info["module"])
 
-        # Call the module's main function with the remaining args - using sys.argv[2:] to get all args after the converter name
+        # Call the module's main function with the remaining args
+        # using sys.argv[2:] to get all args after the converter name
         return module.main(sys.argv[2:])
     except ImportError as e:
         print(f"Error importing converter module: {e}")
         return 1
     except AttributeError:
-        print(f"Error: The converter module doesn't have a main() function")
+        print("Error: The converter module doesn't have a main() function")
         return 1
     except Exception as e:
         print(f"Error initializing converter: {e}")
