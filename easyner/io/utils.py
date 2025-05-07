@@ -69,6 +69,8 @@ def filter_batch_files(
         Starting index (inclusive)
     end: int
         Ending index (inclusive)
+    exclude_batches: Optional[List[int]]
+        List of batch indices to exclude
 
     Returns:
     --------
@@ -106,6 +108,16 @@ def filter_batch_files(
             raise ValueError(
                 f"Batch filenames must contain numeric indices when filtering: {file}"
             )
+
+    # Add logging here to report filtering results
+    logging.info(
+        f"Applied batch filtering: start={start}, end={end}. "
+        f"{len(filtered_list_files)} files remain out of {len(file_list)}."
+    )
+    if exclude_batches:
+        logging.info(
+            f"Excluded {len(exclude_batches)} specific batch indices."
+        )
 
     return filtered_list_files
 
