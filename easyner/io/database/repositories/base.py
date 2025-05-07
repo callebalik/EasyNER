@@ -183,3 +183,16 @@ class Repository(ABC):
                 f"Error batch inserting {self.table_name} within an existing transaction: {e}"
             )
             raise
+
+    def create_duplicates_table(self) -> None:
+        """
+        Create a duplicates table for the repository.
+        This is a complete copy of the original table with a different name.
+        """
+        duplicate_table_name = f"{self.table_name}_duplicates"
+        # replace table_name with duplicate_table_name in the SQL statement
+        create_table_sql = self.table_sql_stmt.replace(
+            self.table_name, duplicate_table_name
+        )
+        self.connection.execute(create_table_sql)
+        self.logger.info(f"Created duplicates table: {duplicate_table_name}")
