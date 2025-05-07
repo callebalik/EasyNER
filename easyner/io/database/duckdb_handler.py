@@ -29,7 +29,7 @@ class DuckDBHandler:
         self,
         db_path: Optional[str] = ":memory:",
         threads: int = 4,
-        memory_limit: str = "1GB",
+        memory_limit: str = "4GB",
     ):
         """
         Initialize the DuckDB handler
