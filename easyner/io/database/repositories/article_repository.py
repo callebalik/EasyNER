@@ -1,6 +1,5 @@
 import pandas as pd
 from typing import Dict, List, Any, Union, Optional, Set
-import logging
 
 from easyner.io.database.utils.column_names import (
     ARTICLE_ID,
@@ -11,7 +10,6 @@ from easyner.io.database.utils.column_names import (
 from easyner.io.database.schemas import ARTICLES_TABLE_SQL
 
 from .base import Repository
-from ..connection import DatabaseConnection
 
 
 class ArticleRepository(Repository):
