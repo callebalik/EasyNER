@@ -2,6 +2,7 @@ import concurrent.futures
 import logging
 import os
 import queue
+import sys
 import threading
 import time
 from pathlib import Path
@@ -191,7 +192,7 @@ class JsonToDuckConverter(BaseConverter):
             print(f"Error logging conversion: {e}")
             # Continue processing - if we can't log, we'll still continue with conversion
 
-    def convert(self, **kwargs) -> dict[str, Any]:
+    def convert(self, **kwargs: Any) -> dict[str, Any]:
         """Convert JSON files to DuckDB database with memory-aware processing.
 
         This implementation uses a queue-based approach to manage memory usage
@@ -286,7 +287,9 @@ class JsonToDuckConverter(BaseConverter):
         total_entities = 0
 
         # Create processing queue for files
-        data_queue = queue.Queue(maxsize=max_queue_size)
+        data_queue: queue.Queue[tuple[Path, dict[str, list[Any]]]] = (
+            queue.Queue(maxsize=max_queue_size)
+        )
         stop_event = threading.Event()
         db_lock = (
             threading.Lock()
@@ -299,7 +302,7 @@ class JsonToDuckConverter(BaseConverter):
             return memory_percentage_usage
 
         # Function to read a file and add it to the queue
-        def read_file(file_path) -> Optional[Path]:
+        def read_file(file_path: Path) -> Optional[Path]:
             try:
                 logger.info(f"Reading file: {file_path}")
                 # Read and parse JSON data
@@ -547,7 +550,7 @@ class JsonToDuckConverter(BaseConverter):
         entity_count = self.db_handler.get_table_count("entities")
 
         # Return statistics - keep existing code
-        result = {
+        conversion_summary = {
             "files_processed_this_run": len(processed_files),
             "articles_added_this_run": total_articles,
             "sentences_added_this_run": total_sentences,
@@ -565,11 +568,11 @@ class JsonToDuckConverter(BaseConverter):
         }
 
         if not self._is_memory_db:
-            result["total_converted_files_in_log"] = len(
+            conversion_summary["total_converted_files_in_log"] = len(
                 self.list_converted_files(),
             )
 
-        return result
+        return conversion_summary
 
     def _drop_tables(self) -> None:
         """Drop all conversion tables in the database."""
@@ -593,7 +596,7 @@ class JsonToDuckConverter(BaseConverter):
                 )
 
 
-def main(args=None) -> None:
+def main(args: Optional[list[str]] = None) -> int:
     """Command-line entry point for the converter."""
     import argparse
 
@@ -648,35 +651,38 @@ def main(args=None) -> None:
     )
 
     if args is None:
-        args = parser.parse_args()
+        parsed_args = parser.parse_args()
     else:
-        args = parser.parse_args(args)
+        parsed_args = parser.parse_args(args)
 
     # Set up logging based on command line arguments
-    log_level = getattr(logging, args.log_level)
+    log_level = getattr(logging, parsed_args.log_level)
     logger.setLevel(log_level)
 
     # Log the arguments
-    logger.info(f"Source directory: {args.source_dir}")
-    logger.info(f"Target directory: {args.target_dir}")
-    logger.info(f"DB File: {args.db_file or 'default (easyner.db)'}")
-    logger.info(f"File pattern: {args.file_pattern}")
-    logger.info(f"Reprocess: {args.reprocess}")
-    if args.batch_start is not None or args.batch_end is not None:
+    logger.info(f"Source directory: {parsed_args.source_dir}")
+    logger.info(f"Target directory: {parsed_args.target_dir}")
+    logger.info(f"DB File: {parsed_args.db_file or 'default (easyner.db)'}")
+    logger.info(f"File pattern: {parsed_args.file_pattern}")
+    logger.info(f"Reprocess: {parsed_args.reprocess}")
+    if (
+        parsed_args.batch_start is not None
+        or parsed_args.batch_end is not None
+    ):
         logger.info(
-            f"Batch index range: {args.batch_start} to {args.batch_end}",
+            f"Batch index range: {parsed_args.batch_start} to {parsed_args.batch_end}",
         )
 
     try:
         # Create the converter and run the conversion
         converter = JsonToDuckConverter(
-            source_dir=args.source_dir,
-            target_dir=args.target_dir,
-            db_file=args.db_file,
-            file_pattern=args.file_pattern,
-            reprocess=args.reprocess,
-            batch_start_index=args.batch_start,
-            batch_end_index=args.batch_end,
+            source_dir=parsed_args.source_dir,
+            target_dir=parsed_args.target_dir,
+            db_file=parsed_args.db_file,
+            file_pattern=parsed_args.file_pattern,
+            reprocess=parsed_args.reprocess,
+            batch_start_index=parsed_args.batch_start,
+            batch_end_index=parsed_args.batch_end,
         )
 
         try:
