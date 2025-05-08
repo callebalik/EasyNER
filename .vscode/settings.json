@@ -20,7 +20,7 @@
   "mypy.runUsingActiveInterpreter": true,
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter",
-    "editor.wordBasedSuggestions": "off"
+    "editor.wordBasedSuggestions": "matchingDocuments"
   },
   "flake8.enabled": true
 }
