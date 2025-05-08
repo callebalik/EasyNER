@@ -372,6 +372,7 @@ class JsonToDuckConverter(BaseConverter):
                     # Process with database lock to ensure thread safety with DuckDB
                     with db_lock:
                         try:
+                            # TODO: Send source file info to the database when converting
                             # Begin transaction
                             self.connection.begin_transaction()
                             transaction_active = True
