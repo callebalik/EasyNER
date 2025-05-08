@@ -174,7 +174,7 @@ def combined_test_data(test_data_1, test_data_2):
 @pytest.fixture
 def test_json_file_1(temp_dir, test_data_1):
     """Create a test JSON file with sample data."""
-    json_file = temp_dir / "test_articles.json"
+    json_file = temp_dir / "test_articles_1.json"
     with open(json_file, "w", encoding="utf-8") as f:
         json.dump(test_data_1, f)
     return json_file

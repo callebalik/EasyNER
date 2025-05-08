@@ -27,7 +27,7 @@ def test_list_convertible_files(temp_dir, test_json_file_1):
     # Test listing files
     files = converter.list_convertible_files()
     assert len(files) == 1
-    assert files[0].name == "test_articles.json"
+    assert files[0].name == "test_articles_1.json"
 
 
 def test_convert_to_db(temp_dir, test_json_file_1):
