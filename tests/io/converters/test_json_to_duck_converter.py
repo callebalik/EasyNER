@@ -1,21 +1,22 @@
-import pandas as pd
+import json
+
 import numpy as np
+import pandas as pd
 import pytest
 
 from easyner.io.converters.json_to_duck_converter import JsonToDuckConverter
 from easyner.io.database.duckdb_handler import DuckDBHandler
 from easyner.io.database.utils.column_names import (
     ARTICLE_ID,
-    SENTENCE_ID,
-    TEXT,
-    START_CHAR,
     END_CHAR,
+    ENTITY_ID,
     INFERENCE_MODEL,
     INFERENCE_MODEL_METADATA,
+    SENTENCE_ID,
+    START_CHAR,
+    TEXT,
     TITLE,
-    ENTITY_ID,
 )
-import json
 
 
 def test_list_convertible_files(temp_dir, test_json_file):
@@ -37,7 +38,13 @@ def test_convert_to_db(temp_dir, test_json_file):
 
     # Create converter with a persistent database file
     db_path = output_dir / "test.db"
-    converter = JsonToDuckConverter(temp_dir, output_dir, db_file=str(db_path))
+    converter = JsonToDuckConverter(
+        temp_dir,
+        output_dir,
+        db_file=str(db_path),
+        log_duplicates=False,
+        ignore_duplicates=True,
+    )
 
     # Run conversion
     result = converter.convert()
@@ -73,7 +80,12 @@ def test_convert_to_db(temp_dir, test_json_file):
 def test_convert_with_memory_db(temp_dir, test_json_file):
     """Test conversion with in-memory database"""
     # Create converter
-    converter = JsonToDuckConverter(temp_dir, temp_dir / "output")
+    converter = JsonToDuckConverter(
+        temp_dir,
+        temp_dir / "output",
+        log_duplicates=False,
+        ignore_duplicates=True,
+    )
 
     # Run conversion with in-memory database
     result = converter.convert(use_memory_db=True)
@@ -90,7 +102,13 @@ def test_idempotency_no_reprocessing(temp_dir, test_json_file):
     output_dir.mkdir(exist_ok=True)
     db_path = output_dir / "idem_no_reprocess.db"
 
-    converter = JsonToDuckConverter(temp_dir, output_dir, db_file=str(db_path))
+    converter = JsonToDuckConverter(
+        temp_dir,
+        output_dir,
+        db_file=str(db_path),
+        log_duplicates=False,
+        ignore_duplicates=True,
+    )
 
     # First run
     result1 = converter.convert()
@@ -128,7 +146,13 @@ def test_idempotency_with_reprocess_flag(temp_dir, test_json_file):
     output_dir.mkdir(exist_ok=True)
     db_path = output_dir / "idem_reprocess.db"
 
-    converter = JsonToDuckConverter(temp_dir, output_dir, db_file=str(db_path))
+    converter = JsonToDuckConverter(
+        temp_dir,
+        output_dir,
+        db_file=str(db_path),
+        log_duplicates=False,
+        ignore_duplicates=True,
+    )
 
     # First run
     result1 = converter.convert()
@@ -137,7 +161,12 @@ def test_idempotency_with_reprocess_flag(temp_dir, test_json_file):
 
     # Second run with reprocess=True
     converter_reprocess = JsonToDuckConverter(
-        temp_dir, output_dir, db_file=str(db_path), reprocess=True
+        temp_dir,
+        output_dir,
+        db_file=str(db_path),
+        reprocess=True,
+        log_duplicates=False,
+        ignore_duplicates=True,
     )
     result2 = converter_reprocess.convert()
 
@@ -172,7 +201,13 @@ def test_idempotency_adding_new_files(temp_dir, test_data):
     with open(file1_path, "w") as f:
         json.dump({"1": test_data["1"]}, f)  # Only first article
 
-    converter = JsonToDuckConverter(temp_dir, output_dir, db_file=str(db_path))
+    converter = JsonToDuckConverter(
+        temp_dir,
+        output_dir,
+        db_file=str(db_path),
+        log_duplicates=False,
+        ignore_duplicates=True,
+    )
 
     # First run (only file1.json)
     result1 = converter.convert()
@@ -226,7 +261,11 @@ class TestExampleDataStructureAndContent:
 
         # Create converter with a persistent database file
         converter = JsonToDuckConverter(
-            example_files_dir, output_dir, db_file=str(db_path)
+            example_files_dir,
+            output_dir,
+            db_file=str(db_path),
+            log_duplicates=False,
+            ignore_duplicates=True,
         )
         result = converter.convert()
 
