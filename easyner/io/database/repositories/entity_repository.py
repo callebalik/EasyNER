@@ -2,6 +2,7 @@ import pandas as pd
 from typing import Dict, List, Any, Union, Optional, Set
 
 from easyner.io.database.utils.column_names import (
+    ENTITY_ID,
     ARTICLE_ID,
     SENTENCE_ID,
     TEXT,
@@ -36,6 +37,7 @@ class EntityRepository(Repository):
     def columns(self) -> Set[str]:
         """Return the set of columns in the entities table."""
         return {
+            ENTITY_ID,
             ARTICLE_ID,
             SENTENCE_ID,
             TEXT,
@@ -67,7 +69,7 @@ class EntityRepository(Repository):
             SQL query string for insertion
         """
         cols = ", ".join(self.required_columns)
-        return f"INSERT OR IGNORE INTO {ENTITIES_TABLE} ({cols}) SELECT {cols} FROM {view_name}"
+        return f"INSERT INTO {ENTITIES_TABLE} ({cols}) SELECT {cols} FROM {view_name}"
 
     def insert(self, item: Dict[str, Any]) -> None:
         """
