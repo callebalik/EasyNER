@@ -41,7 +41,7 @@ if not logger.handlers:
 
 
 class JsonToDuckConverter(BaseConverter):
-    """Converter to transform JSON data into DuckDB database"""
+    """Converter to transform JSON data into DuckDB database."""
 
     def __init__(
         self,
@@ -54,8 +54,8 @@ class JsonToDuckConverter(BaseConverter):
         batch_start_index: Optional[int] = None,
         batch_end_index: Optional[int] = None,
         memory_limit: Optional[str] = None,  # Add this parameter
-    ):
-        """Initialize the JSON to DuckDB converter
+    ) -> None:
+        """Initialize the JSON to DuckDB converter.
 
         Args:
             source_dir: Directory containing JSON files to convert
@@ -108,7 +108,7 @@ class JsonToDuckConverter(BaseConverter):
         self._converted_files: list[Path] = []
 
     def list_convertible_files(self) -> list[Path]:
-        """List all JSON files in the source directory and sort them by batch index"""
+        """List all JSON files in the source directory and sort them by batch index."""
         files = list(self.source_dir.glob(self.file_pattern))
 
         # Use safe_batch_file_index_sort to sort files
@@ -136,7 +136,7 @@ class JsonToDuckConverter(BaseConverter):
         return sorted_files
 
     def list_converted_files(self) -> list[Path]:
-        """List all files that have already been successfully converted by querying the database."""
+        """Query database for a list of converted files."""
         if self._is_memory_db:
             return self._converted_files
 
@@ -150,7 +150,7 @@ class JsonToDuckConverter(BaseConverter):
             return []
 
     def list_unconverted_files(self) -> list[Path]:
-        """List all files that have not been converted yet"""
+        """List all files that have not been converted yet."""
         if self._reprocess:
             return self.list_convertible_files()
 
@@ -168,7 +168,6 @@ class JsonToDuckConverter(BaseConverter):
         try:
             file_hash = get_file_hash(file_path)
             file_size = file_path.stat().st_size
-            timestamp = "NOW()"
 
             self.connection.execute(
                 """
@@ -193,7 +192,7 @@ class JsonToDuckConverter(BaseConverter):
             # Continue processing - if we can't log, we'll still continue with conversion
 
     def convert(self, **kwargs) -> dict[str, Any]:
-        """Convert JSON files to DuckDB database with memory-aware processing
+        """Convert JSON files to DuckDB database with memory-aware processing.
 
         This implementation uses a queue-based approach to manage memory usage
         while respecting DuckDB's concurrency model.
@@ -295,7 +294,7 @@ class JsonToDuckConverter(BaseConverter):
 
         # Function to check memory usage
         def check_memory() -> float:
-            """Check the current memory usage of the system"""
+            """Check the current memory usage of the system."""
             memory_percentage_usage: float = psutil.virtual_memory().percent
             return memory_percentage_usage
 
@@ -573,7 +572,7 @@ class JsonToDuckConverter(BaseConverter):
         return result
 
     def _drop_tables(self) -> None:
-        """Drop all conversion tables in the database"""
+        """Drop all conversion tables in the database."""
         try:
             # Drop tables in the correct order to avoid foreign key constraint issues
             self.connection.execute("DROP TABLE IF EXISTS entities;")
@@ -595,7 +594,7 @@ class JsonToDuckConverter(BaseConverter):
 
 
 def main(args=None) -> None:
-    """Command-line entry point for the converter"""
+    """Command-line entry point for the converter."""
     import argparse
 
     parser = argparse.ArgumentParser(
