@@ -22,6 +22,8 @@ from easyner.io.database.utils.sql_utils import get_file_hash
 from easyner.io.handlers import PubMedJsonHandler
 from easyner.io.utils import safe_batch_file_index_sort, filter_batch_files
 
+from easyner.io.database.connection import DatabaseConnection
+
 # Set up logger for the converter
 logger = logging.getLogger("easyner.io.converters.json_to_duck_converter")
 
@@ -46,13 +48,13 @@ class JsonToDuckConverter(BaseConverter):
         self,
         source_dir: Union[str, Path],
         target_dir: Union[str, Path],
-        connection=None,
+        connection: Optional[DatabaseConnection] = None,
         db_file: Optional[str] = None,
         file_pattern: str = "*.json",
         reprocess: bool = False,
         batch_start_index: Optional[int] = None,
         batch_end_index: Optional[int] = None,
-        memory_limit: str = None,  # Add this parameter
+        memory_limit: Optional[str] = None,  # Add this parameter
     ):
         """
         Initialize the JSON to DuckDB converter
@@ -103,7 +105,7 @@ class JsonToDuckConverter(BaseConverter):
 
         # Create conversion log table if it doesn't exist
         self.connection.execute(CONVERSION_LOG_TABLE_SQL)
-        self._converted_files = []
+        self._converted_files: List[Path] = []
 
     def list_convertible_files(self) -> List[Path]:
         """List all JSON files in the source directory and sort them by batch index"""
@@ -156,7 +158,7 @@ class JsonToDuckConverter(BaseConverter):
         convertible_files = self.list_convertible_files()
         return [f for f in convertible_files if f not in converted_files]
 
-    def _log_conversion(self, file_path: Path, status: str):
+    def _log_conversion(self, file_path: Path, status: str) -> None:
         """Logs the conversion attempt to the database."""
         if self._is_memory_db:
             if status == "converted":
@@ -198,17 +200,21 @@ class JsonToDuckConverter(BaseConverter):
         while respecting DuckDB's concurrency model.
         """
         # Process kwargs - keep existing initialization code
-        use_memory_db = kwargs.get("use_memory_db", False)
-        reprocess_override = kwargs.get("reprocess")
-        reprocess = (
+        use_memory_db: bool = kwargs.get("use_memory_db", False)
+        reprocess_override: Optional[bool] = kwargs.get("reprocess")
+        reprocess: bool = (
             self._reprocess
             if reprocess_override is None
             else reprocess_override
         )
 
         # Process batch index filter overrides - keep existing code
-        batch_start = kwargs.get("batch_start_index", self.batch_start_index)
-        batch_end = kwargs.get("batch_end_index", self.batch_end_index)
+        batch_start: Optional[int] = kwargs.get(
+            "batch_start_index", self.batch_start_index
+        )
+        batch_end: Optional[int] = kwargs.get(
+            "batch_end_index", self.batch_end_index
+        )
 
         if batch_start != self.batch_start_index:
             self.batch_start_index = batch_start
@@ -216,13 +222,13 @@ class JsonToDuckConverter(BaseConverter):
             self.batch_end_index = batch_end
 
         # Set up memory monitoring parameters
-        max_memory_percent = kwargs.get("max_memory_percent", 70)
-        max_queue_size = kwargs.get("max_queue_size", 30)
-        max_reader_threads = min(
+        max_memory_percent: int = kwargs.get("max_memory_percent", 70)
+        max_queue_size: int = kwargs.get("max_queue_size", 30)
+        max_reader_threads: int = min(
             kwargs.get("max_reader_threads", 6), os.cpu_count() or 2
         )
 
-        processed_files = []
+        processed_files: List[Path] = []
 
         # Initialize in-memory database if requested
         if use_memory_db and not self._is_memory_db:
@@ -286,12 +292,13 @@ class JsonToDuckConverter(BaseConverter):
         )  # Lock for database operations to ensure thread safety
 
         # Function to check memory usage
-        def check_memory():
-            memory_info = psutil.virtual_memory()
-            return memory_info.percent
+        def check_memory() -> float:
+            """Check the current memory usage of the system"""
+            memory_percentage_usage: float = psutil.virtual_memory().percent
+            return memory_percentage_usage
 
         # Function to read a file and add it to the queue
-        def read_file(file_path):
+        def read_file(file_path) -> Optional[Path]:
             try:
                 logger.info(f"Reading file: {file_path}")
                 # Read and parse JSON data
@@ -328,7 +335,7 @@ class JsonToDuckConverter(BaseConverter):
                 return None
 
         # Database consumer function - respects DuckDB's concurrency model
-        def process_database():
+        def process_database() -> None:
             nonlocal total_articles, total_sentences, total_entities, processed_files
             transaction_active = False
 
@@ -401,7 +408,7 @@ class JsonToDuckConverter(BaseConverter):
                 unit="file",
             ) as pbar:
                 # Function to update progress bar with queue info
-                def update_progress_description():
+                def update_progress_description() -> None:
                     queue_size = data_queue.qsize()
                     memory_percent = check_memory()
                     pbar.set_description(
@@ -560,7 +567,7 @@ class JsonToDuckConverter(BaseConverter):
 
         return result
 
-    def _drop_tables(self):
+    def _drop_tables(self) -> None:
         """Drop all conversion tables in the database"""
         try:
             # Drop tables in the correct order to avoid foreign key constraint issues
@@ -582,7 +589,7 @@ class JsonToDuckConverter(BaseConverter):
                 )
 
 
-def main(args=None):
+def main(args=None) -> None:
     """Command-line entry point for the converter"""
     import argparse
     import sys
