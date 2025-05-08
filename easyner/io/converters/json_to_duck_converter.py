@@ -1,28 +1,27 @@
-import os
+import concurrent.futures
 import logging
-from pathlib import Path
-from typing import List, Dict, Any, Union, Optional
-from tqdm import tqdm
-import time
-import psutil
+import os
 import queue
 import threading
-import concurrent.futures
+import time
+from pathlib import Path
+from typing import Any, Optional, Union
+
+import psutil
+from tqdm import tqdm
 
 from easyner.io.converters.base import BaseConverter
+from easyner.io.database.connection import DatabaseConnection
 from easyner.io.database.duckdb_handler import DuckDBHandler
 from easyner.io.database.repositories import (
     ArticleRepository,
-    SentenceRepository,
     EntityRepository,
+    SentenceRepository,
 )
-
 from easyner.io.database.schemas import CONVERSION_LOG_TABLE_SQL
 from easyner.io.database.utils.sql_utils import get_file_hash
 from easyner.io.handlers import PubMedJsonHandler
-from easyner.io.utils import safe_batch_file_index_sort, filter_batch_files
-
-from easyner.io.database.connection import DatabaseConnection
+from easyner.io.utils import filter_batch_files, safe_batch_file_index_sort
 
 # Set up logger for the converter
 logger = logging.getLogger("easyner.io.converters.json_to_duck_converter")
@@ -34,7 +33,7 @@ if not logger.handlers:
     # Add console handler with custom formatter
     handler = logging.StreamHandler()
     handler.setFormatter(
-        logging.Formatter("%(levelname)s - JSON->Duck: %(message)s")
+        logging.Formatter("%(levelname)s - JSON->Duck: %(message)s"),
     )
     logger.addHandler(handler)
     # Prevent propagation to root logger to avoid duplicate messages
@@ -56,8 +55,7 @@ class JsonToDuckConverter(BaseConverter):
         batch_end_index: Optional[int] = None,
         memory_limit: Optional[str] = None,  # Add this parameter
     ):
-        """
-        Initialize the JSON to DuckDB converter
+        """Initialize the JSON to DuckDB converter
 
         Args:
             source_dir: Directory containing JSON files to convert
@@ -69,6 +67,7 @@ class JsonToDuckConverter(BaseConverter):
             batch_start_index: Only process files with batch index >= this value (optional)
             batch_end_index: Only process files with batch index <= this value (optional)
             memory_limit: Memory limit for DuckDB (optional, default is 50% of system memory or 4096MB)
+
         """
         super().__init__(source_dir, target_dir)
         self.file_pattern = file_pattern
@@ -88,7 +87,7 @@ class JsonToDuckConverter(BaseConverter):
             system_memory_mb = psutil.virtual_memory().total // (1024 * 1024)
             memory_limit = f"{min(system_memory_mb // 2, 4096)}MB"
             logger.info(
-                f"Auto-configured DuckDB memory limit to {memory_limit}"
+                f"Auto-configured DuckDB memory limit to {memory_limit}",
             )
 
         # Initialize the DuckDB handler to handle database operations
@@ -97,7 +96,8 @@ class JsonToDuckConverter(BaseConverter):
             self.db_handler.connection = connection
         else:
             self.db_handler = DuckDBHandler(
-                self.db_file, memory_limit=memory_limit
+                self.db_file,
+                memory_limit=memory_limit,
             )
 
         self.connection = self.db_handler.connection
@@ -105,9 +105,9 @@ class JsonToDuckConverter(BaseConverter):
 
         # Create conversion log table if it doesn't exist
         self.connection.execute(CONVERSION_LOG_TABLE_SQL)
-        self._converted_files: List[Path] = []
+        self._converted_files: list[Path] = []
 
-    def list_convertible_files(self) -> List[Path]:
+    def list_convertible_files(self) -> list[Path]:
         """List all JSON files in the source directory and sort them by batch index"""
         files = list(self.source_dir.glob(self.file_pattern))
 
@@ -135,7 +135,7 @@ class JsonToDuckConverter(BaseConverter):
 
         return sorted_files
 
-    def list_converted_files(self) -> List[Path]:
+    def list_converted_files(self) -> list[Path]:
         """List all files that have already been successfully converted by querying the database."""
         if self._is_memory_db:
             return self._converted_files
@@ -149,7 +149,7 @@ class JsonToDuckConverter(BaseConverter):
         except Exception:
             return []
 
-    def list_unconverted_files(self) -> List[Path]:
+    def list_unconverted_files(self) -> list[Path]:
         """List all files that have not been converted yet"""
         if self._reprocess:
             return self.list_convertible_files()
@@ -192,9 +192,8 @@ class JsonToDuckConverter(BaseConverter):
             print(f"Error logging conversion: {e}")
             # Continue processing - if we can't log, we'll still continue with conversion
 
-    def convert(self, **kwargs) -> Dict[str, Any]:
-        """
-        Convert JSON files to DuckDB database with memory-aware processing
+    def convert(self, **kwargs) -> dict[str, Any]:
+        """Convert JSON files to DuckDB database with memory-aware processing
 
         This implementation uses a queue-based approach to manage memory usage
         while respecting DuckDB's concurrency model.
@@ -210,10 +209,12 @@ class JsonToDuckConverter(BaseConverter):
 
         # Process batch index filter overrides - keep existing code
         batch_start: Optional[int] = kwargs.get(
-            "batch_start_index", self.batch_start_index
+            "batch_start_index",
+            self.batch_start_index,
         )
         batch_end: Optional[int] = kwargs.get(
-            "batch_end_index", self.batch_end_index
+            "batch_end_index",
+            self.batch_end_index,
         )
 
         if batch_start != self.batch_start_index:
@@ -225,10 +226,11 @@ class JsonToDuckConverter(BaseConverter):
         max_memory_percent: int = kwargs.get("max_memory_percent", 70)
         max_queue_size: int = kwargs.get("max_queue_size", 30)
         max_reader_threads: int = min(
-            kwargs.get("max_reader_threads", 6), os.cpu_count() or 2
+            kwargs.get("max_reader_threads", 6),
+            os.cpu_count() or 2,
         )
 
-        processed_files: List[Path] = []
+        processed_files: list[Path] = []
 
         # Initialize in-memory database if requested
         if use_memory_db and not self._is_memory_db:
@@ -247,7 +249,7 @@ class JsonToDuckConverter(BaseConverter):
                 # Clear conversion log for persistent DB
                 try:
                     self.connection.execute(
-                        "DELETE FROM conversion_log WHERE status = 'converted';"
+                        "DELETE FROM conversion_log WHERE status = 'converted';",
                     )
                 except Exception as e:
                     logger.error(f"Error clearing conversion log: {e}")
@@ -269,13 +271,13 @@ class JsonToDuckConverter(BaseConverter):
         logger.info("=" * table_width)
         # Add these lines to show detailed statistics with alignment
         logger.info(
-            f"{'Total convertible files:':<30} | {len(all_convertible_files):>10}"
+            f"{'Total convertible files:':<30} | {len(all_convertible_files):>10}",
         )
         logger.info(
-            f"{'Already converted files:':<30} | {len(already_converted_files):>10}"
+            f"{'Already converted files:':<30} | {len(already_converted_files):>10}",
         )
         logger.info(
-            f"{'Files to be converted now:':<30} | {len(files_to_process):>10}"
+            f"{'Files to be converted now:':<30} | {len(files_to_process):>10}",
         )
         logger.info("-" * table_width)
         logger.info("=" * table_width)
@@ -313,7 +315,7 @@ class JsonToDuckConverter(BaseConverter):
                         memory_percent = check_memory()
                         if memory_percent > max_memory_percent:
                             logger.warning(
-                                f"Memory usage at {memory_percent}% - waiting before adding more data"
+                                f"Memory usage at {memory_percent}% - waiting before adding more data",
                             )
                             time.sleep(2)
                             continue
@@ -329,7 +331,7 @@ class JsonToDuckConverter(BaseConverter):
 
             except Exception as e:
                 logger.error(
-                    f"Failed to read or parse JSON file {file_path}: {e}"
+                    f"Failed to read or parse JSON file {file_path}: {e}",
                 )
                 self._log_conversion(file_path, "failed_parsing")
                 return None
@@ -356,13 +358,13 @@ class JsonToDuckConverter(BaseConverter):
 
                             # Insert data into tables
                             ArticleRepository(
-                                connection=self.connection
+                                connection=self.connection,
                             ).insert_many_non_transactional(data["articles"])
                             SentenceRepository(
-                                connection=self.connection
+                                connection=self.connection,
                             ).insert_many_non_transactional(data["sentences"])
                             EntityRepository(
-                                connection=self.connection
+                                connection=self.connection,
                             ).insert_many_non_transactional(data["entities"])
 
                             # Commit transaction
@@ -383,10 +385,11 @@ class JsonToDuckConverter(BaseConverter):
                                 self.connection.rollback()
                                 transaction_active = False
                             logger.error(
-                                f"Error processing file {file_path}: {e}"
+                                f"Error processing file {file_path}: {e}",
                             )
                             self._log_conversion(
-                                file_path, "failed_conversion"
+                                file_path,
+                                "failed_conversion",
                             )
 
                     # Mark task as done
@@ -394,7 +397,7 @@ class JsonToDuckConverter(BaseConverter):
 
                 except Exception as e:
                     logger.error(
-                        f"Unexpected error in database processor: {e}"
+                        f"Unexpected error in database processor: {e}",
                     )
 
         # Start the database consumer thread
@@ -412,19 +415,20 @@ class JsonToDuckConverter(BaseConverter):
                     queue_size = data_queue.qsize()
                     memory_percent = check_memory()
                     pbar.set_description(
-                        f"Converting JSON->Duckdb [Queue: {queue_size}/{max_queue_size}, Mem: {memory_percent:.0f}%]"
+                        f"Converting JSON->Duckdb [Queue: {queue_size}/{max_queue_size}, Mem: {memory_percent:.0f}%]",
                     )
 
                 # Use ThreadPoolExecutor for reading files
                 with concurrent.futures.ThreadPoolExecutor(
-                    max_workers=max_reader_threads
+                    max_workers=max_reader_threads,
                 ) as executor:
                     futures = {}
                     remaining_files = list(files_to_process)
 
                     # Submit initial batch of files
                     initial_batch_size = min(
-                        max_reader_threads, len(remaining_files)
+                        max_reader_threads,
+                        len(remaining_files),
                     )
                     for _ in range(initial_batch_size):
                         if not remaining_files:
@@ -454,7 +458,7 @@ class JsonToDuckConverter(BaseConverter):
                             if memory_percent > max_memory_percent + 5:
                                 # Memory pressure is high, we might need to wait
                                 logger.warning(
-                                    f"Memory usage at {memory_percent}% - waiting before processing more files"
+                                    f"Memory usage at {memory_percent}% - waiting before processing more files",
                                 )
                                 time.sleep(2)
                             continue
@@ -476,7 +480,8 @@ class JsonToDuckConverter(BaseConverter):
                             ):
                                 next_file = remaining_files.pop(0)
                                 next_future = executor.submit(
-                                    read_file, next_file
+                                    read_file,
+                                    next_file,
                                 )
                                 futures[next_future] = next_file
 
@@ -498,13 +503,13 @@ class JsonToDuckConverter(BaseConverter):
                 db_thread.join(timeout=5)
                 if db_thread.is_alive():
                     logger.info(
-                        "Database operations still running in background."
+                        "Database operations still running in background.",
                     )
 
             # Return partial results with immediately available information
             processed_count = len(processed_files)
             logger.info(
-                f"Processed {processed_count} files before interruption."
+                f"Processed {processed_count} files before interruption.",
             )
 
             return {
@@ -562,7 +567,7 @@ class JsonToDuckConverter(BaseConverter):
 
         if not self._is_memory_db:
             result["total_converted_files_in_log"] = len(
-                self.list_converted_files()
+                self.list_converted_files(),
             )
 
         return result
@@ -585,17 +590,16 @@ class JsonToDuckConverter(BaseConverter):
                 self.connection.execute(CONVERSION_LOG_TABLE_SQL)
             except Exception as log_error:
                 logger.error(
-                    f"Error recreating conversion log table: {log_error}"
+                    f"Error recreating conversion log table: {log_error}",
                 )
 
 
 def main(args=None) -> None:
     """Command-line entry point for the converter"""
     import argparse
-    import sys
 
     parser = argparse.ArgumentParser(
-        description="Convert JSON files to DuckDB database for EasyNER"
+        description="Convert JSON files to DuckDB database for EasyNER",
     )
     parser.add_argument(
         "source_dir",
@@ -661,7 +665,7 @@ def main(args=None) -> None:
     logger.info(f"Reprocess: {args.reprocess}")
     if args.batch_start is not None or args.batch_end is not None:
         logger.info(
-            f"Batch index range: {args.batch_start} to {args.batch_end}"
+            f"Batch index range: {args.batch_start} to {args.batch_end}",
         )
 
     try:
@@ -683,10 +687,10 @@ def main(args=None) -> None:
             if result.get("status") == "interrupted":
                 logger.info("Conversion was interrupted by user.")
                 logger.info(
-                    f"Files processed before interruption: {result['files_processed_this_run']}"
+                    f"Files processed before interruption: {result['files_processed_this_run']}",
                 )
                 logger.info(
-                    f"Articles added before interruption: {result['articles_added_this_run']}"
+                    f"Articles added before interruption: {result['articles_added_this_run']}",
                 )
                 logger.info(f"Database path: {result['database_path']}")
                 return 130  # Standard exit code for SIGINT
@@ -694,21 +698,21 @@ def main(args=None) -> None:
             # Print statistics for completed conversion
             logger.info("Conversion completed successfully!")
             logger.info(
-                f"Files processed: {result['files_processed_this_run']}"
+                f"Files processed: {result['files_processed_this_run']}",
             )
             logger.info(f"Articles added: {result['articles_added_this_run']}")
             logger.info(
-                f"Sentences added: {result['sentences_added_this_run']}"
+                f"Sentences added: {result['sentences_added_this_run']}",
             )
             logger.info(f"Entities added: {result['entities_added_this_run']}")
             logger.info(
-                f"Total articles in database: {result['article_count']}"
+                f"Total articles in database: {result['article_count']}",
             )
             logger.info(
-                f"Total sentences in database: {result['sentence_count']}"
+                f"Total sentences in database: {result['sentence_count']}",
             )
             logger.info(
-                f"Total entities in database: {result['entity_count']}"
+                f"Total entities in database: {result['entity_count']}",
             )
             logger.info(f"Database path: {result['database_path']}")
 
