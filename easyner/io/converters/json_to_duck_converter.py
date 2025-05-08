@@ -77,9 +77,9 @@ class JsonToDuckConverter(BaseConverter):
 
         # Set up db_file path - if not provided, create one in target_dir
         if db_file is None:
-            self.db_file = os.path.join(str(target_dir), "easyner.db")
+            self.db_file = Path(target_dir) / "easyner.db"
         else:
-            self.db_file = db_file
+            self.db_file = Path(db_file)
 
         # Determine a good default memory limit if none was provided
         if memory_limit is None:
@@ -96,7 +96,7 @@ class JsonToDuckConverter(BaseConverter):
             self.db_handler.connection = connection
         else:
             self.db_handler = DuckDBHandler(
-                self.db_file,
+                db_path=str(self.db_file),
                 memory_limit=memory_limit,
             )
 
