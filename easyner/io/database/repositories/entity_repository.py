@@ -58,6 +58,11 @@ class EntityRepository(Repository):
             END_CHAR,
         }
 
+    @property
+    def primary_key_columns(self) -> List[str]:
+        """Return the primary key of the entities table."""
+        return [ENTITY_ID, ARTICLE_ID, SENTENCE_ID]
+
     def _build_insert_query(self, view_name: str) -> str:
         """
         Build SQL query for insertion from a temporary view.

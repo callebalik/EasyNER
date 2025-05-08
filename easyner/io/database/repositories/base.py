@@ -44,6 +44,12 @@ class Repository(ABC):
 
     @property
     @abstractmethod
+    def primary_key_columns(self) -> List[str]:
+        """The primary key of the table."""
+        pass
+
+    @property
+    @abstractmethod
     def required_columns(self) -> Set[str]:
         """The set of required columns for insertion operations."""
         pass
@@ -194,5 +200,29 @@ class Repository(ABC):
         create_table_sql = self.table_sql_stmt.replace(
             self.table_name, duplicate_table_name
         )
-        self.connection.execute(create_table_sql)
-        self.logger.info(f"Created duplicates table: {duplicate_table_name}")
+    def _build_pk_columns_list(self) -> str:
+        """
+        Build a comma-separated list of primary key column names for the table.
+
+        Returns:
+            String of primary key column names to use in SQL queries
+        """
+        # Default implementation uses all columns from primary_key_columns
+        # Repository subclasses might want to override this if they need specific column ordering
+        return ", ".join(self.primary_key_columns)
+
+    def _build_columns_list(self) -> str:
+        """
+        Build a comma-separated list of column names for the table.
+
+        Returns:
+            String of column names to use in SQL queries
+        """
+        # Default implementation uses all columns from required_columns
+        # Repository subclasses might want to override this if they need specific column ordering
+        return ", ".join(self.required_columns)
+
+    def _get_columns(self) -> None:
+        """Placeholder. Return the set of columns in the table."""
+
+        pass

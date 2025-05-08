@@ -30,6 +30,11 @@ class ArticleRepository(Repository):
     def required_columns(self) -> Set[str]:
         return {ARTICLE_ID, TITLE}
 
+    @property
+    def primary_key_columns(self) -> List[str]:
+        """Return the primary key of the articles table."""
+        return [ARTICLE_ID]
+
     def _get_required_columns(self) -> Set[str]:
         """Return the required columns for article insertion."""
         return {ARTICLE_ID, TITLE}
