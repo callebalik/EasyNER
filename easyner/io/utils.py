@@ -1,7 +1,7 @@
 import logging
 import os
 import re
-from typing import List, Optional, Dict
+from typing import List, Optional
 from glob import glob
 
 
@@ -32,7 +32,8 @@ def get_batch_file_index(batch_file: str) -> int:
     match = re.search(r"(\d+)$", name_part)
 
     if match:
-        # If match is preceded by numeric characters anywhere in the name raise warning about ambigous batch filename
+        # If match is preceded by numeric characters anywhere in the name raise
+        # warning about ambigous batch filename
         if re.search(r"\d", name_part[: -len(match.group(1))]):
             logging.warning(
                 f"Ambiguous batch filename '{filename}'. "
@@ -42,22 +43,24 @@ def get_batch_file_index(batch_file: str) -> int:
         # Match is not at the end of the name part
         if match.start() != len(name_part) - len(match.group(1)):
             raise ValueError(
-                f"Batch filename '{filename}' contains non-numeric characters after the batch number."
+                f"Batch filename '{filename}' contains non-numeric "
+                "characters after the batch number."
             )
         return int(match.group(1))
 
     logging.error(f"Error extracting index from {batch_file}")
     raise ValueError(
-        "Batch filenames must contain a pure numeric index before the extension"
+        "Batch filenames must contain a pure numeric index before"
+        " the extension"
     )
 
 
 def filter_batch_files(
-    file_list,
+    file_list: List[str],
     start: Optional[int] = None,
     end: Optional[int] = None,
     exclude_batches: Optional[List[int]] = None,
-):
+) -> List[str]:
     """
     Filter files based on index range.
 
@@ -89,7 +92,7 @@ def filter_batch_files(
         )
         exclude_batches = None  # Reset to None to avoid confusion
 
-    filtered_list_files = []
+    filtered_list_files: List[str] = []
     for file in file_list:
         try:
             batch_idx = get_batch_file_index(file)
@@ -106,7 +109,8 @@ def filter_batch_files(
             filtered_list_files.append(file)
         except (ValueError, IndexError):
             raise ValueError(
-                f"Batch filenames must contain numeric indices when filtering: {file}"
+                f"Batch filenames must contain numeric indices "
+                f"when filtering: {file}"
             )
 
     # Add logging here to report filtering results
@@ -189,7 +193,7 @@ def check_for_duplicate_batch_indices(file_list: List[str]) -> None:
         )
 
 
-def _remove_all_files_from_dir(dir_path: str):
+def _remove_all_files_from_dir(dir_path: str) -> None:
     """
     Keep the directory but clear its contents
     Example usage: Clear old results from the output directory.
@@ -246,7 +250,8 @@ def safe_batch_file_index_sort(file_list: List[str]) -> List[str]:
     try:
         return sorted(file_list, key=get_batch_file_index)
     except ValueError:
-        # Fall back to lexicographical sorting if batch indices can't be extracted
+        # Fall back to lexicographical sorting if batch indices can't be
+        # extracted
         logging.warning(
             "Couldn't sort by batch index. Using lexicographical sort."
         )
