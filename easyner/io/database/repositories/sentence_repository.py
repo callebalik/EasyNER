@@ -47,7 +47,7 @@ class SentenceRepository(Repository):
         Returns:
             SQL query string for insertion
         """
-        return f"INSERT OR IGNORE INTO {SENTENCES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}) SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {view_name}"
+        return f"INSERT INTO {SENTENCES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}) SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {view_name}"
 
     def insert(self, item: Dict[str, Any]) -> None:
         """
