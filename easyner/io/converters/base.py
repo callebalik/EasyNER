@@ -10,7 +10,7 @@ class BaseConverter(ABC):
         self,
         source_dir: Union[str, Path],
         target_dir: Optional[Union[str, Path]] = None,
-    ):
+    ) -> None:
         """Initialize the converter with source and target directories.
 
         Args:
@@ -24,7 +24,8 @@ class BaseConverter(ABC):
 
     @abstractmethod
     def list_convertible_files(self) -> list[Path]:
-        """List eligible files for conversion by this converter
+        """List eligible files for conversion by this converter.
+
         in the source directory.
 
         Returns:
@@ -35,7 +36,7 @@ class BaseConverter(ABC):
 
     @abstractmethod
     def list_converted_files(self) -> list[Path]:
-        """List all files that have already been converted
+        """List all files that have already been converted.
 
         Returns:
             List of files already converted
@@ -44,7 +45,7 @@ class BaseConverter(ABC):
         pass
 
     def list_unconverted_files(self) -> list[Path]:
-        """List unconverted files in source directory"""
+        """List unconverted files in source directory."""
         try:
             convertible_files_set = {
                 p.resolve() for p in self.list_convertible_files()
@@ -63,8 +64,8 @@ class BaseConverter(ABC):
             return []
 
     @abstractmethod
-    def convert(self, **kwargs) -> dict[str, Any]:
-        """Convert the source files according to converter implementation
+    def convert(self, **kwargs: Any) -> dict[str, Any]:
+        """Convert the source files according to converter implementation.
 
         Args:
             **kwargs: Additional arguments specific to the converter
