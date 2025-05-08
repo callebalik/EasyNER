@@ -199,7 +199,7 @@ class Repository(ABC):
     def insert_many_transactional(
         self,
         items: Union[list[dict[str, Any]], pd.DataFrame],
-        log_duplicates: bool = True,
+        log_duplicates: bool = False,
         ignore_duplicates: bool = False,
     ) -> None:
         """Transactional wrapper for insert many.
