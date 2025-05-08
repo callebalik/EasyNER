@@ -9,11 +9,12 @@ from easyner.io.database import (
 import pytest
 import duckdb
 import pandas as pd
+from typing import Generator
 
 
 @pytest.fixture(scope="class")
-def db_connection() -> DatabaseConnection:
-    """Fixture to set up and tear down a database connection for a test class."""
+def db_connection() -> Generator[DatabaseConnection, None, None]:
+    """Set up/tear down a database connection for a test class."""
     ddb_handler = DuckDBHandler(":memory:")
     connection = ddb_handler.connection
     yield connection  # Provide the connection to the test
@@ -38,7 +39,8 @@ def test_insert_duplicate_key(article_repo: ArticleRepository):
     }
     df = pd.DataFrame(data)
 
-    # Attempt to insert the DataFrame into the database using the injected repository
+    # Attempt to insert the DataFrame into the database
+    # using the injected repository
     with pytest.raises(duckdb.ConstraintException) as excinfo:
         article_repo.insert_many_transactional(df)  # Use the injected fixture
 
@@ -50,9 +52,12 @@ def test_insert_duplicate_key(article_repo: ArticleRepository):
 
 
 def test_insert_duplicate_key_with_logging(article_repo: ArticleRepository):
-    """Test that insert with log_duplicates_to_duplicates_table=True handles duplicates without errors."""
+    """
+    Test that insert with log_duplicates_to_duplicates_table=True
+    handles duplicates without errors.
+    """
     # Clear any existing data
-    conn = article_repo.connection.connection
+    conn = article_repo.connection  # Use DatabaseConnection directly
     conn.execute(f"DELETE FROM {article_repo.table_name}")
     if hasattr(article_repo, "duplicate_table_name"):
         conn.execute(f"DELETE FROM {article_repo.duplicate_table_name}")
@@ -60,7 +65,8 @@ def test_insert_duplicate_key_with_logging(article_repo: ArticleRepository):
     # Create initial record
     article_repo.insert({"article_id": 100, "title": "Original Title"})
 
-    # Create a sample DataFrame with duplicate keys - both against DB and internal
+    # Create a sample DataFrame with duplicate keys -
+    # both against DB and internal
     data = {
         "article_id": [
             100,
@@ -78,7 +84,8 @@ def test_insert_duplicate_key_with_logging(article_repo: ArticleRepository):
 
     # Verify main table has 2 records: original 100 + first 101
     main_records = conn.execute(
-        f"SELECT article_id, title FROM {article_repo.table_name} ORDER BY article_id"
+        f"SELECT article_id, title FROM {article_repo.table_name} "
+        f"ORDER BY article_id"
     ).fetchall()
     assert len(main_records) == 2
     assert main_records[0] == (100, "Original Title")  # Original not changed
@@ -86,7 +93,8 @@ def test_insert_duplicate_key_with_logging(article_repo: ArticleRepository):
 
     # Verify duplicates table has 2 records: duplicate 100 + second 101
     dup_records = conn.execute(
-        f"SELECT article_id, title FROM {article_repo.duplicate_table_name} ORDER BY article_id"
+        f"SELECT article_id, title FROM {article_repo.duplicate_table_name} "
+        f"ORDER BY article_id"
     ).fetchall()
     assert len(dup_records) == 2
     assert dup_records[0][0] == 100  # ID match
@@ -99,7 +107,8 @@ def test_insert_log_duplicates_to_duplicates_table(
     article_repo: ArticleRepository,
 ):
     """
-    Test that _insert_log_duplicates_to_duplicates_table correctly handles duplicates.
+    Test that _insert_log_duplicates_to_duplicates_table correctly
+    handles duplicates.
 
     This test verifies that:
     1. Existing records in DB are not overwritten
@@ -140,16 +149,20 @@ def test_insert_log_duplicates_to_duplicates_table(
     )
 
     # Step 4: Verify results
-    conn = article_repo.connection.connection
+    conn = article_repo.connection  # Use DatabaseConnection directly
 
-    # Check main table - should have original 3 records + 2 new unique records (total 5)
+    # Check main table - should have original 3 records + 2 new unique
+    # records (total 5)
     main_table_records = conn.execute(
-        f"SELECT article_id, title FROM {article_repo.table_name} ORDER BY article_id"
+        f"SELECT article_id, title FROM {article_repo.table_name} "
+        f"ORDER BY article_id"
     ).fetchall()
 
-    # Check duplicates table - should have 2 DB conflicts + 1 internal duplicate (total 3)
+    # Check duplicates table - should have 2 DB conflicts + 1 internal
+    # duplicate (total 3)
     duplicates_table_records = conn.execute(
-        f"SELECT article_id, title FROM {article_repo.duplicate_table_name} ORDER BY article_id"
+        f"SELECT article_id, title FROM {article_repo.duplicate_table_name} "
+        f"ORDER BY article_id"
     ).fetchall()
 
     # Assertions
@@ -184,7 +197,8 @@ def test_insert_log_duplicates_to_duplicates_table(
         "New Title 6 (Unique)",
     ) in main_table_records, "New unique record ID 6 should be in main table"
 
-    # Only one version of article_id 5 should be in the main table (the first one)
+    # Only one version of article_id 5 should be in the main table
+    # (the first one)
     assert (
         main_ids.count(5) == 1
     ), "Only one version of ID 5 should be in main table"
