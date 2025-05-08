@@ -179,13 +179,13 @@ class JsonToDuckConverter(BaseConverter):
                     conversion_timestamp = NOW(),
                     status = excluded.status;
                 """,
-                (
+                [
                     str(file_path.resolve()),
                     file_path.name,
                     file_hash,
                     file_size,
                     status,
-                ),
+                ],
             )
         except Exception as e:
             print(f"Error logging conversion: {e}")
