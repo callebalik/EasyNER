@@ -463,10 +463,11 @@ class Repository(ABC):
         table1_alias: str,
         table2_alias: str,
     ) -> str:
-        """Builds SQL condition using the primary key columns property."""
-        conditions = []
-        for col in self.primary_key_columns:
-            conditions.append(f"{table1_alias}.{col} = {table2_alias}.{col}")
+        """Build SQL condition using the primary key columns property."""
+        conditions = [
+            f"{table1_alias}.{col} = {table2_alias}.{col}"
+            for col in self.primary_key_columns
+        ]
         return " AND ".join(conditions)
 
     def _build_pk_columns_list(self) -> str:
