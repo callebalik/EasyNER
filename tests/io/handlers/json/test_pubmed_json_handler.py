@@ -18,13 +18,13 @@ from easyner.io.handlers.pubmed_json_handler import PubMedJsonHandler
 
 @pytest.fixture
 def handler():
-    """Fixture to create a PubMedJsonHandler instance"""
+    """Fixture to create a PubMedJsonHandler instance."""
     return PubMedJsonHandler()
 
 
 @pytest.fixture
 def sample_data():
-    """Fixture with sample data containing articles, sentences, and entities"""
+    """Fixture with sample data containing articles, sentences, and entities."""
     return {
         "1": {
             "title": "Sample Title 1",
@@ -97,13 +97,13 @@ def sample_data():
 
 @pytest.fixture
 def empty_data():
-    """Fixture with empty data"""
+    """Fixture with empty data."""
     return {}
 
 
 # Tests for extract_articles_dataframe
 def test_extract_articles_dataframe(handler, sample_data):
-    """Test extracting articles from sample data"""
+    """Test extracting articles from sample data."""
     df = handler.extract_articles_dataframe(sample_data)
 
     # Check DataFrame structure
@@ -134,7 +134,7 @@ def test_extract_articles_dataframe(handler, sample_data):
 
 
 def test_extract_articles_empty_data(handler, empty_data):
-    """Test extracting articles from empty data"""
+    """Test extracting articles from empty data."""
     df = handler.extract_articles_dataframe(empty_data)
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 0
@@ -142,44 +142,44 @@ def test_extract_articles_empty_data(handler, empty_data):
 
 # Tests for extract_sentences_dataframe
 def test_extract_sentences_dataframe(handler, sample_data):
-    """Test extracting sentences from sample data"""
+    """Test extracting sentences from sample data."""
     df = handler.extract_sentences_dataframe(sample_data)
 
     # Check DataFrame structure
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 5  # Correct number of sentences across all articles
     assert set(df.columns).issuperset(
-        {SENTENCE_ID, ARTICLE_ID, "position", TEXT},
+        {SENTENCE_ID, ARTICLE_ID, TEXT},
     )
 
     # Check specific data
     # First sentence of first article
-    sent_1_0 = df[(df[ARTICLE_ID] == 1) & (df["position"] == 0)].iloc[0]
+    sent_1_0 = df[(df[ARTICLE_ID] == 1) & (df[SENTENCE_ID] == 0)].iloc[0]
     assert sent_1_0[ARTICLE_ID] == 1
-    assert sent_1_0["position"] == 0
+    assert sent_1_0[SENTENCE_ID] == 0
     assert sent_1_0[TEXT] == "This is the first sentence."
     assert "tokens" in sent_1_0  # Tokens should be present
 
     # Second sentence of first article
-    sent_1_1 = df[(df[ARTICLE_ID] == 1) & (df["position"] == 1)].iloc[0]
-    assert sent_1_1["position"] == 1
+    sent_1_1 = df[(df[ARTICLE_ID] == 1) & (df[SENTENCE_ID] == 1)].iloc[0]
+    assert sent_1_1[SENTENCE_ID] == 1
     assert sent_1_1[TEXT] == "This is the second sentence."
 
     # Check sentence from article with incomplete data
-    sent_4_0 = df[(df[ARTICLE_ID] == 4) & (df["position"] == 0)].iloc[0]
+    sent_4_0 = df[(df[ARTICLE_ID] == 4) & (df[SENTENCE_ID] == 0)].iloc[0]
     assert sent_4_0[TEXT] == "This sentence has incomplete entity data."
     assert "tokens" not in sent_4_0 or pd.isna(sent_4_0["tokens"])
 
 
 def test_extract_sentences_empty_data(handler, empty_data):
-    """Test extracting sentences from empty data"""
+    """Test extracting sentences from empty data."""
     df = handler.extract_sentences_dataframe(empty_data)
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 0
 
 
 def test_extract_sentences_with_no_sentences(handler):
-    """Test extracting sentences when article has no sentences field"""
+    """Test extracting sentences when article has no sentences field."""
     data = {"5": {"title": "No sentences", "abstract": "Abstract only"}}
     df = handler.extract_sentences_dataframe(data)
     assert isinstance(df, pd.DataFrame)
@@ -188,7 +188,7 @@ def test_extract_sentences_with_no_sentences(handler):
 
 # Tests for extract_entities_dataframe
 def test_extract_entities_dataframe_structure(handler, sample_data):
-    """Test the basic structure of the entities DataFrame"""
+    """Test the basic structure of the entities DataFrame."""
     df = handler.extract_entities_dataframe(sample_data)
 
     # Check DataFrame structure
@@ -207,7 +207,7 @@ def test_extract_entities_dataframe_structure(handler, sample_data):
 
 
 def test_extract_entities_first_entity(handler, sample_data):
-    """Test extraction of the first entity in the dataset"""
+    """Test extraction of the first entity in the dataset."""
     df = handler.extract_entities_dataframe(sample_data)
 
     # First entity in article 1, sentence 0
@@ -226,7 +226,7 @@ def test_extract_entities_first_entity(handler, sample_data):
 
 
 def test_extract_entities_second_sentence(handler, sample_data):
-    """Test extraction of entities from the second sentence"""
+    """Test extraction of entities from the second sentence."""
     df = handler.extract_entities_dataframe(sample_data)
 
     # Entity from second sentence of first article
@@ -244,7 +244,7 @@ def test_extract_entities_second_sentence(handler, sample_data):
 
 
 def test_extract_entities_skip_missing_spans(handler, sample_data):
-    """Test that entities with missing spans are skipped"""
+    """Test that entities with missing spans are skipped."""
     df = handler.extract_entities_dataframe(sample_data)
 
     # Check that entity 7 with missing span is not included
@@ -253,14 +253,14 @@ def test_extract_entities_skip_missing_spans(handler, sample_data):
 
 
 def test_extract_entities_empty_data(handler, empty_data):
-    """Test extracting entities from empty data"""
+    """Test extracting entities from empty data."""
     df = handler.extract_entities_dataframe(empty_data)
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 0
 
 
 def test_extract_entities_with_no_entities(handler):
-    """Test extracting entities when sentences have no entities field"""
+    """Test extracting entities when sentences have no entities field."""
     data = {
         "6": {
             "title": "No entities",
@@ -276,7 +276,7 @@ def test_extract_entities_with_no_entities(handler):
 
 
 def test_extract_entities_with_empty_entities(handler):
-    """Test extracting entities when entity text is empty"""
+    """Test extracting entities when entity text is empty."""
     data = {
         "7": {
             "title": "Empty entity",
@@ -295,7 +295,7 @@ def test_extract_entities_with_empty_entities(handler):
 
 
 def test_extract_entities_logging_on_empty_spans(handler, caplog):
-    """Test that a warning is logged for entities with empty spans"""
+    """Test that a warning is logged for entities with empty spans."""
     data = {
         "8": {
             "title": "Empty spans warning",
@@ -318,7 +318,7 @@ def test_extract_entities_logging_on_empty_spans(handler, caplog):
 
 
 def test_extract_entities_logging_on_mismatched_spans(handler, caplog):
-    """Test that a warning is logged for mismatched entity and span counts"""
+    """Test that a warning is logged for mismatched entity and span counts."""
     data = {
         "9": {
             "title": "Mismatched spans warning",
@@ -346,7 +346,7 @@ def test_extract_entities_logging_on_mismatched_spans(handler, caplog):
 
 
 def test_extract_entities_logging_on_empty_text(handler, caplog):
-    """Test that a warning is logged for entities with empty text"""
+    """Test that a warning is logged for entities with empty text."""
     data = {
         "10": {
             "title": "Empty entity text warning",
