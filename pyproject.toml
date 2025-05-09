@@ -203,7 +203,7 @@ ignore = [
     # Relax the convention by _not_ requiring documentation for every function parameter.
     "D417",
     # Relax convetion by not requiring documentation
-"D415", # This duplicate "First line should end with a period RuffD400", cluttering the output
+    "D415", # This duplicate "First line should end with a period RuffD400", cluttering the output
 ]
 
 
@@ -211,6 +211,9 @@ ignore = [
 fixable = ["ALL"]
 unfixable = ["F401"] # Don't automatically fix unused imports as this can provide info on unexected unused imports
 # that may be useful for debugging.
+
+extend-safe-fixes = ["UP006"] # UP006 use built in types, this is unsafe if using pydantic which relies on types being imported from types
+
 [tool.ruff.lint.mccabe]
 # Flag errors (`C901`) whenever the complexity level exceeds 5.
 max-complexity = 5
