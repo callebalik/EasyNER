@@ -124,12 +124,16 @@ class PubMedJsonHandler(JsonHandler):
         sent_idx: int,
         sentence_data: dict,
     ) -> dict:
-        """Extract sentence information from sentence data."""
+        """Extract sentence information from sentence data.
+
+        TODO: decide if sentences should have secondary variable
+        to track their order in addition to the id
+
+        """
         # Use integer position for proper ordering
         sentence = {
             ARTICLE_ID: article_id,  # Already an integer
             SENTENCE_ID: sent_idx,  # Use integer as sentence_id (unique within article)
-            "position": sent_idx,  # Order within article
             TEXT: sentence_data.get("text", ""),
         }
 
