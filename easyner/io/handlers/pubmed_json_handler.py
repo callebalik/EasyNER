@@ -101,10 +101,12 @@ class PubMedJsonHandler(JsonHandler):
     def _process_article(self, article_id: int, article_data: dict) -> dict:
         """Extract article information from article data with optimized memory usage."""
         # Pre-allocate dictionary with common fields
+        # TODO create validation against schema that all fields are present
         article = {
             ARTICLE_ID: article_id,  # Already converted to integer
             TITLE: article_data.get("title", ""),
             "abstract": article_data.get("abstract", ""),
+            "metadata": article_data.get("metadata", {}),
         }
 
         # Add metadata selectively to avoid dictionary resizing
@@ -121,12 +123,12 @@ class PubMedJsonHandler(JsonHandler):
         article_id: int,
         sent_idx: int,
         sentence_data: dict,
-    ) -> Dict:
-        """Extract sentence information from sentence data"""
+    ) -> dict:
+        """Extract sentence information from sentence data."""
         # Use integer position for proper ordering
         sentence = {
-            SENTENCE_ID: sent_idx,  # Use integer as sentence_id (unique within article)
             ARTICLE_ID: article_id,  # Already an integer
+            SENTENCE_ID: sent_idx,  # Use integer as sentence_id (unique within article)
             "position": sent_idx,  # Order within article
             TEXT: sentence_data.get("text", ""),
         }
@@ -193,8 +195,8 @@ class PubMedJsonHandler(JsonHandler):
             result.append(
                 {
                     "entity_id": ent_idx,
-                    SENTENCE_ID: sent_idx,  # Integer sentence ID
                     ARTICLE_ID: article_id,
+                    SENTENCE_ID: sent_idx,
                     TEXT: entity_text,
                     START_CHAR: int(span[0]) if len(span) > 0 else None,
                     END_CHAR: int(span[1]) if len(span) > 1 else None,
