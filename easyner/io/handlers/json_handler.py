@@ -1,7 +1,9 @@
-import json
-import os
 import concurrent.futures
+import json
 import logging
+import os
+from pathlib import Path
+from typing import Any, Optional
 
 from .base import IOHandler
 
@@ -17,26 +19,32 @@ class JsonHandler(IOHandler):
 
     EXTENSION = "json"
 
-    def read(self, file_path: str, timeout=180, **kwargs):
-        """
-        Reads data from a JSON file
+    def read(
+        self,
+        file_path: str,
+        timeout: int = 180,
+        **kwargs: dict[str, Any],
+    ) -> Any:
+        """Read data from a JSON file.
+
         If file > 10MB → Try mmap + orjson → Success? Return result : Continue
         ↓
         Try direct orjson → Success? Return result : Continue
         ↓
         Use ThreadPoolExecutor to call _load_json with timeout
         ↓
-        _load_json uses standard json.load
+        _load_json uses standard json.load.
         """
         self.check_file_exists(file_path)
 
-        # Get file size for logging
+        file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
         file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
 
         # Use memory mapping for large files (>10MB)
         if file_size_mb > 10:
             try:
                 import mmap
+
                 import orjson
 
                 with open(file_path, "rb") as f:
@@ -48,7 +56,7 @@ class JsonHandler(IOHandler):
                         del view
             except Exception as e:
                 logger.warning(
-                    f"Memory mapping failed, falling back to standard method: {e}"
+                    f"Memory mapping failed, falling back to standard method: {e}",
                 )
 
         # Existing orjson implementation for smaller files or if memory mapping fails
@@ -60,7 +68,7 @@ class JsonHandler(IOHandler):
                     return orjson.loads(f.read())
             except Exception as e:
                 logger.warning(
-                    f"orjson failed, falling back to standard json: {e}"
+                    f"orjson failed, falling back to standard json: {e}",
                 )
         except ImportError:
             pass
@@ -84,33 +92,32 @@ class JsonHandler(IOHandler):
                 logger.error(f"Error reading JSON file {file_path}: {e}")
                 raise
 
-    def _load_json(self, file_path):
-        """
-        Helper method to load JSON within executor with improved
-        error messages
+    def _load_json(self, file_path) -> Any:
+        """Load JSON within executor.
+
+        Wrapper with improved error messages
         """
         # Check for empty file
         if os.path.getsize(file_path) == 0:
-            raise ValueError(f"Empty file detected: no data in {file_path}")
+            msg = f"Empty file detected: no data in {file_path}"
+            raise ValueError(msg)
 
-        with open(file_path, "r", encoding=self.encoding) as f:
+        with open(file_path, encoding=self.encoding) as f:
             try:
                 return json.load(f)
             except json.JSONDecodeError as e:
                 # Wrap JSON decode errors with more descriptive messages
-                raise ValueError(
-                    f"Error decoding JSON file in {file_path}: {str(e)}"
-                ) from e
-
-    from typing import Optional
+                msg = f"Error decoding JSON file {file_path}: {e}"
+                raise ValueError(msg) from e
 
     def write(
-        self, data, file_path: str, indent: Optional[int] = None, **kwargs
-    ):
-        """
-        Writes data to a JSON file with orjson optimization
-        when available.
-        """
+        self,
+        data: Any,
+        file_path: str,
+        indent: Optional[int] = None,
+        **kwargs: dict[str, Any],
+    ) -> None:
+        """Write data to a JSON file with orjson optimization when available."""
         self.ensure_dir_exists(file_path)
 
         try:
@@ -131,7 +138,7 @@ class JsonHandler(IOHandler):
                     f.write(json_bytes)
 
                 logger.debug(
-                    f"Successfully wrote data to {file_path} using orjson"
+                    f"Successfully wrote data to {file_path} using orjson",
                 )
                 return
 
@@ -140,7 +147,7 @@ class JsonHandler(IOHandler):
                 pass
             except Exception as e:
                 logger.warning(
-                    f"orjson writing failed, falling back to standard json: {e}"
+                    f"orjson writing failed, falling back to standard json: {e}",
                 )
                 # Fall back to standard json
                 pass
@@ -150,7 +157,7 @@ class JsonHandler(IOHandler):
                 json.dump(data, f, indent=indent)
 
             logger.debug(
-                f"Successfully wrote data to {file_path} using standard json"
+                f"Successfully wrote data to {file_path} using standard json",
             )
 
         except Exception as e:
