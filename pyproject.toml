@@ -203,6 +203,7 @@ ignore = [
     # Relax the convention by _not_ requiring documentation for every function parameter.
     "D417",
     # Relax convetion by not requiring documentation
+"D415", # This duplicate "First line should end with a period RuffD400", cluttering the output
 ]
 
 
