@@ -1,8 +1,46 @@
-"""Hierarchical data insertion manager for article, sentence, and entity data."""
+"""Hierarchical data insertion manager for article, sentence, and entity data.
+
+This module provides functionality to insert hierarchical data into a database,
+handling relationships between articles, sentences, and entities.
+
+Separate DataFrames (articles, sentences, entities) are used for insertion speed
+Therefore since the data is hierarchical, we need to ensure that:
+
+There are two types of duplicates:
+1. Only-Hierarchical duplicates (i.e. by association)
+2. Non-hierarchical duplicates (i.e. by value, can also be hierarchical at the same time)
+
+Hierarchical duplicates are not necessarily duplicates in the database sense
+i.e. by value, but they are duplicates in the context of being added as part
+of a duplicate parent and should therefore not be added to the main database
+
+Expected behavior is cascading:
+Steps:
+Insert  Articles:
+if duplicates ->
+     articles_duplicates table += article_duplicates
+     articles table += article_non_duplicates
+        any sentence or entity within the insert session with the same article_id
+        is added to respective duplicates table as they are hierarchical duplicates
+Insert Sentences:
+if duplicate articles_id inserted in same session ->
+     sentences_duplicates table += hierarchical_sentence_duplicates
+if sentence_value_duplicates_remaining > 0:
+     sentences_duplicates table += sentence_value_duplicates
+sentences table += sentence_non_duplicates
+
+Insert Entities:
+if duplicate sentences_id inserted in same session ->
+     entities_duplicates table += hierarchical_entity_duplicates
+if entity_value_duplicates_remaining > 0:
+     entities_duplicates table += entity_value_duplicates
+sentences table += sentence_non_duplicates
+
+"""
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 
