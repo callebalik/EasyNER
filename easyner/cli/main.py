@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-EasyNER Command Line Tool
+"""EasyNER Command Line Tool.
 
 A unified CLI for all EasyNER operations.
 
@@ -17,12 +16,13 @@ Future commands may include:
 
 import argparse
 import sys
+
 import argcomplete
 
 from easyner.cli import config_cli
 
 
-def main():
+def main() -> int:
     """Main entry point for the EasyNER CLI."""
     parser = argparse.ArgumentParser(
         description="EasyNER Command Line Tool",
@@ -35,7 +35,8 @@ def main():
 
     # Config command
     config_parser = subparsers.add_parser(
-        "config", help="Configuration management operations"
+        "config",
+        help="Configuration management operations",
     )
     config_cli.setup_parsers(config_parser)
 

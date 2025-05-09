@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""
-Configuration CLI Tool
+"""Configuration CLI Tool.
 
-This tool provides a command-line interface for working with EasyNER configuration files.
-It leverages the OOP-based configuration management system to provide a unified
-interface for all configuration operations.
+This tool provides a command-line interface for working with
+EasyNER configuration files.
+It leverages the OOP-based configuration management system to
+provide a unified interface for all configuration operations.
 
 Examples:
     # Validate all configuration files
@@ -28,30 +28,30 @@ Examples:
 
     # Restore a backup
     easyner config backup restore --name backup_20250423_120000.json
+
 """
 
 import argparse
 import json
 import sys
-import os
-from pathlib import Path
 
 from easyner.config import config_manager
-from easyner.infrastructure.paths import CONFIG_PATH, BACKUPS_DIR
 
 
-def setup_validate_parser(subparsers):
+def setup_validate_parser(subparsers) -> None:
     """Setup the validate command parser."""
     parser = subparsers.add_parser(
-        "validate", help="Validate configuration files"
+        "validate",
+        help="Validate configuration files",
     )
     parser.add_argument("--quiet", action="store_true", help="Suppress output")
 
 
-def setup_template_parser(subparsers):
+def setup_template_parser(subparsers) -> None:
     """Setup the template command parser."""
     parser = subparsers.add_parser(
-        "template", help="Generate a template configuration"
+        "template",
+        help="Generate a template configuration",
     )
     parser.add_argument(
         "--skip-prettier",
@@ -61,15 +61,16 @@ def setup_template_parser(subparsers):
     parser.add_argument("--quiet", action="store_true", help="Suppress output")
 
 
-def setup_ensure_parser(subparsers):
+def setup_ensure_parser(subparsers) -> None:
     """Setup the ensure command parser."""
     parser = subparsers.add_parser(
-        "ensure", help="Ensure config.json exists (create if needed)"
+        "ensure",
+        help="Ensure config.json exists (create if needed)",
     )
     parser.add_argument("--quiet", action="store_true", help="Suppress output")
 
 
-def setup_view_parser(subparsers):
+def setup_view_parser(subparsers) -> None:
     """Setup the view command parser."""
     parser = subparsers.add_parser("view", help="View configuration contents")
     parser.add_argument("--section", type=str, help="View a specific section")
@@ -84,16 +85,20 @@ def setup_view_parser(subparsers):
 def setup_backup_parser(subparsers):
     """Setup the backup command parser and its subcommands."""
     parser = subparsers.add_parser(
-        "backup", help="Backup management operations"
+        "backup",
+        help="Backup management operations",
     )
     backup_subparsers = parser.add_subparsers(dest="backup_cmd", required=True)
 
     # Create backup command
     create_parser = backup_subparsers.add_parser(
-        "create", help="Create a new backup"
+        "create",
+        help="Create a new backup",
     )
     create_parser.add_argument(
-        "--name", type=str, help="Description for the backup"
+        "--name",
+        type=str,
+        help="Description for the backup",
     )
 
     # List backups command
@@ -101,7 +106,8 @@ def setup_backup_parser(subparsers):
 
     # Restore backup command
     restore_parser = backup_subparsers.add_parser(
-        "restore", help="Restore a backup"
+        "restore",
+        help="Restore a backup",
     )
     restore_parser.add_argument(
         "--name",
@@ -112,10 +118,14 @@ def setup_backup_parser(subparsers):
 
     # Delete backup command
     delete_parser = backup_subparsers.add_parser(
-        "delete", help="Delete a backup"
+        "delete",
+        help="Delete a backup",
     )
     delete_parser.add_argument(
-        "--name", type=str, required=True, help="Backup name or path to delete"
+        "--name",
+        type=str,
+        required=True,
+        help="Backup name or path to delete",
     )
 
 
@@ -146,7 +156,7 @@ def handle_validate(args):
     return 0 if result else 1
 
 
-def handle_template(args):
+def handle_template(args) -> int:
     """Handle the template command."""
     # Update quiet flag if needed
     if args.quiet:
@@ -156,7 +166,7 @@ def handle_template(args):
     if not args.quiet:
         if result:
             print(
-                f"✓ Template generated successfully at {config_manager.template_path}"
+                f"✓ Template generated successfully at {config_manager.template_path}",
             )
         else:
             print("✗ Template generation completed with issues")
@@ -191,7 +201,7 @@ def handle_view(args):
                     print(f"=== Configuration Section: {args.section} ===")
             except KeyError:
                 print(
-                    f"Error: Section '{args.section}' not found in configuration"
+                    f"Error: Section '{args.section}' not found in configuration",
                 )
                 return 1
         else:
@@ -224,7 +234,7 @@ def handle_backup_create(args):
         return 1
 
 
-def handle_backup_list(args):
+def handle_backup_list(args) -> int:
     """List all available configuration backups using ConfigManager."""
     try:
         # Get all backups
@@ -244,7 +254,7 @@ def handle_backup_list(args):
             if backup.description:
                 print(f"   Description: {backup.description}")
             print(
-                f"   Created: {backup.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                f"   Created: {backup.timestamp.strftime('%Y-%m-%d %H:%M:%S')}",
             )
             print(f"   Size: {size:.2f} KB")
             print()
@@ -262,8 +272,12 @@ def handle_backup_restore(args):
     try:
         # Restore the backup
         result = config_manager.restore_backup(backup_name)
-        print(f"✓ Configuration restored from backup: {backup_name}")
-        return 0
+        if result:
+            print(f"✓ Configuration restored from backup: {backup_name}")
+            return 0
+        else:
+            print(f"Error: Failed to restore backup '{backup_name}'")
+            return 1
     except FileNotFoundError:
         print(f"Error: Backup '{backup_name}' not found")
         return 1
@@ -282,8 +296,12 @@ def handle_backup_delete(args):
     try:
         # Delete the backup
         result = config_manager.delete_backup(backup_name)
-        print(f"✓ Backup deleted: {backup_name}")
-        return 0
+        if result:
+            print(f"✓ Backup deleted: {backup_name}")
+            return 0
+        else:
+            print(f"Error: Failed to delete backup '{backup_name}'")
+            return 1
     except FileNotFoundError:
         print(f"Error: Backup '{backup_name}' not found")
         return 1
