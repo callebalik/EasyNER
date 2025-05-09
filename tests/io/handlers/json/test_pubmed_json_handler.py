@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from easyner.io.database.utils.column_names import (
+from easyner.io.database.schemas.python_mappings import (
     ARTICLE_ID,
     END_CHAR,
     ENTITY_ID,

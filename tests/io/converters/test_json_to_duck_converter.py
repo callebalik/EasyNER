@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from easyner.io.converters.json_to_duck_converter import JsonToDuckConverter
-from easyner.io.database.utils.column_names import (
+from easyner.io.database.schemas.python_mappings import (
     ARTICLE_ID,
     END_CHAR,
     ENTITY_ID,

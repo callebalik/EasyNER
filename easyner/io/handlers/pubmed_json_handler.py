@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 from jsonschema import ValidationError, validate
 
-from easyner.io.database.utils.column_names import (
+from easyner.io.database.schemas.python_mappings import (
     ARTICLE_ID,
     END_CHAR,
     INFERENCE_MODEL,
