@@ -1,64 +1,72 @@
-from typing import Any, Dict, List, Tuple, Optional, Union
-import pandas as pd
-from easyner.io.handlers.json_handler import JsonHandler
-import logging
 import json
-import os
-from jsonschema import validate, ValidationError
+import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+from jsonschema import ValidationError, validate
+
 from easyner.io.database.utils.column_names import (
     ARTICLE_ID,
-    TITLE,
-    TEXT,
-    SENTENCE_ID,
-    START_CHAR,
     END_CHAR,
     INFERENCE_MODEL,
     INFERENCE_MODEL_METADATA,
+    SENTENCE_ID,
+    START_CHAR,
+    TEXT,
+    TITLE,
 )
+from easyner.io.handlers.json_handler import JsonHandler
 
 # Initialize logger
 logger = logging.getLogger(__name__)
 
 
 class PubMedJsonHandler(JsonHandler):
-    """
-    Specialized JsonHandler for PubMed data with methods to extract articles, sentences, and entities.
-    """
+    """Specialized JsonHandler for PubMed data with methods to extract articles, sentences, and entities."""
 
     # Directory containing the schema
     SCHEMA_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "schemas"
+        os.path.dirname(os.path.dirname(__file__)),
+        "schemas",
     )
     SCHEMA_FILE = "pubmed.schema.json"
     EXTENSION = "json"
 
-    def __init__(self, encoding="utf-8", validate_schema=True):
-        """
-        Initialize the PubMed JSON handler with encoding
+    def __init__(self, encoding: str = "utf-8", validate_schema: bool = True) -> None:
+        """Initialize the PubMed JSON handler with encoding.
 
         Args:
             encoding: Character encoding for file operations
             validate_schema: Whether to validate data against the PubMed schema
+
         """
         super().__init__(encoding=encoding)
         self.validate_schema = validate_schema
-        self.schema = None
+        self.schema: Optional[Any] = None
 
         # Load the schema if validation is enabled
         if validate_schema:
             try:
-                schema_path = os.path.join(self.SCHEMA_DIR, self.SCHEMA_FILE)
-                with open(schema_path, "r", encoding=encoding) as f:
+                schema_path = Path(self.SCHEMA_DIR) / self.SCHEMA_FILE
+                with schema_path.open(encoding=encoding) as f:
                     self.schema = json.load(f)
             except Exception as e:
                 logger.warning(
-                    f"Failed to load PubMed schema: {str(e)}. Schema validation disabled."
+                    (
+                        f"Failed to load PubMed schema: {str(e)}. "
+                        "Schema validation disabled."
+                    ),
                 )
                 self.validate_schema = False
 
-    def read(self, file_path: str, timeout=180, **kwargs):
-        """
-        Read and validate PubMed JSON data from a file
+    def read(
+        self,
+        file_path: str,
+        timeout: int = 180,
+        **kwargs: dict[str, Any],
+    ) -> Any:
+        """Read and validate PubMed JSON data from a file.
 
         Args:
             file_path: Path to the JSON file
@@ -67,6 +75,7 @@ class PubMedJsonHandler(JsonHandler):
 
         Returns:
             Parsed JSON data
+
         """
         data = super().read(file_path, timeout, **kwargs)
 
@@ -75,11 +84,11 @@ class PubMedJsonHandler(JsonHandler):
             try:
                 validate(instance=data, schema=self.schema)
                 logger.debug(
-                    f"Successfully validated {file_path} against PubMed schema"
+                    f"Successfully validated {file_path} against PubMed schema",
                 )
             except ValidationError as e:
                 logger.warning(
-                    f"Schema validation failed for {file_path}: {str(e)}"
+                    f"Schema validation failed for {file_path}: {str(e)}",
                 )
 
         return data

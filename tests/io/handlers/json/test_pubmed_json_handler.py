@@ -1,17 +1,19 @@
-import pytest
-import pandas as pd
-import numpy as np  # Add explicit import for numpy
 import logging
-from easyner.io.handlers.pubmed_json_handler import PubMedJsonHandler
+
+import numpy as np  # Add explicit import for numpy
+import pandas as pd
+import pytest
+
 from easyner.io.database.utils.column_names import (
     ARTICLE_ID,
-    SENTENCE_ID,
-    TEXT,
-    START_CHAR,
     END_CHAR,
-    TITLE,
     ENTITY_ID,
+    SENTENCE_ID,
+    START_CHAR,
+    TEXT,
+    TITLE,
 )
+from easyner.io.handlers.pubmed_json_handler import PubMedJsonHandler
 
 
 @pytest.fixture
@@ -65,7 +67,7 @@ def sample_data():
                     "entities": ["entity_4"],
                     "entity_spans": [[8, 16]],
                     "names": ["Entity Name 4"],
-                }
+                },
             ],
         },
         "3": {
@@ -147,7 +149,7 @@ def test_extract_sentences_dataframe(handler, sample_data):
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 5  # Correct number of sentences across all articles
     assert set(df.columns).issuperset(
-        {SENTENCE_ID, ARTICLE_ID, "position", TEXT}
+        {SENTENCE_ID, ARTICLE_ID, "position", TEXT},
     )
 
     # Check specific data
@@ -200,7 +202,7 @@ def test_extract_entities_dataframe_structure(handler, sample_data):
             TEXT,
             START_CHAR,
             END_CHAR,
-        }
+        },
     )
 
 
@@ -266,7 +268,7 @@ def test_extract_entities_with_no_entities(handler):
                 {"text": "This sentence has no entities."},
                 {"text": "This sentence also has no entities."},
             ],
-        }
+        },
     }
     df = handler.extract_entities_dataframe(data)
     assert isinstance(df, pd.DataFrame)
@@ -283,9 +285,9 @@ def test_extract_entities_with_empty_entities(handler):
                     "text": "This sentence has an empty entity.",
                     "entities": ["", "valid_entity"],
                     "entity_spans": [[0, 0], [5, 10]],
-                }
+                },
             ],
-        }
+        },
     }
     df = handler.extract_entities_dataframe(data)
     assert len(df) == 1  # Only the valid entity should be included
@@ -302,9 +304,9 @@ def test_extract_entities_logging_on_empty_spans(handler, caplog):
                     "text": "This sentence should generate a warning.",
                     "entities": ["entity_8", "entity_9"],
                     "entity_spans": [],  # Empty spans list
-                }
+                },
             ],
-        }
+        },
     }
 
     # Use caplog to capture log messages
@@ -328,9 +330,9 @@ def test_extract_entities_logging_on_mismatched_spans(handler, caplog):
                         [0, 4],
                         [10, 15],
                     ],  # Fewer spans than entities
-                }
+                },
             ],
-        }
+        },
     }
 
     # Use caplog to capture log messages
@@ -353,9 +355,9 @@ def test_extract_entities_logging_on_empty_text(handler, caplog):
                     "text": "This sentence has an empty entity text.",
                     "entities": ["", "valid_entity_2"],
                     "entity_spans": [[0, 0], [5, 10]],
-                }
+                },
             ],
-        }
+        },
     }
 
     # Use caplog to capture log messages
