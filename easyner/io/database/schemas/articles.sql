@@ -1,4 +1,6 @@
 CREATE TABLE IF NOT EXISTS articles (
     article_id INTEGER PRIMARY KEY,
-    title VARCHAR
+    title VARCHAR NOT NULL,
+    text TEXT DEFAULT NULL,
+    metadata TEXT DEFAULT NULL,
 );
