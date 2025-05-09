@@ -1,18 +1,18 @@
-"""
-Command-line runner for EasyNER converters.
+"""Command-line runner for EasyNER converters.
+
 Allows running the converters via 'python -m easyner.io.converters'
 """
 
 import argparse
-import sys
 import importlib
+import sys
 
 # Define available converters
 CONVERTERS = {
     "json_to_duck": {
         "module": "easyner.io.converters.json_to_duck_converter",
         "description": "Convert JSON files to DuckDB database",
-    }
+    },
     # Add more converters here as they become available
     # "format_a_to_b": {
     #     "module": "easyner.io.converters.format_a_to_b_converter",
@@ -24,7 +24,7 @@ CONVERTERS = {
 def main():
     """Entry point for the converters command-line interface."""
     parser = argparse.ArgumentParser(
-        description="EasyNER data format converters"
+        description="EasyNER data format converters",
     )
 
     # First level argument is the converter type
