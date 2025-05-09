@@ -1,7 +1,9 @@
 """Service for importing and exporting data across multiple repositories."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Union
+
+import pandas as pd
 
 from easyner.io.database.connection import DatabaseConnection
 from easyner.io.database.repositories import (
@@ -14,113 +16,134 @@ from easyner.io.database.utils.transaction import transactional
 
 class DataExchanger:
     """Orchestrates data exchange between multiple repositories.
-    
+
     This service handles operations that span multiple repositories,
     such as importing complete articles with their sentences and entities.
     It maintains referential integrity and provides hierarchical duplicate handling.
     """
-    
+
     def __init__(
-        self, 
+        self,
         connection: DatabaseConnection,
-        article_repo: Optional[ArticleRepository] = None,
-        sentence_repo: Optional[SentenceRepository] = None,
-        entity_repo: Optional[EntityRepository] = None
     ) -> None:
         """Initialize with database connection and repositories.
-        
+
         Args:
             connection: Database connection to use
             article_repo: ArticleRepository instance (created if None)
             sentence_repo: SentenceRepository instance (created if None)
             entity_repo: EntityRepository instance (created if None)
+
         """
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.connection = connection
-        
-        # Initialize repositories if not provided
-        self.article_repository = article_repo or ArticleRepository(connection)
-        self.sentence_repository = sentence_repo or SentenceRepository(connection)
-        self.entity_repository = entity_repo or EntityRepository(connection)
-    
+        self.conn = connection
+
     @transactional
     def import_article_with_sentences_and_entities(
         self,
-        article_data: Dict[str, Any],
-        sentences_data: List[Dict[str, Any]],
-        entities_data: List[Dict[str, Any]],
-        log_duplicates: bool = True,
+        articles: Union[pd.DataFrame, list[dict[str, Any]]],
+        sentences: Union[pd.DataFrame, list[dict[str, Any]]],
+        entities: Union[pd.DataFrame, list[dict[str, Any]]],
     ) -> None:
-        """Import complete article data with hierarchical duplicate handling.
-        
+        """Import complete article data with duplicate handling.
+
+        All operations are performed in a single transaction to ensure data integrity.
+        Everything except passing flags is handled within the database for performance
+        Uses a single connection across the script and temporary tables to track
+        duplicates found in session, which is used to
+        find hierarchical duplicates.
+
+        This means session duplicates will be stored in memory for performance
+        If problems with OOM airse batch data in smaller chunks, or use
+        SET temp_directory to a location with more space allowing db to off-load to disk
+
+        Handles both hierarchical and pure duplicates
+
         This method:
-        1. Imports the article, tracking any duplicates
-        2. Imports sentences, excluding those belonging to duplicate articles
-        3. Imports entities, excluding those belonging to duplicate sentences or articles
-        4. Maintains proper referential integrity throughout the process
-        
+        1. Imports the article(s), tracking any duplicates in a session table.
+        2. Imports sentences, using session article duplicates to find hierarchical sentence duplicates. Tracks sentence duplicates in a new session table.
+        3. Imports entities, using session sentence duplicates to find hierarchical entity duplicates.
+        4. All operations occur within a single transaction.
+
         Args:
-            article_data: Article data dictionary 
-            sentences_data: List of sentence dictionaries
-            entities_data: List of entity dictionaries
-            log_duplicates: Flag to control duplicate logging
+            article_data: Article data dictionary or list of dictionaries.
+            sentences_data: List of sentence dictionaries.
+            entities_data: List of entity dictionaries.
+
         """
-        self.logger.info(f"Starting hierarchical import for article {article_data.get('article_id')}")
-        
+        # Early failure if no data is provided
+        if not articles and not sentences and not entities:
+            msg = "No data provided for import."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        # Convert to DataFrames if needed
+        articles_df = (
+            articles
+            if isinstance(articles, pd.DataFrame)
+            else pd.DataFrame(articles) if articles else pd.DataFrame()
+        )
+        sentences_df = (
+            sentences
+            if isinstance(sentences, pd.DataFrame)
+            else pd.DataFrame(sentences) if sentences else pd.DataFrame()
+        )
+        entities_df = (
+            entities
+            if isinstance(entities, pd.DataFrame)
+            else pd.DataFrame(entities) if entities else pd.DataFrame()
+        )
+
+        summary_input_stat_df = pd.DataFrame(
+            {
+                "type": ["articles", "sentences", "entities"],
+                "count": [
+                    len(articles_df),
+                    len(sentences_df),
+                    len(entities_df),
+                ],
+            },
+        )
+
+        msg = f"Importing \n{summary_input_stat_df.to_markdown()}"
+        self.logger.debug(msg)
+
+        self._process_data(
+            articles_df=articles_df,
+            sentences_df=sentences_df,
+            entities_df=entities_df,
+        )
+
+    @transactional
+    def _process_data(
+        self,
+        articles_df: pd.DataFrame,
+        sentences_df: pd.DataFrame,
+        entities_df: pd.DataFrame,
+    ) -> None:
+
         try:
-            # Step 1: Process article, creating temp_article_duplicates for tracking
-            self._import_article_with_duplicate_tracking(
-                article_data,
-                "temp_article_duplicates"
-            )
-            
-            # Step 2: Process sentences using article duplicates info
-            self._import_sentences_with_parent_tracking(
-                sentences_data,
-                "temp_article_duplicates",
-                "temp_sentence_duplicates"
-            )
-            
-            # Step 3: Process entities using sentence duplicates info
-            self._import_entities_with_parent_tracking(
-                entities_data,
-                "temp_sentence_duplicates"
-            )
-            
-            self.logger.info("Successfully completed hierarchical import")
-            
+            if articles_df:
+                session_duplicate_article_repo = ArticleRepository(
+                    conn=self.conn,
+                ).insert_new(articles_df)
+
+            if sentences_df:
+                session_duplicate_sentence_repo = SentenceRepository(
+                    conn=self.conn,
+                ).insert_new(sentences_df)
+
+            if entities_df:
+                session_duplicate_entity_repo = EntityRepository(
+                    conn=self.conn,
+                ).insert_new(entities_df)
+
+        except Exception as e:
+            msg = f"Error during data processing: {e}"
+            self.logger.error(msg)
+            raise
         finally:
-            # Step 4: Cleanup temp tables
-            self.connection.execute("DROP TABLE IF EXISTS temp_article_duplicates")
-            self.connection.execute("DROP TABLE IF EXISTS temp_sentence_duplicates")
-    
-    def _import_article_with_duplicate_tracking(
-        self, 
-        article_data: Dict[str, Any],
-        duplicate_tracking_table: str
-    ) -> None:
-        """Import article and track duplicates in specified table."""
-        # Implementation for article import with duplicate tracking
-        # ...
-        pass
-    
-    def _import_sentences_with_parent_tracking(
-        self,
-        sentences_data: List[Dict[str, Any]],
-        parent_duplicates_table: str,
-        output_duplicates_table: str
-    ) -> None:
-        """Import sentences with awareness of parent article duplicates."""
-        # Implementation for sentence import with parent tracking
-        # ...
-        pass
-    
-    def _import_entities_with_parent_tracking(
-        self,
-        entities_data: List[Dict[str, Any]],
-        parent_duplicates_table: str
-    ) -> None:
-        """Import entities with awareness of parent sentence duplicates."""
-        # Implementation for entity import with parent tracking
-        # ...
+            self._cleanup_temp_tables()
+
+    def _cleanup_temp_tables(self) -> None:
         pass
