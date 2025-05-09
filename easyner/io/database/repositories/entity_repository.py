@@ -88,7 +88,7 @@ class EntityRepository(Repository):
             placeholders = ", ".join(["?"] * len(required_cols))
             cols = ", ".join(required_cols)
 
-            self.connection.execute(
+            self.conn.execute(
                 f"INSERT INTO {ENTITIES_TABLE} ({cols}) VALUES ({placeholders})",
                 [item[col] for col in required_cols],
             )
@@ -111,7 +111,7 @@ class EntityRepository(Repository):
         """Get all entities as DataFrame."""
         try:
             cols = ", ".join(self.required_columns)
-            result = self.connection.execute(
+            result = self.conn.execute(
                 f"SELECT {cols} FROM {ENTITIES_TABLE}",
             )
             return result.fetchdf()
@@ -123,7 +123,7 @@ class EntityRepository(Repository):
         """Get all entities as list of dictionaries."""
         try:
             cols = list(self.required_columns)
-            result = self.connection.execute(
+            result = self.conn.execute(
                 f"SELECT {', '.join(cols)} FROM {ENTITIES_TABLE}",
             )
             rows = result.fetchall()
@@ -150,7 +150,7 @@ class EntityRepository(Repository):
                 SELECT {cols} FROM {ENTITIES_TABLE}
                 WHERE {ARTICLE_ID} = ? AND {SENTENCE_ID} = ?
             """
-            result = self.connection.execute(query, [article_id, sentence_id])
+            result = self.conn.execute(query, [article_id, sentence_id])
 
             if as_df:
                 return result.fetchdf()

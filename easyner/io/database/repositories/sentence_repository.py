@@ -56,7 +56,7 @@ class SentenceRepository(Repository):
 
         """
         try:
-            self.connection.execute(
+            self.conn.execute(
                 f"INSERT INTO {SENTENCES_TABLE} ({ARTICLE_ID}, {SENTENCE_ID}, {TEXT}) VALUES (?, ?, ?)",  # noqa: E501
                 [item[ARTICLE_ID], item[SENTENCE_ID], item[TEXT]],
             )
@@ -78,7 +78,7 @@ class SentenceRepository(Repository):
     def get_all_df(self) -> pd.DataFrame:
         """Get all sentences as DataFrame."""
         try:
-            result = self.connection.execute(
+            result = self.conn.execute(
                 f"SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {SENTENCES_TABLE}",
             )
             return result.fetchdf()
@@ -89,7 +89,7 @@ class SentenceRepository(Repository):
     def get_all_dict_list(self) -> list[dict[str, Any]]:
         """Get all sentences as list of dictionaries."""
         try:
-            rows = self.connection.execute(
+            rows = self.conn.execute(
                 f"SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {SENTENCES_TABLE}",
             ).fetchall()
             return [
@@ -109,7 +109,7 @@ class SentenceRepository(Repository):
     ) -> Union[pd.DataFrame, list[dict[str, Any]]]:
         """Get sentences for a specific article."""
         try:
-            result = self.connection.execute(
+            result = self.conn.execute(
                 f"SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {SENTENCES_TABLE} WHERE {ARTICLE_ID} = ?",
                 [article_id],
             )
@@ -133,7 +133,7 @@ class SentenceRepository(Repository):
     ) -> Optional[dict[str, Any]]:
         """Get a specific sentence by its article ID and sentence ID."""
         try:
-            result = self.connection.execute(
+            result = self.conn.execute(
                 f"SELECT {ARTICLE_ID}, {SENTENCE_ID}, {TEXT} FROM {SENTENCES_TABLE} WHERE {ARTICLE_ID} = ? AND {SENTENCE_ID} = ?",
                 [article_id, sentence_id],
             )
@@ -148,7 +148,7 @@ class SentenceRepository(Repository):
     def get_sentence_count_by_article(self) -> pd.DataFrame:
         """Get count of sentences per article."""
         try:
-            result = self.connection.execute(
+            result = self.conn.execute(
                 f"SELECT {ARTICLE_ID}, COUNT(*) as sentence_count FROM {SENTENCES_TABLE} GROUP BY {ARTICLE_ID}",
             )
             return result.fetchdf()
