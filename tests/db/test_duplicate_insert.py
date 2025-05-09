@@ -86,7 +86,7 @@ def test_insert_duplicate_key_with_logging(article_repo: ArticleRepository):
     handles duplicates without errors.
     """
     # Clear any existing data
-    conn = article_repo.connection  # Use DatabaseConnection directly
+    conn = article_repo.conn  # Use DatabaseConnection directly
     conn.execute(f"DELETE FROM {article_repo.table_name}")
     if hasattr(article_repo, "duplicate_table_name"):
         conn.execute(f"DELETE FROM {article_repo.duplicate_table_name}")
@@ -172,7 +172,7 @@ def test_insert_log_duplicates_to_duplicates_table(
     article_repo.insert_many_non_transactional(test_df, log_duplicates=True)
 
     # Step 4: Verify results
-    conn = article_repo.connection  # Use DatabaseConnection directly
+    conn = article_repo.conn  # Use DatabaseConnection directly
 
     # Check main table - should have original 3 records + 2 new unique
     # records (total 5)
@@ -253,7 +253,7 @@ def test_insert_duplicate_sentences(
 ):
     """Test duplicate handling in SentenceRepository."""
     # Clear any existing data
-    conn = sentence_repo.connection
+    conn = sentence_repo.conn
     conn.execute(f"DELETE FROM {sentence_repo.table_name}")
     if hasattr(sentence_repo, "duplicate_table_name"):
         conn.execute(f"DELETE FROM {sentence_repo.duplicate_table_name}")
