@@ -120,7 +120,6 @@ def test_extract_entities_dataframe_structure(handler, sample_data):
     assert len(df) == 4  # Correct number of entities with valid spans
     assert set(df.columns).issuperset(
         {
-            ENTITY_ID,
             SENTENCE_ID,
             ARTICLE_ID,
             TEXT,

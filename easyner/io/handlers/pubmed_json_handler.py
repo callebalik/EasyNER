@@ -198,7 +198,6 @@ class PubMedJsonHandler(JsonHandler):
             # Create entity object
             result.append(
                 {
-                    "entity_id": ent_idx,
                     ARTICLE_ID: article_id,
                     SENTENCE_ID: sent_idx,
                     TEXT: entity_text,
