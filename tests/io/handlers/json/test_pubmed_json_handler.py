@@ -1,6 +1,13 @@
+"""Unit tests for the PubMedJsonHandler class.
+
+This module contains test cases to validate the functionality of the
+PubMedJsonHandler class, including methods for extracting articles,
+sentences, and entities from JSON data.
+"""
+
 import logging
 
-import numpy as np  # Add explicit import for numpy
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -22,86 +29,6 @@ def handler():
     return PubMedJsonHandler()
 
 
-@pytest.fixture
-def sample_data():
-    """Fixture with sample data containing articles, sentences, and entities."""
-    return {
-        "1": {
-            "title": "Sample Title 1",
-            "abstract": "Sample Abstract 1",
-            "metadata": {"author": "John Doe", "year": 2023},
-            "sentences": [
-                {
-                    "text": "This is the first sentence.",
-                    "tokens": ["This", "is", "the", "first", "sentence", "."],
-                    "entities": ["entity_1"],
-                    "entity_spans": [[0, 4]],
-                    "names": ["Entity Name 1"],
-                },
-                {
-                    "text": "This is the second sentence.",
-                    "tokens": ["This", "is", "the", "second", "sentence", "."],
-                    "entities": ["entity_2", "entity_3"],
-                    "entity_spans": [[0, 4], [13, 19]],
-                    "names": ["Entity Name 2", "Entity Name 3"],
-                },
-            ],
-        },
-        "2": {
-            "title": "Sample Title 2",
-            "abstract": "Sample Abstract 2",
-            "metadata": {"author": "Jane Smith", "year": 2022},
-            "sentences": [
-                {
-                    "text": "This is a sentence from another article.",
-                    "tokens": [
-                        "This",
-                        "is",
-                        "a",
-                        "sentence",
-                        "from",
-                        "another",
-                        "article",
-                        ".",
-                    ],
-                    "entities": ["entity_4"],
-                    "entity_spans": [[8, 16]],
-                    "names": ["Entity Name 4"],
-                },
-            ],
-        },
-        "3": {
-            "title": "Empty Article",
-            "abstract": "",
-            "metadata": {"year": 2021},
-            "sentences": [],
-        },
-        "4": {
-            "title": "Article with incomplete entities",
-            "abstract": "Testing edge cases",
-            "sentences": [
-                {
-                    "text": "This sentence has incomplete entity data.",
-                    "entities": ["entity_5"],
-                    "entity_spans": [],  # Empty spans
-                },
-                {
-                    "text": "This sentence has mismatched entity data.",
-                    "entities": ["entity_6", "entity_7"],
-                    "entity_spans": [[0, 4]],  # Only one span
-                },
-            ],
-        },
-    }
-
-
-@pytest.fixture
-def empty_data():
-    """Fixture with empty data."""
-    return {}
-
-
-# Tests for extract_articles_dataframe
 def test_extract_articles_dataframe(handler, sample_data):
     """Test extracting articles from sample data."""
     df = handler.extract_articles_dataframe(sample_data)
@@ -140,7 +67,6 @@ def test_extract_articles_empty_data(handler, empty_data):
     assert len(df) == 0
 
 
-# Tests for extract_sentences_dataframe
 def test_extract_sentences_dataframe(handler, sample_data):
     """Test extracting sentences from sample data."""
     df = handler.extract_sentences_dataframe(sample_data)
@@ -178,15 +104,13 @@ def test_extract_sentences_empty_data(handler, empty_data):
     assert len(df) == 0
 
 
-def test_extract_sentences_with_no_sentences(handler):
+def test_extract_sentences_with_no_sentences(handler, no_sentences_data):
     """Test extracting sentences when article has no sentences field."""
-    data = {"5": {"title": "No sentences", "abstract": "Abstract only"}}
-    df = handler.extract_sentences_dataframe(data)
+    df = handler.extract_sentences_dataframe(no_sentences_data)
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 0
 
 
-# Tests for extract_entities_dataframe
 def test_extract_entities_dataframe_structure(handler, sample_data):
     """Test the basic structure of the entities DataFrame."""
     df = handler.extract_entities_dataframe(sample_data)
@@ -259,110 +183,54 @@ def test_extract_entities_empty_data(handler, empty_data):
     assert len(df) == 0
 
 
-def test_extract_entities_with_no_entities(handler):
+def test_extract_entities_with_no_entities(handler, no_entities_data):
     """Test extracting entities when sentences have no entities field."""
-    data = {
-        "6": {
-            "title": "No entities",
-            "sentences": [
-                {"text": "This sentence has no entities."},
-                {"text": "This sentence also has no entities."},
-            ],
-        },
-    }
-    df = handler.extract_entities_dataframe(data)
+    df = handler.extract_entities_dataframe(no_entities_data)
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 0
 
 
-def test_extract_entities_with_empty_entities(handler):
+def test_extract_entities_with_empty_entities(handler, empty_entities_data):
     """Test extracting entities when entity text is empty."""
-    data = {
-        "7": {
-            "title": "Empty entity",
-            "sentences": [
-                {
-                    "text": "This sentence has an empty entity.",
-                    "entities": ["", "valid_entity"],
-                    "entity_spans": [[0, 0], [5, 10]],
-                },
-            ],
-        },
-    }
-    df = handler.extract_entities_dataframe(data)
+    df = handler.extract_entities_dataframe(empty_entities_data)
     assert len(df) == 1  # Only the valid entity should be included
     assert df.iloc[0][TEXT] == "valid_entity"
 
 
-def test_extract_entities_logging_on_empty_spans(handler, caplog):
+def test_extract_entities_logging_on_empty_spans(
+    handler,
+    empty_spans_data,
+    caplog,
+):
     """Test that a warning is logged for entities with empty spans."""
-    data = {
-        "8": {
-            "title": "Empty spans warning",
-            "sentences": [
-                {
-                    "text": "This sentence should generate a warning.",
-                    "entities": ["entity_8", "entity_9"],
-                    "entity_spans": [],  # Empty spans list
-                },
-            ],
-        },
-    }
-
-    # Use caplog to capture log messages
     with caplog.at_level(logging.WARNING):
-        df = handler.extract_entities_dataframe(data)
+        df = handler.extract_entities_dataframe(empty_spans_data)
         assert len(df) == 0  # No entities should be extracted
         assert "Skipping entities in article 8" in caplog.text
         assert "Found 2 entities but no entity spans" in caplog.text
 
 
-def test_extract_entities_logging_on_mismatched_spans(handler, caplog):
+def test_extract_entities_logging_on_mismatched_spans(
+    handler,
+    mismatched_spans_data,
+    caplog,
+):
     """Test that a warning is logged for mismatched entity and span counts."""
-    data = {
-        "9": {
-            "title": "Mismatched spans warning",
-            "sentences": [
-                {
-                    "text": "This sentence should generate a mismatch warning.",  # Fixed line length
-                    "entities": ["entity_10", "entity_11", "entity_12"],
-                    "entity_spans": [
-                        [0, 4],
-                        [10, 15],
-                    ],  # Fewer spans than entities
-                },
-            ],
-        },
-    }
-
-    # Use caplog to capture log messages
     with caplog.at_level(logging.WARNING):
-        df = handler.extract_entities_dataframe(data)
-        assert (
-            len(df) == 0
-        )  # Expect no entities when there's a mismatch (skipping behavior)
+        df = handler.extract_entities_dataframe(mismatched_spans_data)
+        assert len(df) == 0  # Expect no entities when there's a mismatch
         assert "Mismatched entity data in article 9" in caplog.text
         assert "Found 3 entities but only 2 spans" in caplog.text
 
 
-def test_extract_entities_logging_on_empty_text(handler, caplog):
+def test_extract_entities_logging_on_empty_text(
+    handler,
+    empty_text_data,
+    caplog,
+):
     """Test that a warning is logged for entities with empty text."""
-    data = {
-        "10": {
-            "title": "Empty entity text warning",
-            "sentences": [
-                {
-                    "text": "This sentence has an empty entity text.",
-                    "entities": ["", "valid_entity_2"],
-                    "entity_spans": [[0, 0], [5, 10]],
-                },
-            ],
-        },
-    }
-
-    # Use caplog to capture log messages
     with caplog.at_level(logging.WARNING):
-        df = handler.extract_entities_dataframe(data)
+        df = handler.extract_entities_dataframe(empty_text_data)
         assert len(df) == 1  # Only the valid entity should be included
         assert df.iloc[0][TEXT] == "valid_entity_2"
         assert "Empty entity text at position 0 in article 10" in caplog.text
