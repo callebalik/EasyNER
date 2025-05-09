@@ -78,7 +78,7 @@ class ArticleRepository(Repository):
         """
         try:
             query = f"SELECT {ARTICLE_ID}, {TITLE} FROM {ARTICLES_TABLE}"
-            return self.connection.execute(query).fetchdf()
+            return self.conn.execute(query).fetchdf()
         except Exception as e:
             self.logger.error(f"Error retrieving articles as DataFrame: {e}")
             raise
@@ -92,7 +92,7 @@ class ArticleRepository(Repository):
         """
         try:
             query = f"SELECT {ARTICLE_ID}, {TITLE} FROM {ARTICLES_TABLE}"
-            rows = self.connection.execute(query).fetchall()
+            rows = self.conn.execute(query).fetchall()
             return [{ARTICLE_ID: row[0], TITLE: row[1]} for row in rows]
         except Exception as e:
             self.logger.error(
@@ -111,7 +111,7 @@ class ArticleRepository(Repository):
 
         """
         try:
-            result = self.connection.execute(
+            result = self.conn.execute(
                 f"SELECT {ARTICLE_ID}, {TITLE} FROM {ARTICLES_TABLE} WHERE {ARTICLE_ID} = ?",
                 [article_id],
             )
@@ -131,7 +131,7 @@ class ArticleRepository(Repository):
 
         """
         try:
-            self.connection.execute(
+            self.conn.execute(
                 f"INSERT INTO {ARTICLES_TABLE} ({ARTICLE_ID}, {TITLE}) VALUES (?, ?)",
                 [item[ARTICLE_ID], item[TITLE]],
             )
