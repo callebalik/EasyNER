@@ -63,7 +63,7 @@ class InsertionCounts:
             duplicates=self.duplicates + other.duplicates,
         )
 
-    def to_dict(self) -> Dict[str, int]:
+    def to_dict(self) -> dict[str, int]:
         """Convert to dictionary for backwards compatibility."""
         return {"inserted": self.inserted, "duplicates": self.duplicates}
 
@@ -76,20 +76,21 @@ class HierarchicalDataManager:
 
         Args:
             connection: Database connection to use for operations
+
         """
         self.connection = connection
         self.logger = logging.getLogger(__name__)
 
     def insert_hierarchical_data(
         self,
-        articles: Union[pd.DataFrame, List[Dict[str, Any]]],
-        sentences: Union[pd.DataFrame, List[Dict[str, Any]]],
-        entities: Union[pd.DataFrame, List[Dict[str, Any]]],
+        articles: Union[pd.DataFrame, list[dict[str, Any]]],
+        sentences: Union[pd.DataFrame, list[dict[str, Any]]],
+        entities: Union[pd.DataFrame, list[dict[str, Any]]],
         log_duplicates: bool = True,
         ignore_duplicates: bool = False,
         use_optimized: bool = True,  # Added parameter to control optimization
         transaction_active: bool = False,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """Insert hierarchical data with proper parent-child relationship handling.
 
         This method will:
@@ -108,6 +109,7 @@ class HierarchicalDataManager:
 
         Returns:
             Dictionary with counts of inserted and duplicate records
+
         """
         if log_duplicates and ignore_duplicates:
             msg = "Cannot both log and ignore duplicates"
@@ -205,7 +207,7 @@ class HierarchicalDataManager:
                     self.connection.unregister(view)
                 except Exception as e:
                     self.logger.warning(
-                        f"Error unregistering view {view}: {e}"
+                        f"Error unregistering view {view}: {e}",
                     )
 
     def _execute_hierarchical_insert_optimized(
@@ -242,14 +244,16 @@ class HierarchicalDataManager:
         # Step 2: Handle sentences
         if sentences_view:
             sentence_counts = self._handle_sentences_optimized(
-                sentences_view, log_duplicates
+                sentences_view,
+                log_duplicates,
             )
             total_counts = total_counts + sentence_counts
 
         # Step 3: Handle entities
         if entities_view:
             entity_counts = self._handle_entities_optimized(
-                entities_view, log_duplicates
+                entities_view,
+                log_duplicates,
             )
             total_counts = total_counts + entity_counts
 
@@ -413,21 +417,24 @@ class HierarchicalDataManager:
         # Step 1: Handle articles
         if articles_view:
             article_counts = self._handle_articles(
-                articles_view, log_duplicates
+                articles_view,
+                log_duplicates,
             )
             total_counts = total_counts + article_counts
 
         # Step 2: Handle sentences - only insert those belonging to non-duplicate articles
         if sentences_view:
             sentence_counts = self._handle_sentences(
-                sentences_view, log_duplicates
+                sentences_view,
+                log_duplicates,
             )
             total_counts = total_counts + sentence_counts
 
         # Step 3: Handle entities - only insert those belonging to non-duplicate sentences
         if entities_view:
             entity_counts = self._handle_entities(
-                entities_view, log_duplicates
+                entities_view,
+                log_duplicates,
             )
             total_counts = total_counts + entity_counts
 
@@ -442,12 +449,17 @@ class HierarchicalDataManager:
         return total_counts
 
     def _handle_articles(
-        self, articles_view: str, log_duplicates: bool
+        self,
+        articles_view: str,
+        log_duplicates: bool,
     ) -> InsertionCounts:
         """Handle article insertion and duplicate detection."""
         # Identify duplicates
         self._identify_duplicates(
-            "articles", articles_view, "article_id", "temp_duplicate_articles"
+            "articles",
+            articles_view,
+            "article_id",
+            "temp_duplicate_articles",
         )
 
         # Count duplicates
@@ -464,20 +476,28 @@ class HierarchicalDataManager:
 
         # Insert non-duplicates
         self._insert_non_duplicates(
-            "articles", articles_view, "article_id", "temp_duplicate_articles"
+            "articles",
+            articles_view,
+            "article_id",
+            "temp_duplicate_articles",
         )
 
         # Count inserted
         inserted_count = self._count_non_duplicates(
-            articles_view, "article_id", "temp_duplicate_articles"
+            articles_view,
+            "article_id",
+            "temp_duplicate_articles",
         )
 
         return InsertionCounts(
-            inserted=inserted_count, duplicates=duplicates_count
+            inserted=inserted_count,
+            duplicates=duplicates_count,
         )
 
     def _handle_sentences(
-        self, sentences_view: str, log_duplicates: bool
+        self,
+        sentences_view: str,
+        log_duplicates: bool,
     ) -> InsertionCounts:
         """Handle sentence insertion and duplicate detection."""
         # Identify duplicates (including those with duplicate article parents)
@@ -514,11 +534,14 @@ class HierarchicalDataManager:
         )
 
         return InsertionCounts(
-            inserted=inserted_count, duplicates=duplicates_count
+            inserted=inserted_count,
+            duplicates=duplicates_count,
         )
 
     def _handle_entities(
-        self, entities_view: str, log_duplicates: bool
+        self,
+        entities_view: str,
+        log_duplicates: bool,
     ) -> InsertionCounts:
         """Handle entity insertion and duplicate detection."""
         # Identify duplicates (including those with duplicate sentence parents)
@@ -538,20 +561,30 @@ class HierarchicalDataManager:
 
         # Insert non-duplicates
         self._insert_non_duplicates(
-            "entities", entities_view, "entity_id", "temp_duplicate_entities"
+            "entities",
+            entities_view,
+            "entity_id",
+            "temp_duplicate_entities",
         )
 
         # Count inserted
         inserted_count = self._count_non_duplicates(
-            entities_view, "entity_id", "temp_duplicate_entities"
+            entities_view,
+            "entity_id",
+            "temp_duplicate_entities",
         )
 
         return InsertionCounts(
-            inserted=inserted_count, duplicates=duplicates_count
+            inserted=inserted_count,
+            duplicates=duplicates_count,
         )
 
     def _identify_duplicates(
-        self, table: str, view: str, id_col: str, temp_table: str
+        self,
+        table: str,
+        view: str,
+        id_col: str,
+        temp_table: str,
     ) -> None:
         """Identify duplicates by comparing with existing records."""
         self.connection.execute(
@@ -562,7 +595,7 @@ class HierarchicalDataManager:
             WHERE EXISTS (
                 SELECT 1 FROM {table} t WHERE t.{id_col} = v.{id_col}
             )
-        """
+        """,
         )
 
     def _identify_sentence_duplicates(self, sentences_view: str) -> None:
@@ -584,7 +617,7 @@ class HierarchicalDataManager:
                 SELECT 1 FROM sentences m
                 WHERE m.article_id = s.article_id AND m.sentence_id = s.sentence_id
             )
-        """
+        """,
         )
 
     def _identify_entity_duplicates(self, entities_view: str) -> None:
@@ -602,13 +635,13 @@ class HierarchicalDataManager:
                 SELECT 1 FROM entities m
                 WHERE m.entity_id = e.entity_id
             )
-        """
+        """,
         )
 
     def _count_duplicates(self, temp_table: str) -> int:
         """Count records in a temporary duplicates table."""
         return self.connection.execute(
-            f"SELECT COUNT(*) FROM {temp_table}"
+            f"SELECT COUNT(*) FROM {temp_table}",
         ).fetchone()[0]
 
     def _log_duplicates(
@@ -631,7 +664,7 @@ class HierarchicalDataManager:
                     SELECT 1 FROM {temp_table} d
                     WHERE d.{id_col} = v.{id_col} AND d.{secondary_id_col} = v.{secondary_id_col}
                 )
-            """
+            """,
             )
         else:
             # Original version for single column keys
@@ -644,7 +677,7 @@ class HierarchicalDataManager:
                     SELECT 1 FROM {temp_table} d
                     WHERE d.{id_col} = v.{id_col}
                 )
-            """
+            """,
             )
 
     def _insert_non_duplicates(
@@ -666,7 +699,7 @@ class HierarchicalDataManager:
                     SELECT 1 FROM {temp_table} d
                     WHERE d.{id_col} = v.{id_col} AND d.{secondary_id_col} = v.{secondary_id_col}
                 )
-            """
+            """,
             )
         else:
             # Original version for single column keys
@@ -678,7 +711,7 @@ class HierarchicalDataManager:
                     SELECT 1 FROM {temp_table} d
                     WHERE d.{id_col} = v.{id_col}
                 )
-            """
+            """,
             )
 
     def _count_non_duplicates(
@@ -698,7 +731,7 @@ class HierarchicalDataManager:
                     SELECT 1 FROM {temp_table} d
                     WHERE d.{id_col} = v.{id_col} AND d.{secondary_id_col} = v.{secondary_id_col}
                 )
-            """
+            """,
             ).fetchone()[0]
         else:
             # Original version for single column keys
@@ -709,7 +742,7 @@ class HierarchicalDataManager:
                     SELECT 1 FROM {temp_table} d
                     WHERE d.{id_col} = v.{id_col}
                 )
-            """
+            """,
             ).fetchone()[0]
 
     def _ensure_duplicates_tables_exist(self) -> None:
