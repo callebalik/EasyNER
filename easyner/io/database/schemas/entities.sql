@@ -1,3 +1,6 @@
+
+CREATE SEQUENCE IF NOT EXISTS entity_id_seq; -- Should be here as it's required by the entities table
+
 CREATE TABLE IF NOT EXISTS entities (
     entity_id BIGINT DEFAULT nextval('entity_id_seq'),
     article_id INTEGER,

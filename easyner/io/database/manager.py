@@ -5,9 +5,8 @@ from pathlib import Path
 from .connection import DatabaseConnection
 from .schemas import (
     ARTICLES_TABLE_SQL,
-    SENTENCES_TABLE_SQL,
-    ENTITY_SEQUENCE_SQL,
     ENTITIES_TABLE_SQL,
+    SENTENCES_TABLE_SQL,
 )
 from .utils.transaction import transactional
 
@@ -48,7 +47,6 @@ class TableManager:
             # Execute the SQL statements in order (articles -> sentences -> entities)
             self.connection.execute(ARTICLES_TABLE_SQL)
             self.connection.execute(SENTENCES_TABLE_SQL)
-            self.connection.execute(ENTITY_SEQUENCE_SQL)
             self.connection.execute(ENTITIES_TABLE_SQL)
 
             self.logger.info("Successfully created all database tables")
