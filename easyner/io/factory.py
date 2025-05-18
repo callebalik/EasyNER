@@ -7,14 +7,19 @@ JSON and Parquet, with the ability to add more handlers as needed.
 
 from typing import Optional
 
-
-from .handlers import IOHandler, JsonHandler, ParquetHandler
+from .handlers import (
+    IOHandler,
+    JsonHandler,
+    ParquetHandler,
+    PubMedJsonHandler,
+)
 
 # Import other handlers as they are created
 
 _handlers = {
     "json": JsonHandler,
     "parquet": ParquetHandler,
+    "pubmed_json": PubMedJsonHandler,
     # Add other format mappings here
 }
 

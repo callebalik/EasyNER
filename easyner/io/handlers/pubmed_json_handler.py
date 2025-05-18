@@ -1,54 +1,77 @@
-from typing import Dict, List, Tuple, Optional, Union
-import pandas as pd
-from easyner.io.handlers.json_handler import JsonHandler
-import logging
 import json
+import logging
 import os
-from jsonschema import validate, ValidationError
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+from jsonschema import ValidationError, validate
+
+from easyner.io.database.schemas.python_mappings import (
+    ARTICLE_ID,
+    END_CHAR,
+    INFERENCE_MODEL,
+    INFERENCE_MODEL_METADATA,
+    SENTENCE_ID,
+    START_CHAR,
+    TEXT,
+    TITLE,
+)
+from easyner.io.handlers.json_handler import JsonHandler
 
 # Initialize logger
 logger = logging.getLogger(__name__)
 
 
 class PubMedJsonHandler(JsonHandler):
-    """
-    Specialized JsonHandler for PubMed data with methods to extract articles, sentences, and entities.
-    """
+    """Specialized JsonHandler for PubMed data with methods to extract articles, sentences, and entities."""
 
     # Directory containing the schema
     SCHEMA_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "schemas"
+        os.path.dirname(os.path.dirname(__file__)),
+        "schemas",
     )
     SCHEMA_FILE = "pubmed.schema.json"
     EXTENSION = "json"
 
-    def __init__(self, encoding="utf-8", validate_schema=True):
-        """
-        Initialize the PubMed JSON handler with encoding
+    def __init__(
+        self,
+        encoding: str = "utf-8",
+        validate_schema: bool = True,
+    ) -> None:
+        """Initialize the PubMed JSON handler with encoding.
 
         Args:
             encoding: Character encoding for file operations
             validate_schema: Whether to validate data against the PubMed schema
+
         """
         super().__init__(encoding=encoding)
         self.validate_schema = validate_schema
-        self.schema = None
+        self.schema: Optional[Any] = None
 
         # Load the schema if validation is enabled
         if validate_schema:
             try:
-                schema_path = os.path.join(self.SCHEMA_DIR, self.SCHEMA_FILE)
-                with open(schema_path, "r", encoding=encoding) as f:
+                schema_path = Path(self.SCHEMA_DIR) / self.SCHEMA_FILE
+                with schema_path.open(encoding=encoding) as f:
                     self.schema = json.load(f)
             except Exception as e:
                 logger.warning(
-                    f"Failed to load PubMed schema: {str(e)}. Schema validation disabled."
+                    (
+                        f"Failed to load PubMed schema: {str(e)}. "
+                        "Schema validation disabled."
+                    ),
                 )
                 self.validate_schema = False
 
-    def read(self, file_path: str, timeout=180, **kwargs):
-        """
-        Read and validate PubMed JSON data from a file
+    def read(
+        self,
+        file_path: str,
+        timeout: int = 180,
+        **kwargs: dict[str, Any],
+    ) -> Any:
+        """Read and validate PubMed JSON data from a file.
 
         Args:
             file_path: Path to the JSON file
@@ -57,6 +80,7 @@ class PubMedJsonHandler(JsonHandler):
 
         Returns:
             Parsed JSON data
+
         """
         data = super().read(file_path, timeout, **kwargs)
 
@@ -65,22 +89,24 @@ class PubMedJsonHandler(JsonHandler):
             try:
                 validate(instance=data, schema=self.schema)
                 logger.debug(
-                    f"Successfully validated {file_path} against PubMed schema"
+                    f"Successfully validated {file_path} against PubMed schema",
                 )
             except ValidationError as e:
                 logger.warning(
-                    f"Schema validation failed for {file_path}: {str(e)}"
+                    f"Schema validation failed for {file_path}: {str(e)}",
                 )
 
         return data
 
-    def _process_article(self, article_id: int, article_data: Dict) -> Dict:
-        """Extract article information from article data with optimized memory usage"""
+    def _process_article(self, article_id: int, article_data: dict) -> dict:
+        """Extract article information from article data with optimized memory usage."""
         # Pre-allocate dictionary with common fields
+        # TODO create validation against schema that all fields are present
         article = {
-            "article_id": article_id,  # Already converted to integer
-            "title": article_data.get("title", ""),
+            ARTICLE_ID: article_id,  # Already converted to integer
+            TITLE: article_data.get("title", ""),
             "abstract": article_data.get("abstract", ""),
+            "metadata": article_data.get("metadata", {}),
         }
 
         # Add metadata selectively to avoid dictionary resizing
@@ -93,15 +119,18 @@ class PubMedJsonHandler(JsonHandler):
         return article
 
     def _process_sentence(
-        self, article_id: int, sent_idx: int, sentence_data: Dict
-    ) -> Dict:
-        """Extract sentence information from sentence data"""
+        self,
+        article_id: int,
+        sent_idx: int,
+        sentence_data: dict,
+    ) -> dict:
+        """Extract sentence information from sentence data."""
         # Use integer position for proper ordering
         sentence = {
-            "sentence_id": sent_idx,  # Use integer as sentence_id (unique within article)
-            "article_id": article_id,  # Already an integer
+            ARTICLE_ID: article_id,  # Already an integer
+            SENTENCE_ID: sent_idx,  # Use integer as sentence_id (unique within article)
             "position": sent_idx,  # Order within article
-            "text": sentence_data.get("text", ""),
+            TEXT: sentence_data.get("text", ""),
         }
 
         # Add tokens if available
@@ -112,9 +141,12 @@ class PubMedJsonHandler(JsonHandler):
         return sentence
 
     def _process_entities(
-        self, article_id: int, sent_idx: int, sentence_data: Dict
-    ) -> List[Dict]:
-        """Extract entity information from sentence data"""
+        self,
+        article_id: int,
+        sent_idx: int,
+        sentence_data: dict,
+    ) -> list[dict]:
+        """Extract entity information from sentence data."""
         entity_list = sentence_data.get("entities", [])
         if not entity_list:
             return []
@@ -125,7 +157,7 @@ class PubMedJsonHandler(JsonHandler):
         if not entity_spans:
             logger.warning(
                 f"Skipping entities in article {article_id}, sentence {sent_idx}: "
-                f"Found {len(entity_list)} entities but no entity spans"
+                f"Found {len(entity_list)} entities but no entity spans",
             )
             return []
 
@@ -133,7 +165,7 @@ class PubMedJsonHandler(JsonHandler):
         if len(entity_list) != len(entity_spans):
             logger.warning(
                 f"Mismatched entity data in article {article_id}, sentence {sent_idx}: "
-                f"Found {len(entity_list)} entities but only {len(entity_spans)} spans"
+                f"Found {len(entity_list)} entities but only {len(entity_spans)} spans",
             )
             # Skip processing when there's a mismatch in counts
             if len(entity_list) > len(entity_spans):
@@ -152,7 +184,7 @@ class PubMedJsonHandler(JsonHandler):
             # Skip empty entities and log warning
             if not entity_text:
                 logger.warning(
-                    f"Empty entity text at position {ent_idx} in article {article_id}"
+                    f"Empty entity text at position {ent_idx} in article {article_id}",
                 )
                 continue
 
@@ -163,32 +195,30 @@ class PubMedJsonHandler(JsonHandler):
             result.append(
                 {
                     "entity_id": ent_idx,
-                    "sentence_id": sent_idx,  # Integer sentence ID
-                    "article_id": article_id,
-                    "text": entity_text,
-                    "start_char": int(span[0]) if len(span) > 0 else None,
-                    "end_char": int(span[1]) if len(span) > 1 else None,
+                    ARTICLE_ID: article_id,
+                    SENTENCE_ID: sent_idx,
+                    TEXT: entity_text,
+                    START_CHAR: int(span[0]) if len(span) > 0 else None,
+                    END_CHAR: int(span[1]) if len(span) > 1 else None,
                     "entity_name": (
                         entity_names[ent_idx]
                         if ent_idx < len(entity_names)
                         else None
                     ),
-                }
+                },
             )
 
         return result
 
-    def extract_all_dataframes(
-        self, data: Dict
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """
-        Extract articles, sentences, and entities from PubMed JSON in a single pass
+    def extract_all_dicts(self, data: dict) -> dict[str, list[dict[str, Any]]]:
+        """Extract articles, sentences, and entities from PubMed JSON in a single pass.
 
         Args:
             data: Loaded JSON data
 
         Returns:
-            Tuple of (articles_df, sentences_df, entities_df)
+            Dictionary containing articles, sentences, and entities data
+
         """
         articles = []
         sentences = []
@@ -201,7 +231,7 @@ class PubMedJsonHandler(JsonHandler):
                 article_id = int(article_id_str)
             except (ValueError, TypeError):
                 logger.warning(
-                    f"Could not convert article_id '{article_id_str}' to integer, using as is"
+                    f"Could not convert article_id '{article_id_str}' to integer, using as is",
                 )
                 article_id = article_id_str
 
@@ -211,90 +241,127 @@ class PubMedJsonHandler(JsonHandler):
 
             # Process sentences and entities
             for sent_idx, sentence_data in enumerate(
-                article_data.get("sentences", [])
+                article_data.get("sentences", []),
             ):
                 # Process sentence
                 sentence = self._process_sentence(
-                    article_id, sent_idx, sentence_data
+                    article_id,
+                    sent_idx,
+                    sentence_data,
                 )
                 sentences.append(sentence)
 
                 # Process entities
                 sent_entities = self._process_entities(
-                    article_id, sent_idx, sentence_data
+                    article_id,
+                    sent_idx,
+                    sentence_data,
                 )
                 entities.extend(sent_entities)
 
-        # Create DataFrames
-        articles_df = pd.DataFrame(articles) if articles else pd.DataFrame()
-        sentences_df = pd.DataFrame(sentences) if sentences else pd.DataFrame()
-        entities_df = pd.DataFrame(entities) if entities else pd.DataFrame()
+        return {
+            "articles": articles,
+            "sentences": sentences,
+            "entities": entities,
+        }
+
+    def extract_all_dataframes(
+        self,
+        data: dict,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Extract articles, sentences, and entities from PubMed JSON into dataframes.
+
+        Args:
+            data: Loaded JSON data
+
+        Returns:
+            Tuple of (articles_df, sentences_df, entities_df)
+
+        """
+        extracted_data = self.extract_all_dicts(data)
+
+        # Create DataFrames from the dictionary data
+        articles_df = (
+            pd.DataFrame(extracted_data["articles"])
+            if extracted_data["articles"]
+            else pd.DataFrame()
+        )
+        sentences_df = (
+            pd.DataFrame(extracted_data["sentences"])
+            if extracted_data["sentences"]
+            else pd.DataFrame()
+        )
+        entities_df = (
+            pd.DataFrame(extracted_data["entities"])
+            if extracted_data["entities"]
+            else pd.DataFrame()
+        )
 
         return (articles_df, sentences_df, entities_df)
 
-    def extract_articles_dataframe(self, data: Dict) -> pd.DataFrame:
-        """
-        Extract article information from PubMed JSON into a dataframe
+    def extract_articles_dataframe(self, data: dict) -> pd.DataFrame:
+        """Extract article information from PubMed JSON into a dataframe.
 
         Args:
             data: Loaded JSON data
 
         Returns:
             DataFrame with article information
+
         """
         articles_df, _, _ = self.extract_all_dataframes(data)
         return articles_df
 
-    def extract_sentences_dataframe(self, data: Dict) -> pd.DataFrame:
-        """
-        Extract sentence information from PubMed JSON into a dataframe
+    def extract_sentences_dataframe(self, data: dict) -> pd.DataFrame:
+        """Extract sentence information from PubMed JSON into a dataframe.
 
         Args:
             data: Loaded JSON data
 
         Returns:
             DataFrame with sentence information
+
         """
         _, sentences_df, _ = self.extract_all_dataframes(data)
         return sentences_df
 
-    def extract_entities_dataframe(self, data: Dict) -> pd.DataFrame:
-        """
-        Extract entity information from PubMed JSON into a dataframe
+    def extract_entities_dataframe(self, data: dict) -> pd.DataFrame:
+        """Extract entity information from PubMed JSON into a dataframe.
 
         Args:
             data: Loaded JSON data
 
         Returns:
             DataFrame with entity information
+
         """
         _, _, entities_df = self.extract_all_dataframes(data)
         return entities_df
 
-    def get_sentence_count(self, data: Dict) -> int:
-        """
-        Get the total number of sentences across all articles
+    def get_sentence_count(self, data: dict) -> int:
+        """Get the total number of sentences across all articles.
 
         Args:
             data: Loaded JSON data
 
         Returns:
             Total number of sentences
+
         """
         count = 0
         for article_data in data.values():
             count += len(article_data.get("sentences", []))
         return count
 
-    def get_entity_count(self, data: Dict) -> int:
-        """
-        Get the total number of entities across all articles and sentences
+    def get_entity_count(self, data: dict) -> int:
+        """Get the total number of entities across all articles and sentences.
 
         Args:
             data: Loaded JSON data
 
         Returns:
             Total number of entities
+
         """
         count = 0
         for article_data in data.values():
@@ -303,10 +370,11 @@ class PubMedJsonHandler(JsonHandler):
         return count
 
     def filter_articles_by_metadata(
-        self, data: Dict, filter_criteria: Dict
-    ) -> Dict:
-        """
-        Filter articles by metadata fields
+        self,
+        data: dict,
+        filter_criteria: dict,
+    ) -> dict:
+        """Filter articles by metadata fields.
 
         Args:
             data: Loaded JSON data
@@ -314,6 +382,7 @@ class PubMedJsonHandler(JsonHandler):
 
         Returns:
             Filtered dictionary of articles
+
         """
         result = {}
 
@@ -328,10 +397,12 @@ class PubMedJsonHandler(JsonHandler):
         return result
 
     def export_to_csv(
-        self, data: Dict, output_dir: str, prefix: str = "pubmed"
-    ) -> Dict:
-        """
-        Export PubMed data to CSV files (articles, sentences, entities)
+        self,
+        data: dict,
+        output_dir: str,
+        prefix: str = "pubmed",
+    ) -> dict:
+        """Export PubMed data to CSV files (articles, sentences, entities).
 
         Args:
             data: Loaded JSON data
@@ -340,11 +411,12 @@ class PubMedJsonHandler(JsonHandler):
 
         Returns:
             Dictionary with paths to the output files
+
         """
         os.makedirs(output_dir, exist_ok=True)
 
         articles_df, sentences_df, entities_df = self.extract_all_dataframes(
-            data
+            data,
         )
 
         articles_path = os.path.join(output_dir, f"{prefix}_articles.csv")
