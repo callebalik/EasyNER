@@ -54,7 +54,9 @@ class JsonToDuckConverter(BaseConverter):
         reprocess: bool = False,
         batch_start_index: Optional[int] = None,
         batch_end_index: Optional[int] = None,
-        memory_limit: Optional[str] = None,  # Add this parameter
+        memory_limit: Optional[str] = None,
+        log_duplicates: bool = True,
+        ignore_duplicates: bool = False,
     ) -> None:
         """Initialize the JSON to DuckDB converter.
 
@@ -75,6 +77,21 @@ class JsonToDuckConverter(BaseConverter):
         self._reprocess = reprocess
         self.batch_start_index = batch_start_index
         self.batch_end_index = batch_end_index
+        self.log_duplicates = log_duplicates
+        self.ignore_duplicates = ignore_duplicates
+
+        # We can't both log and ignore duplicates
+        if self.log_duplicates and self.ignore_duplicates:
+            msg = (
+                "Log duplicates is not compatible with ignore duplicates. "
+                "Please choose whether to log or ignore duplicates. "
+                "If not logging to table, use ignore duplicates to either "
+                "raise errors on duplicate insertions or silently ignore them."
+            )
+            logger.error(msg)
+            raise ValueError(
+                msg,
+            )
 
         # Set up db_file path - if not provided, create one in target_dir
         if db_file is None:
@@ -160,7 +177,7 @@ class JsonToDuckConverter(BaseConverter):
         return [f for f in convertible_files if f not in converted_files]
 
     def _log_conversion(self, file_path: Path, status: str) -> None:
-        """Logs the conversion attempt to the database."""
+        """Log the conversion attempt to the database."""
         if self._is_memory_db:
             if status == "converted":
                 self._converted_files.append(file_path)
@@ -190,7 +207,8 @@ class JsonToDuckConverter(BaseConverter):
             )
         except Exception as e:
             print(f"Error logging conversion: {e}")
-            # Continue processing - if we can't log, we'll still continue with conversion
+            # Continue processing
+            # if we can't log,we'll still continue with conversion
 
     def convert(self, **kwargs: Any) -> dict[str, Any]:
         """Convert JSON files to DuckDB database with memory-aware processing.
@@ -361,13 +379,25 @@ class JsonToDuckConverter(BaseConverter):
                             # Insert data into tables
                             ArticleRepository(
                                 connection=self.connection,
-                            ).insert_many_non_transactional(data["articles"])
+                            ).insert_many_non_transactional(
+                                data["articles"],
+                                log_duplicates=self.log_duplicates,
+                                ignore_duplicates=self.ignore_duplicates,
+                            )
                             SentenceRepository(
                                 connection=self.connection,
-                            ).insert_many_non_transactional(data["sentences"])
+                            ).insert_many_non_transactional(
+                                data["sentences"],
+                                log_duplicates=self.log_duplicates,
+                                ignore_duplicates=self.ignore_duplicates,
+                            )
                             EntityRepository(
                                 connection=self.connection,
-                            ).insert_many_non_transactional(data["entities"])
+                            ).insert_many_non_transactional(
+                                data["entities"],
+                                log_duplicates=self.log_duplicates,
+                                ignore_duplicates=self.ignore_duplicates,
+                            )
 
                             # Commit transaction
                             self.connection.commit()
@@ -650,6 +680,26 @@ def main(args: Optional[list[str]] = None) -> int:
         help="Set the logging level (default: INFO)",
     )
 
+    parser.add_argument(
+        "--no-log-duplicates",
+        dest="log_duplicates",
+        action="store_false",
+        help=(
+            "Disable logging duplicate records to separate tables. "
+            "When disabled, duplicates will cause errors unless --ignore-duplicates is used."
+        ),
+    )
+
+    parser.add_argument(
+        "--ignore-duplicates",
+        action="store_true",
+        default=False,
+        help=(
+            "Use INSERT OR IGNORE to silently skip duplicates instead of logging them. "
+            "Not compatible with duplicate logging."
+        ),
+    )
+
     if args is None:
         parsed_args = parser.parse_args()
     else:
@@ -683,6 +733,8 @@ def main(args: Optional[list[str]] = None) -> int:
             reprocess=parsed_args.reprocess,
             batch_start_index=parsed_args.batch_start,
             batch_end_index=parsed_args.batch_end,
+            log_duplicates=parsed_args.log_duplicates,
+            ignore_duplicates=parsed_args.ignore_duplicates,
         )
 
         try:
