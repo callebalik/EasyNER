@@ -7,7 +7,7 @@ Maybe by checking already present batch numbers
 """
 
 import os
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -27,6 +27,7 @@ class PubMedDuckDBLoader(BasePubMedLoader):
         file_start: int | None = None,
         file_end: int | None = None,
         batch_size: int = 100000,  # Larger batch size for better performance
+        num_workers: Optional[int] = None,
     ) -> None:
         """Initialize the PubMedDuckDBLoader.
 

@@ -8,10 +8,11 @@ return pp.parse_medline_xml(input_file, year_info_only=False)
 reports 70% of the time as python code
 """
 
+import multiprocessing
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple, Union
 
 import pubmed_parser as pp
 from tqdm import tqdm
@@ -29,6 +30,7 @@ class BasePubMedLoader(ABC):
         baseline: str,
         file_start: Optional[int] = None,
         file_end: Optional[int] = None,
+        num_workers: Optional[int] = None,
     ) -> None:
         """Initialize the base PubMed loader.
 
@@ -47,6 +49,19 @@ class BasePubMedLoader(ABC):
         self.baseline = str(baseline)
         self.file_start = file_start
         self.file_end = file_end
+        if num_workers is None:
+            cpu_count = os.cpu_count()
+            self.num_workers = max(
+                1,
+                cpu_count - 1 if cpu_count and cpu_count > 1 else 1,
+            )
+        elif num_workers < 1:
+            msg = "num_workers must be at least 1"
+            raise ValueError(msg)
+        else:
+            self.num_workers = num_workers
+
+        self.current_input_file: Optional[str] = None
 
         # Validate file range if both are provided
         if self.file_start is not None and self.file_end is not None:
@@ -167,6 +182,80 @@ class BasePubMedLoader(ABC):
         """
         return pp.parse_medline_xml(input_file, year_info_only=False)
 
+    @staticmethod
+    def _xml_parser_worker(
+        input_file: str,
+    ) -> tuple[str, Union[list[dict[str, Any]], Exception]]:
+        """Worker function to load and parse an XML file.
+
+        Returns a tuple (input_file, data_or_exception).
+        """
+        try:
+            data = pp.parse_medline_xml(input_file, year_info_only=False)
+            return input_file, data
+        except Exception as e:
+            # Print error from worker for immediate visibility,
+            # main process will also log
+            print(f"Error parsing {input_file} in worker: {e}")
+            return input_file, e
+
+    def run_loader_parallel(self) -> None:
+        """Run the loader of PubMed files using parallel readers and a single writer."""
+        print(
+            f"Starting to load PubMed files from {self.input_path} using {self.num_workers} worker(s)",
+        )
+        input_files_list = self._get_input_files(self.input_path)
+
+        if not input_files_list:
+            print("No files to process. Please check the input path and file pattern.")
+            return
+
+        print(f"Processing {len(input_files_list)} XML files in parallel.")
+        if input_files_list:  # Ensure list is not empty before accessing elements
+            print(f"First file: {os.path.basename(input_files_list[0])}")
+            print(f"Last file: {os.path.basename(input_files_list[-1])}")
+
+        pool = None
+        try:
+            # Using a context manager for the pool is good practice if available/preferred
+            # For this example, manual management:
+            pool = multiprocessing.Pool(processes=self.num_workers)
+
+            results_iterator = pool.imap_unordered(
+                BasePubMedLoader._xml_parser_worker,
+                input_files_list,
+            )
+
+            for input_file, result in tqdm(
+                results_iterator,
+                total=len(input_files_list),
+                desc="Processing files",
+            ):
+                self.current_input_file = input_file
+
+                if isinstance(result, Exception):
+                    print(
+                        f"Skipping file {os.path.basename(input_file)} due to parsing error: {result}",
+                    )
+                    continue
+
+                data = result  # result is the parsed data list[dict[str, Any]]
+                if data:  # Ensure data is not empty or None before writing
+                    self._write_output(data, input_file)
+                else:
+                    print(
+                        f"No data returned or empty data for {os.path.basename(input_file)}, skipping write.",
+                    )
+
+        except Exception as e:
+            print(f"An error occurred during parallel processing: {e}")
+        finally:
+            if pool:
+                pool.close()
+                pool.join()
+
+        print("Parallel PubMed loading complete.")
+
     def run_loader(self) -> None:
         """Run the loader of PubMed files."""
         print(f"Starting to load PubMed files from {self.input_path}")
@@ -186,3 +275,6 @@ class BasePubMedLoader(ABC):
             self.current_input_file = input_file
             data = self._load_xml(input_file)
             self._write_output(data, input_file)
+
+    def run_loader_mp(self) -> None:
+        """Run loader of PubMed files with XML parsing in parallel."""

@@ -80,6 +80,8 @@ def load_pubmed_from_xml(config: dict) -> None:
     # Get file range parameters
     file_start = config.get("file_start")
     file_end = config.get("file_end")
+    num_workers_config = config.get("num_workers", None)
+    parallel_load_config = config.get("parallel_load", False)
 
     # Validate file range if both are provided
     if file_start is not None and file_end is not None and file_start > file_end:
@@ -93,6 +95,8 @@ def load_pubmed_from_xml(config: dict) -> None:
         print(f"Starting with file: {file_start}")
     if file_end is not None:
         print(f"Ending with file: {file_end}")
+    if parallel_load_config:
+        print(f"Parallel loading is enabled with {num_workers_config} workers.")
 
     if format == "DuckDb":
         from easyner.pipeline.pubmed.loaders.pubmed_duckdb_loader import (
@@ -105,8 +109,12 @@ def load_pubmed_from_xml(config: dict) -> None:
             baseline=config["baseline"],
             file_start=file_start,
             file_end=file_end,
+            num_workers=num_workers_config,
         )
-        loader.run_loader()
+        if parallel_load_config:
+            loader.run_loader_parallel()
+        else:
+            loader.run_loader()
     if format == "json":
         from easyner.pipeline.pubmed.loaders.pubmed_json_loader import (
             PubMedJSONLoader,
@@ -125,8 +133,10 @@ def load_pubmed_from_xml(config: dict) -> None:
             file_start=file_start,
             file_end=file_end,
         )
-
-        loader.run_loader()
+        if parallel_load_config:
+            loader.run_loader_parallel()
+        else:
+            loader.run_loader()
 
         # Generate statistics report
         loader._write_statistics_report()

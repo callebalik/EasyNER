@@ -18,6 +18,7 @@ class PubMedJSONLoader(BasePubMedLoader):
         require_abstract: bool = False,
         file_start: Optional[int] = None,
         file_end: Optional[int] = None,
+        num_workers: Optional[int] = None,
     ) -> None:
         """Initialize the PubMedJSONLoader.
 
