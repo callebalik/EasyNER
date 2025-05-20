@@ -71,6 +71,9 @@ if __name__ == "__main__":
                 print(
                     "No path provided via input, attempting to use environment variable DB_PATH.",  # noqa: E501
                 )
+                from dotenv import load_dotenv
+
+                load_dotenv()
                 db_path_str = os.getenv("DB_PATH")
 
         if not db_path_str:
