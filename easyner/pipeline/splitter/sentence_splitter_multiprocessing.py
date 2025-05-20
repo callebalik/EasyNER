@@ -485,7 +485,7 @@ def main() -> None:
         pause_event = Event()
 
         # Create queues for worker processes
-        task_queue = JoinableQueue(maxsize=NUM_WORKERS * 3)
+        task_queue = JoinableQueue(maxsize=NUM_WORKERS * 1)
         result_queue = Queue(maxsize=NUM_WORKERS * 5)
 
         # Start worker processes for NLP processing only
