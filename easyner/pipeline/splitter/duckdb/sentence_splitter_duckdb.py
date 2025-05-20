@@ -50,6 +50,7 @@ logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
 # Import configuration from splitter_config.py
+from easyner.core import memory_utils
 from easyner.pipeline.splitter.duckdb.splitter_config import (  # noqa: E402
     BATCH_SIZE,
     CREATE_SENTENCES_TABLE_STMT,
@@ -77,7 +78,7 @@ def monitor_memory() -> float:
     mem_mb = process.memory_info().rss / (1024 * 1024)
 
     if mem_mb > MEM_THRESHOLD_MB:
-        logger.info(
+        logger.warning(
             f"Memory usage high ({mem_mb:.1f} MB). Forcing garbage collection...",
         )
         gc.collect()
@@ -151,7 +152,11 @@ def _setup_db_connection(db_path: Optional[str]) -> duckdb.DuckDBPyConnection:
         con = duckdb.connect(database=db_path, read_only=False)
         con.execute(f"PRAGMA memory_limit='{DUCKDB_MEMORY_LIMIT}'")
         con.execute(CREATE_SENTENCES_TABLE_STMT)
-        msg = f"Connected to DuckDB database at {DB_PATH} and created table {SENTENCES_TABLE}"
+        msg = (
+            f"DuckDB database at {DB_PATH} "
+            f"{SENTENCES_TABLE} TABLE create successfully.\n"
+            f"Memory limit set to {DUCKDB_MEMORY_LIMIT}.\n"
+        )
         logger.info(msg)
         return con
     except duckdb.Error as e:
@@ -173,7 +178,7 @@ def _load_spacy_model(model_name: str) -> Language:
             f"\n Excluded components: {', '.join(SPACY_EXCLUDE_COMPONENTS)}"
             f"\n (Current Memory Usage: {monitor_memory():.1f} MB)"
         )
-        logger.info(msg)
+        logger.debug(msg)
         return nlp
     except Exception as e:
         logger.error(f"Error loading spaCy model: {e}")
@@ -221,6 +226,11 @@ def get_sentences_with_spacy_mp(
     """
     # Balance workload by text length for optimal distribution
     batch_with_length = [(len(item[2]), item) for item in batch]
+    msg = (
+        f"Batch size: {len(batch_with_length)}. "
+        f"Distributing {len(batch_with_length)} texts across {num_pipelines} pipelines."
+    )
+    logger.info(msg)
     batch_with_length.sort(reverse=True)  # Sort by length (longest first)
 
     # Use greedy algorithm for distribution
@@ -272,7 +282,7 @@ def initialize_worker(
 
         # Reuse existing model loading function
         _nlp_cache = _load_spacy_model(actual_model)
-        logger.info(f"Worker [PID:{os.getpid()}]: Model loaded successfully")
+        logger.debug(f"Worker [PID:{os.getpid()}]: Model loaded successfully")
 
 
 def process_batch_in_worker(batch_chunk: list[tuple], n_process: int) -> list:
@@ -432,6 +442,7 @@ def main() -> None:  # noqa: C901
                         "Processed": f"{total_processed}/{total_segments}",
                         "Sentences": total_sentences,
                         "Memory": f"{monitor_memory():.1f}MB",
+                        "Memory (%)": f"{memory_utils.get_memory_usage():.1f}%",
                     },
                 )
 
@@ -457,21 +468,16 @@ def main() -> None:  # noqa: C901
         if total_processed > 0 and time_taken > 0:
             segments_per_second = total_processed / time_taken
 
-        # Final report
-        logger.info(f"Finished processing {total_processed} segments")
-        logger.info(f"Total sentences inserted: {total_sentences}")
-        logger.info(f"Total time: {time_taken:.2f} seconds")
-        if total_processed > 0 and time_taken > 0:
-            logger.info(f"Speed: {total_processed / time_taken:.2f} segments/second")
-        #  Create a summary of the processing, even if interrupted
-        # Store in .benchmarks/splitter_summary.csv
+        # Final report -> console + log even if interrupted
+        msg = (
+            f"Total segments processed: {total_processed}\n"
+            f"Total sentences inserted: {total_sentences}\n"
+            f"Total time taken: {time_taken:.2f} seconds\n"
+            f"Speed: {segments_per_second:.2f} segments/second\n"
+        )
+        logger.info(msg)
         with open(".benchmarks/splitter_summary.csv", "w") as f:
-            f.write(
-                f"Total segments processed, {total_processed}\n"
-                f"Total sentences inserted, {total_sentences}\n"
-                f"Total time taken, {time_taken:.2f} seconds\n"
-                f"Speed, {segments_per_second:.2f} segments/second\n",
-            )
+            f.write(msg)
 
         if con:
             con.execute(f"DROP TABLE IF EXISTS {TEMP_TABLE}")
