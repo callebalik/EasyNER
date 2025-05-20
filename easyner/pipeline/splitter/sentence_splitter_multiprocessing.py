@@ -148,11 +148,13 @@ def process_batch(nlp: Language, batch: list[tuple]) -> pd.DataFrame:
 
     # Process texts through spaCy pipeline - don't use n_process here since we're already
     # in a worker process
+    doc: Doc
     for doc, (pmid, segment_number) in zip(
         nlp.pipe(texts, batch_size=SPACY_BATCH_SIZE, n_process=SPACY_N_PROCESSES),
         metadata,
     ):
         sentence_in_segment_order = 1
+        sent: Span
         for sent in doc.sents:
             sentences_data.append(
                 {
