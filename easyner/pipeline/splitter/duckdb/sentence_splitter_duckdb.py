@@ -48,7 +48,7 @@ def monitor_memory() -> float:
     return mem_mb
 
 
-def process_batch(nlp: Language, batch: list[tuple]) -> pd.DataFrame:
+def process_batch(nlp: Language, batch: list[tuple]) -> list:
     """Process a text segment batch using spaCy and preserves sentence order within segments.
 
     Args:
@@ -56,7 +56,7 @@ def process_batch(nlp: Language, batch: list[tuple]) -> pd.DataFrame:
         batch: A list of tuples, where each tuple is (pmid, segment_number, segment_text).
 
     Returns:
-        A Pandas DataFrame with columns: pmid, segment_number, sentence_in_segment_order, sentence.
+        A list of dictionaries with keys: pmid, segment_number, sentence_in_segment_order, sentence.
 
     """
     # Prepare texts and corresponding metadata for spaCy pipe
@@ -94,7 +94,7 @@ def process_batch(nlp: Language, batch: list[tuple]) -> pd.DataFrame:
         # Explicitly clear the doc to free up memory
         del doc
 
-    return pd.DataFrame(sentences_data)
+    return sentences_data
 
 
 def _setup_db_connection(db_path: Optional[str]) -> duckdb.DuckDBPyConnection:
@@ -210,10 +210,13 @@ def main() -> None:
                 ).fetchall()
 
                 # Process this batch
-                sentences_df = process_batch(nlp, segments_data)
-
+                sentences_data = process_batch(nlp, segments_data)
+                sentences_df = pd.DataFrame(sentences_data)
                 con.append(SENTENCES_TABLE, sentences_df)
                 con.commit()
+                del sentences_data
+                del sentences_df
+
                 # # Insert in smaller chunks to reduce memory pressure
                 # if not sentences_df.empty:
                 #     for i in range(0, len(sentences_df), 500):
@@ -237,11 +240,6 @@ def main() -> None:
                         "Memory": f"{monitor_memory():.1f}MB",
                     },
                 )
-
-                # Clean up
-                del segments_data
-                del sentences_df
-                # gc.collect()
 
         # Final report
         print(f"Finished processing {total_processed} segments")
