@@ -48,8 +48,10 @@ def monitor_memory() -> float:
     return mem_mb
 
 
-def process_batch(nlp: Language, batch: list[tuple]) -> list:
+def get_sentences_with_spacy_sp(nlp: Language, batch: list[tuple]) -> list:
     """Process a text segment batch using spaCy and preserves sentence order within segments.
+
+    Assumes that each text is non-empty which should be guaranteed by the SQL query.
 
     Args:
         nlp: The loaded spaCy NLP object.
@@ -91,8 +93,8 @@ def process_batch(nlp: Language, batch: list[tuple]) -> list:
                 },
             )
             sentence_in_segment_order += 1
-        # Explicitly clear the doc to free up memory
-        del doc
+
+        del doc  # Explicitly clear the doc to free up memory
 
     return sentences_data
 
@@ -210,7 +212,7 @@ def main() -> None:
                 ).fetchall()
 
                 # Process this batch
-                sentences_data = process_batch(nlp, segments_data)
+                sentences_data = get_sentences_with_spacy_sp(nlp, segments_data)
                 sentences_df = pd.DataFrame(sentences_data)
                 con.append(SENTENCES_TABLE, sentences_df)
                 con.commit()
