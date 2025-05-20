@@ -88,6 +88,9 @@ MEMORY_CRITICAL_THRESHOLD = 80  # When to temporarily pause processing
 COMMIT_EVERY = 100
 DUCK_DB_GB_MEMORY_LIMIT = 6  # Set a memory limit for DuckDB
 DUCK_DB_THREADS = 4  # Number of threads for DuckDB
+PREFETCH_SIZE = 1  # Number of batches to prefetch
+RESULT_QUEUE_TIMEOUT = 0.2  # Shorter timeout for more responsive queue handling
+TIME_LIMIT_SECONDS = 600  # 10 min
 
 
 def monitor_memory() -> dict:
