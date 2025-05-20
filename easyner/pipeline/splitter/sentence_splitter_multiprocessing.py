@@ -721,7 +721,7 @@ def result_writer_thread(
 
                 # Process valid results
                 if isinstance(result, tuple) and len(result) == 2:
-                    count, sentences_df = result
+                    count, sentences_data = result
 
                     # Update processed counter
                     with processed_counter.get_lock():
