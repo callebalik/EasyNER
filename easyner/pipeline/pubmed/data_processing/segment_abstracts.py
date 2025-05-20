@@ -41,6 +41,7 @@ def _create_abstract_segments_view(conn: duckdb.DuckDBPyConnection) -> None:
                 generate_subscripts(string_split(abstract, '\n'), 1) AS segment_id
             FROM pubmed
             WHERE abstract IS NOT NULL
+            AND is_duplicate = FALSE
         ) subq
         WHERE LENGTH(TRIM(segment)) > 0
     """,
