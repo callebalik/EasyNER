@@ -1,0 +1,85 @@
+/templates/cooccurrence_network.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Co-occurrence Network Visualization</title>
+    <link href="/static/styles.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+</head>
+<body>
+    <div class="container">
+        <h1>Co-occurrence Network Visualization</h1>
+
+        <div class="network-control-panel">
+            <div class="filter-container">
+                <div class="filter-section">
+                    <h3>Network Parameters</h3>
+                    <div class="form-group">
+                        <label for="min-frequency">Minimum Co-occurrence Frequency</label>
+                        <input type="number" id="min-frequency" class="form-control" value="10" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="entity1-type">Entity 1 Type</label>
+                        <select id="entity1-type" class="form-control">
+                            <option value="phenomenon">Phenomenon</option>
+                            <option value="disease">Disease</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="entity2-type">Entity 2 Type</label>
+                        <select id="entity2-type" class="form-control">
+                            <option value="disease">Disease</option>
+                            <option value="phenomenon">Phenomenon</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-section">
+                    <h3>Entity Filters</h3>
+                    <div class="form-group">
+                        <label for="entity1-filter">Filter Entity 1</label>
+                        <input type="text" id="entity1-filter" class="form-control" placeholder="Filter entity 1 text...">
+                    </div>
+                    <div class="form-group">
+                        <label for="entity2-filter">Filter Entity 2</label>
+                        <input type="text" id="entity2-filter" class="form-control" placeholder="Filter entity 2 text...">
+                    </div>
+                </div>
+
+                <div class="filter-section">
+                    <h3>Exclude Entities</h3>
+                    <div class="form-group">
+                        <label for="exclude-entity1">Exclude Entity 1</label>
+                        <select id="exclude-entity1" class="form-control select2" multiple>
+                            <!-- Options will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="exclude-entity2">Exclude Entity 2</label>
+                        <select id="exclude-entity2" class="form-control select2" multiple>
+                            <!-- Options will be populated dynamically -->
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <button id="generate-network" class="btn-primary">Generate Network</button>
+            </div>
+        </div>
+
+        <div id="network-container">
+            <div id="loading-overlay" style="display: none;">
+                <div class="loading-spinner"></div>
+            </div>
+            <iframe id="network-iframe" width="100%" height="100%" frameborder="0"></iframe>
+        </div>
+    </div>
+
+    <script src="/static/js/cooccurrence-network.js"></script>
+</body>
+</html>

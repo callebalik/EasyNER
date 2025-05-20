@@ -1,0 +1,202 @@
+// Variables
+// Core colors
+$primary-color: #007bff;
+$primary-dark: darken($primary-color, 10%);
+$secondary-color: #6c757d;
+$accent-color: #28a745;
+$accent-dark: darken($accent-color, 10%);
+
+$background-color: #ffffff;
+$background-light: #f8f9fa;
+$background-lighter: #f1f3f5;
+$hover-color: rgba(0, 0, 0, 0.02);
+
+// Add these missing variables
+$header-background: #95ead2;
+$header-text: #333;
+
+$border-color: #dee2e6;
+$shadow-color: rgba(0, 0, 0, 0.1);
+
+$text-color: #333;
+$text-light: #6c757d;
+$text-lighter: #adb5bd;
+$text-dark: #212529;
+$text-muted: #6c757d;
+
+$error-color: #dc3545;
+$error-light: #f8d7da;
+$error-border: #f5c6cb;
+
+$success-color: #28a745;
+$success-light: #efe;
+$success-border: #cfc;
+
+$warning-color: #ffc107;
+$warning-light: #fff3cd;
+$warning-border: #ffeeba;
+$warning-hover: #cfa836;
+$warning-border-color: #f04e51;
+
+// Sizes
+$border-radius: 4px;
+$border-radius-lg: 8px;
+$border-radius-sm: 2px;
+$base-padding: 8px;
+$base-margin: 15px;
+
+// Spacing
+$padding-xs: 0.25rem;
+$padding-sm: 0.5rem;
+$padding-base: 1rem;
+$padding-lg: 1.5rem;
+$padding-xl: 2rem;
+
+$margin-xs: 0.25rem;
+$margin-sm: 0.5rem;
+$margin-base: 1rem;
+$margin-lg: 1.5rem;
+$margin-xl: 2rem;
+
+$gap-xs: 0.25rem;
+$gap-sm: 0.5rem;
+$gap-base: 1rem;
+$gap-lg: 1.5rem;
+$gap-xl: 2rem;
+
+// Breakpoints
+$breakpoint-xs: 375px;
+$breakpoint-sm: 576px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 992px;
+$breakpoint-xl: 1200px;
+$breakpoint-xxl: 1400px;
+
+// Z-indices
+$z-dropdown: 1000;
+$z-tooltip: 1070;
+$z-modal: 1050;
+$z-sticky: 1020;
+$z-fixed: 1030;
+$z-modal-backdrop: 1040;
+$z-popover: 1060;
+
+// Transitions
+$transition-quick: 0.2s ease;
+$transition-base: 0.3s ease;
+$transition-slow: 0.5s ease;
+
+// Range indicators
+$range-track-height: 4px;
+$range-handle-size: 16px;
+$range-label-offset: -20px;
+
+// Markers and Lines
+$line-width: 1px;
+$line-width-bold: 2px;
+
+// Chart colors
+$chart-colors: (
+    primary: rgba($primary-color, 0.8),
+    secondary: rgba($primary-color, 0.5),
+    tertiary: rgba($primary-color, 0.3),
+    background: #f8f9fa,
+    disease: #1f77b4,
+    phenomenon: #2ca02c,
+    link: rgba(150, 150, 150, 0.2),
+    tooltip: rgba($text-color, 0.95)
+);
+
+// Visualization colors
+$visualization-colors: (
+    bar-fill: rgba($primary-color, 0.5),
+    bar-fill-hover: rgba($primary-color, 0.8),
+    bar-background: rgba($text-light, 0.1),
+    marker-line: rgba($text-color, 0.5),
+    marker-dot: $text-color,
+    marker-selected: $primary-color
+);
+
+// Value bar colors - fixed duplicates
+$value-bar-colors: (
+    base: rgba($primary-color, 0.5),
+    selected: $primary-color,
+    background: rgba($text-light, 0.1),
+    hover: rgba($primary-color, 0.7),
+    inactive: rgba(31, 119, 180, 0.2),
+    active: rgba(31, 119, 180, 0.4)
+);
+
+// Distribution visualization
+$distribution-bar-width: 4px;
+$distribution-bar-gap: 2px;
+$distribution-height: 400px;
+
+// Percentile markers
+$marker-dot-size: 8px;
+$marker-dot-size-selected: 12px;
+$marker-line-width: 2px;
+
+// Typography
+$base-font-size: 1rem;
+$small-font-size: 0.875rem;
+$large-font-size: 1.25rem;
+$font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+$mono-font: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+
+// Shadows
+$card-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+// Mixins
+@mixin card {
+    background: white;
+    padding: 20px;
+    border-radius: $border-radius;
+    box-shadow: $card-shadow;
+}
+
+@mixin hover-transform {
+    transition: transform 0.2s;
+    &:hover {
+        transform: translateY(-2px);
+    }
+}
+
+// Placeholders
+%section-card {
+    padding: 20px;
+    background-color: $background-color;
+    border: 1px solid $border-color;
+    border-radius: $border-radius;
+    margin-bottom: 20px;
+    box-shadow: $card-shadow;
+}
+
+%section-header {
+    color: $primary-color;
+    border-bottom: 1px solid $border-color;
+    padding-bottom: 10px;
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+%hover-card {
+    background: $background-color;
+    border: 1px solid $border-color;
+    border-radius: $border-radius;
+    padding: 15px;
+    box-shadow: $card-shadow;
+    transition: all 0.2s ease;
+
+    &:hover {
+        box-shadow: 0 4px 8px $shadow-color;
+        border-color: $primary-color;
+    }
+}
+
+%grid-layout {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}

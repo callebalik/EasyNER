@@ -1,0 +1,588 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h1>{{ table_name }} Table View</h1>
+
+    {% if generated_sql %}
+    <p><b>SQL Query:</b> <code>{{ generated_sql }}</code></p>
+    {% endif %}
+
+    <details>
+        <summary>Explain Query Plan
+            <button id="copy-chatbot" class="copy-chatbot" title="Copy for Chatbot">
+                <i class="fas fa-copy"></i>
+            </button>
+        </summary>
+        <div id="explain-query-result"></div>
+    </details>
+
+    <form id="search-form" onSubmit="return false;">
+    <table id="table-view" class="data-table">
+        <thead>
+            <tr>
+                {% set has_title = 'title' in columns or 'document_title' in columns or 'TITLE' in columns or 'document id' in columns %}
+                {% for column in columns %}
+                    {% if column != 'document_id' and column != 'DOC_ID' or not has_title %}
+                    <th>
+                        <a href="{{ url_for('table_view', table_name=table_name, sort_by=column, sort_order='asc' if sort_by == column and sort_order == 'desc' else 'desc') }}"
+                           class="sort-header {% if sort_by == column %}sorted-{{ sort_order }}{% endif %}">
+                            {{ column }}
+                            {% if column == 'OVERLAP' %}
+                            <input type="checkbox"
+                                   id="show_overlap"
+                                   name="show_overlap"
+                                   {% if show_overlap %}checked{% endif %}
+                                   onchange="updateOverlapFilter(this)">
+                            {% endif %}
+                        </a>
+                        {% if column == 'NE_CLASS' %}
+                            <div class="ne-class-filter">
+                                <div class="filter-toggle" onclick="toggleClassFilter(this)">Filter Classes <i class="fas fa-filter"></i></div>
+                                <div class="class-filter-dropdown">
+                                    <div class="filter-actions">
+                                        <a href="#" onclick="checkAllClasses(true); return false;">Select All</a> |
+                                        <a href="#" onclick="checkAllClasses(false); return false;">Clear All</a>
+                                    </div>
+                                    {% if ne_classes %}
+                                        {% for ne_class in ne_classes %}
+                                            <div class="class-checkbox">
+                                                <input type="checkbox"
+                                                       id="ne_class_{{ loop.index }}"
+                                                       name="NE_CLASS_filter"
+                                                       value="{{ ne_class }}"
+                                                       {% if selected_classes and ne_class in selected_classes %}checked{% endif %}>
+                                                <label for="ne_class_{{ loop.index }}">{{ ne_class }}</label>
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <p>No classes available</p>
+                                    {% endif %}
+                                    <div class="filter-button">
+                                        <button type="button" onclick="applyClassFilter()">Apply Filter</button>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif column == 'ERROR_ID' %}
+                            <div class="error-filter">
+                                <div class="filter-toggle" onclick="toggleErrorFilter(this)">Filter Errors <i class="fas fa-filter"></i></div>
+                                <div class="error-filter-dropdown">
+                                    <div class="filter-actions">
+                                        <a href="#" onclick="checkAllErrors(true); return false;">Select All</a> |
+                                        <a href="#" onclick="checkAllErrors(false); return false;">Clear All</a> |
+                                        <a href="#" onclick="filterNoErrors(); return false;">Filter None</a>
+                                    </div>
+                                    <div class="error-checkbox special-filter">
+                                        <input type="checkbox"
+                                               id="error_none"
+                                               name="show_no_errors"
+                                               value="no_errors"
+                                               {% if filter_no_errors %}checked{% endif %}>
+                                        <label for="error_none" title="Show only entries without errors">No Errors Only</label>
+                                    </div>
+                                    <div class="filter-separator"></div>
+                                    {% if error_codes %}
+                                        {% for error_code in error_codes %}
+                                            <div class="error-checkbox">
+                                                <input type="checkbox"
+                                                       id="error_{{ loop.index }}"
+                                                       name="ERROR_ID_filter"
+                                                       value="{{ error_code[0] }}"
+                                                       {% if selected_errors and error_code[0] in selected_errors %}checked{% endif %}>
+                                                <label for="error_{{ loop.index }}" title="{{ error_code[1] }}">{{ error_code[0] }}</label>
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <p>No error codes available</p>
+                                    {% endif %}
+                                    <div class="filter-button">
+                                        <button type="button" onclick="applyErrorFilter()">Apply Filter</button>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif column_types and column in column_types and column_types[column] == 'TEXT' %}
+                            <input type="text"
+                                   name="{{ column }}_search"
+                                   placeholder="Search {{ column }}..."
+                                   value="{{ column_search_queries[column] if column_search_queries and column in column_search_queries else '' }}">
+                        {% elif column_types and column in column_types and column_types[column] in ['INTEGER', 'INT', 'REAL', 'FLOAT', 'NUMERIC'] %}
+                            <div class="numeric-filter{% if numeric_filters and column in numeric_filters %} has-active-filter{% endif %}">
+                                <div class="filter-toggle">
+                                    <span>Filter</span>
+                                    {% if numeric_filters and column in numeric_filters %}
+                                        <span class="active-filter-indicator">
+                                            {% if numeric_filters[column].op == 'gt' %}&gt;
+                                            {% elif numeric_filters[column].op == 'lt' %}&lt;
+                                            {% elif numeric_filters[column].op == 'eq' %}=
+                                            {% elif numeric_filters[column].op == 'gte' %}≥
+                                            {% elif numeric_filters[column].op == 'lte' %}≤
+                                            {% elif numeric_filters[column].op == 'between' %}Between
+                                            {% elif numeric_filters[column].op == 'percentile_gt' %}Top {{ numeric_filters[column].val1 }}%
+                                            {% elif numeric_filters[column].op == 'percentile_lt' %}Bottom {{ numeric_filters[column].val1 }}%
+                                            {% endif %}
+                                            {% if numeric_filters[column].op != 'percentile_gt' and numeric_filters[column].op != 'percentile_lt' %}
+                                                {{ numeric_filters[column].val1 }}
+                                                {% if numeric_filters[column].op == 'between' %} - {{ numeric_filters[column].val2 }}{% endif %}
+                                            {% endif %}
+                                        </span>
+                                    {% endif %}
+                                    <i class="fas fa-filter"></i>
+                                </div>
+                                <div class="numeric-filter-dropdown">
+                                    <div class="filter-section">
+                                        <div class="section-title">Filter Options</div>
+                                        <div class="filter-controls">
+                                            <div class="control-row">
+                                                <select name="{{ column }}_op" id="{{ column }}_op">
+                                                    <option value="">Select operation</option>
+                                                    <option value="gt" {% if numeric_filters and column in numeric_filters and numeric_filters[column].op == 'gt' %}selected{% endif %}>&gt; Greater than</option>
+                                                    <option value="lt" {% if numeric_filters and column in numeric_filters and numeric_filters[column].op == 'lt' %}selected{% endif %}>&lt; Less than</option>
+                                                    <option value="eq" {% if numeric_filters and column in numeric_filters and numeric_filters[column].op == 'eq' %}selected{% endif %}>=&nbsp;&nbsp;Equal to</option>
+                                                    <option value="gte" {% if numeric_filters and column in numeric_filters and numeric_filters[column].op == 'gte' %}selected{% endif %}>&ge; Greater/equal</option>
+                                                    <option value="lte" {% if numeric_filters and column in numeric_filters and numeric_filters[column].op == 'lte' %}selected{% endif %}>&le; Less/equal</option>
+                                                    <option value="between" {% if numeric_filters and column in numeric_filters and numeric_filters[column].op == 'between' %}selected{% endif %}>Between</option>
+                                                    <option value="percentile_gt" {% if numeric_filters and column in numeric_filters and numeric_filters[column].op == 'percentile_gt' %}selected{% endif %}>Top Percentile</option>
+                                                    <option value="percentile_lt" {% if numeric_filters and column in numeric_filters and numeric_filters[column].op == 'percentile_lt' %}selected{% endif %}>Bottom Percentile</option>
+                                                </select>
+                                                <input type="number"
+                                                       name="{{ column }}_val1"
+                                                       id="{{ column }}_val1"
+                                                       placeholder="Value"
+                                                       value="{% if numeric_filters and column in numeric_filters %}{{ numeric_filters[column].val1 }}{% endif %}"
+                                                       step="any">
+                                            </div>
+                                            <div class="control-row between-row" id="{{ column }}_between_row"
+                                                 {% if not numeric_filters or column not in numeric_filters or numeric_filters[column].op != 'between' %}style="display: none;"{% endif %}>
+                                                <span>and</span>
+                                                <input type="number"
+                                                       name="{{ column }}_val2"
+                                                       id="{{ column }}_val2"
+                                                       placeholder="Max value"
+                                                       value="{% if numeric_filters and column in numeric_filters %}{{ numeric_filters[column].val2 }}{% endif %}"
+                                                       step="any">
+                                            </div>
+                                            <div class="control-row percentile-row" id="{{ column }}_percentile_info"
+                                                 {% if not numeric_filters or column not in numeric_filters or not numeric_filters[column].op.startswith('percentile_') %}style="display: none;"{% endif %}>
+                                                <span class="percentile-info">Enter percentage (0-100)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="stats-section filter-section">
+                                        <div class="section-title">Column Statistics</div>
+                                        <div class="stats-grid">
+                                            <div class="stat-card">
+                                                <div class="stat-label">Min</div>
+                                                <div class="stat-value" id="{{ column }}_min">Loading...</div>
+                                            </div>
+                                            <div class="stat-card">
+                                                <div class="stat-label">Max</div>
+                                                <div class="stat-value" id="{{ column }}_max">Loading...</div>
+                                            </div>
+                                            <div class="stat-card">
+                                                <div class="stat-label">Average</div>
+                                                <div class="stat-value" id="{{ column }}_avg">Loading...</div>
+                                            </div>
+                                            <div class="stat-card">
+                                                <div class="stat-label">Count</div>
+                                                <div class="stat-value" id="{{ column }}_count">Loading...</div>
+                                            </div>
+                                        </div>
+                                        <div class="distribution-chart">
+                                            <canvas id="{{ column }}_chart"></canvas>
+                                        </div>
+                                        <div class="percentile-grid"></div>
+                                    </div>
+
+                                    <div class="filter-section actions-section">
+                                        <button type="button" class="clear-btn" onclick="clearNumericFilter('{{ column }}')">Clear</button>
+                                        <button type="button" class="apply-btn" onclick="applyNumericFilter('{{ column }}')">Apply Filter</button>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif searchable_id_columns and column in searchable_id_columns %}
+                            <input type="text"
+                                   name="{{ column }}_search"
+                                   placeholder="ID search..."
+                                   class="id-search"
+                                   value="{{ column_search_queries[column] if column_search_queries and column in column_search_queries else '' }}">
+                        {% endif %}
+                    </th>
+                    {% endif %}
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                {% set document_id_index = columns.index('document_id') if 'document_id' in columns else (columns.index('DOC_ID') if 'DOC_ID' in columns else None) %}
+                {% for column in columns %}
+                    {% if column != 'document_id' and column != 'DOC_ID' or not has_title %}
+                    <td>
+                        {% if column in ['document_title', 'title', 'document id', 'TITLE'] %}
+                            {% if document_id_index is not none %}
+                                {% set doc_id_value = row[document_id_index] %}
+                                {% if doc_id_value is not none and doc_id_value|string is defined %}
+                                    {% set doc_id_str = doc_id_value|string %}
+                                    {% if doc_id_str.isdigit() %}
+                                        <a href="{{ url_for('show_document', doc_id=doc_id_str) }}">{{ row[loop.index0] }}</a>
+                                    {% else %}
+                                        {{ row[loop.index0] }}
+                                    {% endif %}
+                                {% else %}
+                                    {{ row[loop.index0] }}
+                                {% endif %}
+                            {% else %}
+                                {{ row[loop.index0] }}
+                            {% endif %}
+                        {% else %}
+                            {{ row[loop.index0] }}
+                        {% endif %}
+                    </td>
+                    {% endif %}
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </form>
+    {% if has_more %}
+    <a href="{{ url_for('table_view', table_name=table_name, page=page+1, sort_by=sort_by, sort_order=sort_order) }}{% for column in columns %}{% if column_types and column in column_types and column_types[column] == 'TEXT' and column_search_queries and column in column_search_queries %}&{{ column }}_search={{ column_search_queries[column] }}{% endif %}{% endfor %}{% for column in searchable_id_columns %}{% if column_search_queries and column in column_search_queries and column_search_queries[column] %}&{{ column }}_search={{ column_search_queries[column] }}{% endif %}{% endfor %}{% if selected_classes %}{% for class in selected_classes %}&NE_CLASS_filter={{ class }}{% endfor %}{% endif %}{% if selected_errors %}{% for error in selected_errors %}&ERROR_ID_filter={{ error }}{% endfor %}{% endif %}{% if filter_no_errors %}&filter_no_errors=true{% endif %}{% if numeric_filters %}{% for column, filter in numeric_filters.items() %}&{{ column }}_op={{ filter.op }}&{{ column }}_val1={{ filter.val1 }}{% if filter.val2 %}&{{ column }}_val2={{ filter.val2 }}{% endif %}{% endfor %}{% endif %}&show_overlap={{ show_overlap }}" class="load-more-button">Load More</a>
+    {% endif %}
+{% endblock %}
+
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<script src="{{ url_for('static', filename='js/numeric-filters.js') }}"></script>
+<style>
+    /* Additional error filter dropdown styling */
+    .error-filter, .numeric-filter {
+        position: relative;
+        margin-top: 5px;
+    }
+    .error-filter-dropdown, .numeric-filter-dropdown {
+        display: none;
+        position: absolute;
+        background-color: white;
+        border: 1px solid #ddd;
+        padding: 10px;
+        z-index: 10;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        max-height: 300px;
+        overflow-y: auto;
+        width: 250px;
+    }
+    .filter-toggle {
+        cursor: pointer;
+        padding: 2px 5px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+        display: inline-block;
+        font-size: 0.8em;
+        background-color: #f8f8f8;
+    }
+    .filter-toggle:hover {
+        background-color: #e8e8e8;
+    }
+    .error-checkbox {
+        margin: 3px 0;
+    }
+    .error-checkbox.special-filter {
+        padding: 3px 0;
+        font-weight: bold;
+        color: #2c6b9e;
+    }
+    .filter-separator {
+        margin: 8px 0;
+        border-bottom: 1px solid #eee;
+    }
+    .filter-actions {
+        margin-bottom: 5px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid #eee;
+        font-size: 0.8em;
+    }
+    .filter-button {
+        margin-top: 10px;
+        text-align: right;
+    }
+    .error-checkbox label {
+        cursor: pointer;
+    }
+
+    /* Numeric filter styling */
+    .numeric-filter-row {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 5px;
+        align-items: center;
+    }
+    .numeric-filter-row select {
+        flex: 2;
+        padding: 4px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+    .numeric-filter-row input[type="number"] {
+        flex: 1;
+        padding: 4px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+    .between-row {
+        margin-top: 5px;
+        display: flex;
+        gap: 5px;
+        align-items: center;
+    }
+    .between-row span {
+        width: 30px;
+        text-align: center;
+    }
+    .percentile-row {
+        margin-top: 5px;
+        color: #666;
+        font-size: 0.9em;
+        font-style: italic;
+    }
+    .filter-button button {
+        margin-left: 5px;
+        padding: 4px 8px;
+        background-color: #f8f8f8;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    .filter-button button:hover {
+        background-color: #e8e8e8;
+    }
+</style>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchForm = document.getElementById('search-form');
+        const searchInputs = searchForm.querySelectorAll('input[type="text"]');
+
+        searchInputs.forEach(input => {
+            input.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    let url = new URL(window.location.href);
+                    const paramName = this.name;
+                    url.searchParams.set(paramName, this.value);
+                    window.location.href = url.href;
+                }
+            });
+        });
+
+        // Setup numeric filter operators to show/hide the second value input
+        document.querySelectorAll('select[name$="_op"]').forEach(select => {
+            select.addEventListener('change', function() {
+                const column = this.name.replace('_op', '');
+                const betweenRow = document.getElementById(`${column}_between_row`);
+                const percentileInfo = document.getElementById(`${column}_percentile_info`);
+
+                // Hide both specialized rows first
+                betweenRow.style.display = 'none';
+                percentileInfo.style.display = 'none';
+
+                // Then show the appropriate one based on selected operation
+                if (this.value === 'between') {
+                    betweenRow.style.display = 'flex';
+                } else if (this.value === 'percentile_gt' || this.value === 'percentile_lt') {
+                    percentileInfo.style.display = 'block';
+
+                    // Update the helper text based on the type of percentile
+                    const infoText = this.value === 'percentile_gt'
+                        ? 'Show values in the top N% (e.g., 10 for top 10%)'
+                        : 'Show values in the bottom N% (e.g., 25 for bottom 25%)';
+                    percentileInfo.querySelector('.percentile-info').textContent = infoText;
+                }
+            });
+        });
+
+        document.querySelector('details').addEventListener('toggle', function() {
+            if (this.open) {
+                let query = {% if generated_sql %}"{{ generated_sql }}"{% else %}"SELECT * FROM {{ table_name }} LIMIT 1000"{% endif %};
+                let url = '/explain-query?query=' + encodeURIComponent(query);
+
+                {% for column in columns %}
+                    {% if column_search_queries and column in column_search_queries %}
+                        url += '&{{ column }}_search=' + encodeURIComponent("{{ column_search_queries[column] }}");
+                    {% endif %}
+                {% endfor %}
+
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            document.getElementById('explain-query-result').innerText = 'Error: ' + data.error;
+                        } else {
+                            let tableHTML = '<table class="data-table">';
+                            tableHTML += '<thead><tr><th>id</th><th>parent</th><th>notused</th><th>detail</th></tr></thead>';
+                            tableHTML += '<tbody>';
+                            data.forEach(row => {
+                                tableHTML += `<tr><td>${row.id}</td><td>${row.parent}</td><td>${row.notused}</td><td>${row.detail}</td></tr>`;
+                            });
+                            tableHTML += '</tbody></table>';
+                            document.getElementById('explain-query-result').innerHTML = tableHTML;
+                        }
+                    });
+            } else {
+                document.getElementById('explain-query-result').innerHTML = '';
+            }
+        });
+
+        document.getElementById('copy-chatbot').addEventListener('click', function(event) {
+            event.stopPropagation();
+            let query = {% if generated_sql %}"{{ generated_sql }}"{% else %}"SELECT * FROM {{ table_name }} LIMIT 1000"{% endif %};
+            let url = '/explain-query?query=' + encodeURIComponent(query);
+
+            {% for column in columns %}
+                {% if column_search_queries and column in column_search_queries %}
+                    url += '&{{ column }}_search=' + encodeURIComponent("{{ column_search_queries[column] }}");
+                {% endif %}
+            {% endfor %}
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error fetching explain query plan: ' + data.error);
+                    } else {
+                        let explainPlanText = '';
+                        data.forEach(row => {
+                            explainPlanText += `id: ${row.id}, parent: ${row.parent}, notused: ${row.notused}, detail: ${row.detail}\n`;
+                        });
+
+                        const chatbotText = `SQL Query:\n${query}\n\nExplain Query Plan:\n${explainPlanText}`;
+
+                        navigator.clipboard.writeText(chatbotText)
+                            .catch(err => console.error('Could not copy text: ', err));
+                    }
+                });
+        });
+    });
+
+    function toggleClassFilter(element) {
+        const dropdown = element.nextElementSibling;
+        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function checkAllClasses(checked) {
+        document.querySelectorAll('input[name="NE_CLASS_filter"]').forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+    }
+
+    function applyClassFilter() {
+        let url = new URL(window.location.href);
+        url.searchParams.delete('NE_CLASS_filter');
+        const selectedClasses = document.querySelectorAll('input[name="NE_CLASS_filter"]:checked');
+        selectedClasses.forEach(checkbox => {
+            url.searchParams.append('NE_CLASS_filter', checkbox.value);
+        });
+        window.location.href = url.href;
+    }
+
+    function toggleErrorFilter(element) {
+        const dropdown = element.nextElementSibling;
+        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function checkAllErrors(checked) {
+        document.querySelectorAll('input[name="ERROR_ID_filter"]').forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+        // When selecting all errors, uncheck the "No Errors Only" option
+        if (checked) {
+            document.getElementById('error_none').checked = false;
+        }
+    }
+
+    function filterNoErrors() {
+        // Uncheck all specific error codes and check the "No Errors Only" option
+        document.querySelectorAll('input[name="ERROR_ID_filter"]').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        document.getElementById('error_none').checked = true;
+        applyErrorFilter();
+    }
+
+    function applyErrorFilter() {
+        let url = new URL(window.location.href);
+        url.searchParams.delete('ERROR_ID_filter');
+        url.searchParams.delete('filter_no_errors');
+
+        // Handle the "No Errors Only" checkbox
+        const noErrorsCheckbox = document.getElementById('error_none');
+        if (noErrorsCheckbox.checked) {
+            url.searchParams.set('filter_no_errors', 'true');
+        } else {
+            // Only collect selected error codes if "No Errors Only" is not checked
+            const selectedErrors = document.querySelectorAll('input[name="ERROR_ID_filter"]:checked');
+            selectedErrors.forEach(checkbox => {
+                url.searchParams.append('ERROR_ID_filter', checkbox.value);
+            });
+        }
+
+        window.location.href = url.href;
+    }
+
+    function toggleNumericFilter(element) {
+        const dropdown = element.nextElementSibling;
+        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function applyNumericFilter(column) {
+        let url = new URL(window.location.href);
+
+        // Remove existing numeric filters for this column
+        url.searchParams.delete(`${column}_op`);
+        url.searchParams.delete(`${column}_val1`);
+        url.searchParams.delete(`${column}_val2`);
+
+        const operation = document.getElementById(`${column}_op`).value;
+        const value1 = document.getElementById(`${column}_val1`).value;
+
+        if (operation && value1) {
+            url.searchParams.set(`${column}_op`, operation);
+            url.searchParams.set(`${column}_val1`, value1);
+
+            // If the operation is 'between', we need a second value
+            if (operation === 'between') {
+                const value2 = document.getElementById(`${column}_val2`).value;
+                if (value2) {
+                    url.searchParams.set(`${column}_val2`, value2);
+                }
+            }
+
+            // For percentile operations, validate the input is between 0 and 100
+            if (operation === 'percentile_gt' || operation === 'percentile_lt') {
+                const percentile = parseFloat(value1);
+                if (percentile < 0 || percentile > 100 || isNaN(percentile)) {
+                    alert('Percentile value must be between 0 and 100');
+                    return;
+                }
+            }
+
+            window.location.href = url.href;
+        } else {
+            alert('Please select an operation and enter a value.');
+        }
+    }
+
+    function clearNumericFilter(column) {
+        let url = new URL(window.location.href);
+        url.searchParams.delete(`${column}_op`);
+        url.searchParams.delete(`${column}_val1`);
+        url.searchParams.delete(`${column}_val2`);
+        window.location.href = url.href;
+    }
+
+    function updateOverlapFilter(checkbox) {
+        let url = new URL(window.location.href);
+        url.searchParams.set('show_overlap', checkbox.checked);
+        window.location.href = url.href;
+    }
+</script>
+{% endblock %}

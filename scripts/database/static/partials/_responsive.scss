@@ -1,0 +1,60 @@
+// Mobile-first responsive breakpoints
+@media (max-width: $breakpoint-sm) {
+    .content-wrapper {
+        padding: $padding-base;
+    }
+
+    .grid, .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .flex {
+        flex-direction: column;
+
+        &.flex-sm-row {
+            flex-direction: row;
+        }
+    }
+
+    .filter-section {
+        margin-bottom: $margin-base;
+    }
+}
+
+@media (max-width: $breakpoint-md) {
+    .card-grid {
+        grid-template-columns: repeat(auto-fit, minmax(100%, 1fr));
+    }
+
+    .sankey-diagram-container {
+        min-height: 300px;
+    }
+
+    .filter-panel {
+        .filter-actions {
+            flex-direction: column;
+            gap: $gap-sm;
+
+            button {
+                width: 100%;
+            }
+        }
+    }
+}
+
+@media (max-width: $breakpoint-lg) {
+    .visualization-container {
+        overflow-x: auto;
+    }
+}
+
+// Print styles
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    .visualization-container {
+        break-inside: avoid;
+    }
+}

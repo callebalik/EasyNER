@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Indexes{% endblock %}
+
+{% block content %}
+    <h1>Database Indexes</h1>
+
+    {% if indexes %}
+        {% for table_name, index_list in indexes.items() %}
+            <h2>{{ table_name }}</h2>
+
+            {% set indexed_columns = [] %}
+            {% for index in index_list %}
+                {% for column in index.columns %}
+                    {% if column not in indexed_columns %}
+                        {% set _ = indexed_columns.append(column) %}
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+
+            <div class="table-index-grid">
+                <div class="table-schema">
+                    <h3>Table Schema</h3>
+                    {% if table_schemas[table_name] %}
+                    <ul>
+                        {% for column in table_schemas[table_name] %}
+                        <li {% if column.name in indexed_columns %}class="indexed"{% endif %}>
+                            <b>{{ column.name }}</b> ({{ column.type }})
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p>Could not retrieve table schema.</p>
+                    {% endif %}
+                </div>
+
+                <div class="table-indexes">
+                    <h3>Indexes</h3>
+                    {% if index_list %}
+                        <ul>
+                        {% for index in index_list %}
+                            <li>
+                                <b>{{ index.name }}</b>
+                                {% if index.columns %}
+                                (Columns: {{ ', '.join(index.columns) }})
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p>No indexes found for this table.</p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No indexes found.</p>
+    {% endif %}
+{% endblock %}

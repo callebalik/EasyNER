@@ -1,0 +1,134 @@
+// Form components
+form {
+    margin-bottom: $margin-lg;
+}
+
+.form-group {
+    margin-bottom: $margin-base;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+
+    label {
+        display: block;
+        margin-bottom: $margin-xs;
+        color: $text-dark;
+        font-weight: 500;
+    }
+
+    .help-text {
+        display: block;
+        margin-top: $margin-xs;
+        font-size: $small-font-size;
+        color: $text-muted;
+    }
+}
+
+// Input styles
+input[type="text"],
+input[type="number"],
+input[type="search"],
+input[type="password"],
+textarea,
+select {
+    width: 100%;
+    padding: $padding-base;
+    border: 1px solid $border-color;
+    border-radius: $border-radius;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: 1.5;
+    transition: border-color $transition-quick;
+
+    &:focus {
+        outline: none;
+        border-color: $primary-color;
+        box-shadow: 0 0 0 2px rgba($primary-color, 0.1);
+    }
+
+    &:disabled {
+        background-color: $background-lighter;
+        cursor: not-allowed;
+    }
+
+    &.error {
+        border-color: $error-color;
+        background-color: $error-light;
+    }
+}
+
+// Range inputs
+input[type="range"] {
+    width: 100%;
+    margin: $margin-xs 0;
+
+    &::-webkit-slider-runnable-track {
+        height: $range-track-height;
+        background: $border-color;
+        border-radius: $range-track-height;
+    }
+
+    &::-webkit-slider-thumb {
+        width: $range-handle-size;
+        height: $range-handle-size;
+        background: $primary-color;
+        border: none;
+        border-radius: 50%;
+        margin-top: -4px;
+        cursor: pointer;
+    }
+}
+
+// Checkboxes and radio buttons
+input[type="checkbox"],
+input[type="radio"] {
+    margin-right: $margin-xs;
+}
+
+// Form validation states
+.has-error {
+    .form-control {
+        border-color: $error-color;
+    }
+
+    .help-text {
+        color: $error-color;
+    }
+}
+
+// Form layout variations
+.form-inline {
+    display: flex;
+    align-items: center;
+    gap: $gap-base;
+
+    .form-group {
+        margin-bottom: 0;
+        flex: 1;
+    }
+}
+
+.form-horizontal {
+    .form-group {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: $gap-base;
+        align-items: start;
+
+        label {
+            margin-bottom: 0;
+            padding-top: $padding-xs;
+        }
+    }
+}
+
+// Form actions
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: $gap-base;
+    margin-top: $margin-lg;
+    padding-top: $padding-base;
+    border-top: 1px solid $border-color;
+}

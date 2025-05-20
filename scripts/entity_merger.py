@@ -141,6 +141,7 @@ def run_entity_merger(merger_config: dict):
     entities = merger_config["entities"]
     output_folder = merger_config["output_path"]
     output_prefix = merger_config["output_prefix"]
+    skip_existing = merger_config.get("skip_existing", False)  # New config option
     os.makedirs(output_folder, exist_ok=True)
 
     file_lists = {

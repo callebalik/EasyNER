@@ -1,0 +1,56 @@
+entity_type,entity_text,error_id
+DIS,fires,MISLAB
+DIS,fire,MISLAB
+DIS,forrest fire,MISLAB
+DIS,forrest fires,MISLAB
+DIS,earthquake,MISLAB
+DIS,earthquakes,MISLAB
+DIS,drought,MISLAB
+DIS,droughts,MISLAB
+DIS,flood,MISLAB
+DIS,floods,MISLAB
+DIS,tsunami,MISLAB
+DIS,tsunamis,MISLAB
+DIS,eutrophication,MISLAB
+DIS,water eutrophication,MISLAB
+DIS,landslide,MISLAB
+DIS,soil erosion,MISLAB
+DIS,air pollution,MISLAB
+DIS,hurricane,MISLAB
+PNM,current,AMBIG
+PNM,currents,AMBIG
+PNM,haziness,AMBIG
+PNM,waves,AMBIG
+PNM,wave,AMBIG
+PNM,precipitation,AMBIG
+PNM,precipitations,AMBIG
+PNM,stream,AMBIG
+PNM,streams,AMBIG
+DIS,%,MISLAB
+DIS,&,MISLAB
+DIS,fhalp,MISLAB
+DIS,pc - 10,MISLAB
+DIS,smg,MISLAB
+PNM,climate,AMBIG
+DIS,( b,MISLAB
+PNM,smoke,AMBIG
+DIS,nepal earthquake,MISLAB
+PNM,smokes,MISLAB
+PNM,climates,AMBIG
+PNM,ice,AMBIG
+PNM,tumurs,MISLAB
+PNM,fire,AMBIG
+PNM,gloves,AMBIG
+DIS,forest degradation,MISLAB
+DIS,disaster,MISLAB
+DIS,disasters, AMBIG
+PNM,swell,AMBIG
+PNM,low-pressure system, AMBIG
+PNM,high-pressure system, AMBIG
+DIS,house loss, MISLAB
+DIS,terrorism, MISLAB
+PNM,showers,AMBIG
+PNM,fog,AMBIG
+DIS,fog,AMBIG
+PNM,high temperature,AMBIG
+PNM,high temperatures,AMBIG

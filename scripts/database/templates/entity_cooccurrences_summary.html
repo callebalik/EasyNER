@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Entity Co-occurrences Summary{% endblock %}
+
+{% block content %}
+    <h1>Entity Co-occurrences Summary</h1>
+    <div class="cooccurrences-controls">
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="include-self" checked> Exclude self co-occurrences
+            </label>
+        </div>
+        <div class="control-group">
+            <label for="entity1-type">Entity 1 Type:</label>
+            <select id="entity1-type">
+                <option value="">All</option>
+            </select>
+            <label for="entity2-type">Entity 2 Type:</label>
+            <select id="entity2-type">
+                <option value="">All</option>
+            </select>
+        </div>
+    </div>
+    <div id="total-count"></div>
+    <div id="table-view" class="view"></div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            let currentPage = 1;
+
+            // Load entity types for filters
+            $.get('/named-entities/types').done(function(data) {
+                const types = data.types;
+                const typeOptions = types.map(type =>
+                    `<option value="${type.id}">${type.named_entity}</option>`
+                ).join('');
+
+                $('#entity1-type').append(typeOptions);
+                $('#entity2-type').append(typeOptions);
+            });
+
+            function loadTable(page) {
+                const params = {
+                    page: page,
+                    include_self: !$('#include-self').prop('checked'),
+                    entity1_type: $('#entity1-type').val(),
+                    entity2_type: $('#entity2-type').val()
+                };
+
+                $.get('/entity-cooccurrences/summary/table', params).done(function(data) {
+                    $('#total-count').text(`Total co-occurrences: ${data.total}`);
+
+                    const table = $('<table class="data-table">').append(
+                        $('<thead>').append(
+                            $('<tr>').append(
+                                $('<th>').text('Entity 1'),
+                                $('<th>').text('Entity 2'),
+                                $('<th>').text('Document Freq.'),
+                                $('<th>').text('Document Norm.'),
+                                $('<th>').text('Sentence Freq.'),
+                                $('<th>').text('Sentence Norm.')
+                            )
+                        )
+                    );
+
+                    const tbody = $('<tbody>');
+                    data.summaries.forEach(summary => {
+                        tbody.append(
+                            $('<tr>').append(
+                                $('<td>').append(
+                                    $('<div>')
+                                        .text(summary.entity1_text)
+                                        .attr('title', `ID: ${summary.e1_id_normalized}`),
+                                    $('<div>')
+                                        .addClass('entity-type')
+                                        .text(summary.entity1_type)
+                                ),
+                                $('<td>').append(
+                                    $('<div>')
+                                        .text(summary.entity2_text)
+                                        .attr('title', `ID: ${summary.e2_id_normalized}`),
+                                    $('<div>')
+                                        .addClass('entity-type')
+                                        .text(summary.entity2_type)
+                                ),
+                                $('<td class="numeric">').text(summary.fq_document_level || '0'),
+                                $('<td class="numeric">').text(
+                                    summary.fq_document_level_normalized
+                                        ? summary.fq_document_level_normalized.toFixed(4)
+                                        : '0.0000'
+                                ),
+                                $('<td class="numeric">').text(summary.fq_sentence_level || '0'),
+                                $('<td class="numeric">').text(
+                                    summary.fq_sentence_level_normalized
+                                        ? summary.fq_sentence_level_normalized.toFixed(4)
+                                        : '0.0000'
+                                )
+                            )
+                        );
+                    });
+
+                    table.append(tbody);
+                    $('#table-view').empty().append(table);
+
+                    if (data.has_more) {
+                        $('#table-view').append(
+                            $('<button>')
+                                .addClass('load-more-button')
+                                .text('Load More')
+                                .click(() => loadTable(page + 1))
+                        );
+                    }
+                });
+            }
+
+            function reloadTable() {
+                currentPage = 1;
+                loadTable(currentPage);
+            }
+
+            $('#include-self').change(reloadTable);
+            $('#entity1-type').change(reloadTable);
+            $('#entity2-type').change(reloadTable);
+
+            // Initial load
+            loadTable(currentPage);
+        });
+    </script>
+{% endblock %}

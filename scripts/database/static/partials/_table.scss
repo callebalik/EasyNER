@@ -1,0 +1,452 @@
+@import 'variables';
+
+/* Styling for table elements */
+.entity-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 2rem;
+
+}
+.entity-table th, .entity-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+.entity-table th {
+    background-color: #f2f2f2;
+    text-align: left;
+}
+
+.table-section {
+    @extend %section-card;
+
+    h2 {
+        @extend %section-header;
+    }
+}
+
+.tables-grid {
+    @extend %grid-layout;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.table-card {
+    @extend %hover-card;
+
+    h3 {
+        margin: 0 0 10px 0;
+        color: $primary-color;
+    }
+
+    details {
+        margin-top: 10px;
+
+        summary {
+            cursor: pointer;
+            color: $secondary-color;
+        }
+
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+            color: $secondary-color;
+
+            li {
+                padding: 2px 0;
+                font-family: monospace;
+            }
+        }
+    }
+}
+
+// Generic data table styling
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid $border-color;
+    margin: 1em 0;
+
+    th {
+        color: $text-color;
+        padding: $base-padding;
+        text-align: left;
+        border: 1px solid $border-color;
+        position: relative;
+
+        input[type="text"] {
+            display: block;
+            width: calc(100% - 16px);
+            margin-top: 5px;
+            padding: 4px 8px;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+            font-size: $small-font-size;
+
+            &:focus {
+                border-color: $primary-color;
+                outline: none;
+                box-shadow: 0 0 0 2px rgba($primary-color, 0.2);
+            }
+        }
+
+        .sort-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: inherit;
+            text-decoration: none;
+            position: relative;
+            padding-right: 1.5rem;
+
+            &::after {
+                content: '↕';
+                position: absolute;
+                right: 0.5rem;
+                opacity: 0.5;
+            }
+
+            &:hover {
+                color: $primary-color;
+
+                &::after {
+                    opacity: 1;
+                }
+            }
+
+            &.sorted-asc::after {
+                content: '↑';
+                opacity: 1;
+            }
+
+            &.sorted-desc::after {
+                content: '↓';
+                opacity: 1;
+            }
+        }
+    }
+
+    td {
+        padding: $base-padding;
+        border: 1px solid $border-color;
+        border-bottom: 1px solid $border-color;
+
+        a {
+            color: $primary-color;
+            text-decoration: none;
+
+            &:hover {
+                text-decoration: underline;
+            }
+        }
+    }
+
+    tr:nth-child(even) {
+        background-color: $background-lighter;
+    }
+
+    tr:hover {
+        background: lighten($primary-color, 45%);
+    }
+
+    .numeric {
+        text-align: right;
+        font-family: monospace;
+    }
+
+    .text-center {
+        text-align: center;
+    }
+
+    .entity-text {
+        font-family: monospace;
+        min-width: 200px;
+    }
+}
+
+// Search inputs in tables
+#search-form {
+    margin-bottom: $base-margin;
+
+    input[type="text"] {
+        padding: 5px;
+        border: 1px solid $border-color;
+        border-radius: $border-radius;
+        width: 100%;
+        font-size: $small-font-size;
+        margin-top: 5px;
+
+        &:focus {
+            border-color: $primary-color;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba($primary-color, 0.2);
+        }
+    }
+}
+
+// Details/summary for explain query
+details {
+    border: 1px solid $border-color;
+    padding: 10px;
+    margin: $base-margin 0;
+    border-radius: $border-radius;
+
+    summary {
+        cursor: pointer;
+        font-weight: bold;
+        padding: 5px;
+
+        &:hover {
+            color: $primary-color;
+        }
+
+        #copy-chatbot {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+            margin-left: 0.5em;
+            vertical-align: middle;
+            padding: 0.25em;
+            color: $text-light;
+
+            &:hover {
+                color: $primary-color;
+            }
+        }
+    }
+
+    #explain-query-result {
+        margin-top: 10px;
+        padding: 10px;
+        background: $background-lighter;
+        border-radius: $border-radius;
+
+        .data-table {
+            margin: 0;
+        }
+    }
+}
+
+// Copy button styling
+.copy-chatbot {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1em;
+    margin-left: 0.5em;
+    vertical-align: middle;
+    padding: 0.25em;
+    color: $text-light;
+
+    &:hover {
+        color: $primary-color;
+    }
+
+    i {
+        pointer-events: none;
+    }
+}
+
+// Pagination
+.load-more-button, .pagination-link {
+    display: inline-block;
+    margin-top: 1em;
+    padding: $base-padding 16px;
+    background: $primary-color;
+    color: white;
+    border: none;
+    border-radius: $border-radius;
+    cursor: pointer;
+    text-decoration: none;
+
+    &:hover {
+        background: $primary-dark;
+    }
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 2rem;
+
+    .page-info {
+        color: $text-light;
+        font-size: $small-font-size;
+    }
+}
+
+// Numeric filter styling
+.numeric-filter {
+    position: relative;
+    margin-top: 5px;
+
+    .filter-toggle {
+        cursor: pointer;
+        padding: 2px 5px;
+        border: 1px solid $border-color;
+        border-radius: $border-radius;
+        display: inline-block;
+        font-size: 0.8em;
+        background-color: $background-light;
+
+        &:hover {
+            background-color: darken($background-light, 5%);
+        }
+    }
+
+    .numeric-filter-dropdown {
+        display: none;
+        position: absolute;
+        left: 0;
+        top: 100%;
+        background: white;
+        border: 1px solid $border-color;
+        padding: 15px;
+        z-index: 1000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-radius: $border-radius;
+        width: 300px;
+
+        .numeric-filter-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            align-items: center;
+
+            select {
+                flex: 2;
+                padding: 6px;
+                border: 1px solid $border-color;
+                border-radius: $border-radius;
+                background: white;
+                font-size: 0.9em;
+
+                &:focus {
+                    border-color: $primary-color;
+                    outline: none;
+                }
+            }
+
+            input[type="number"] {
+                flex: 1;
+                padding: 6px;
+                border: 1px solid $border-color;
+                border-radius: $border-radius;
+                font-size: 0.9em;
+
+                &:focus {
+                    border-color: $primary-color;
+                    outline: none;
+                }
+            }
+        }
+
+        .percentile-row {
+            font-style: italic;
+            color: $text-light;
+            margin: 8px 0;
+            font-size: 0.9em;
+        }
+
+        .between-row {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            span {
+                color: $text-light;
+            }
+        }
+
+        .stats-container {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid $border-color;
+            font-size: 0.9em;
+
+            .stats-header {
+                font-weight: bold;
+                margin-bottom: 8px;
+                color: $text-color;
+            }
+
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+                margin-bottom: 12px;
+
+                .stat-item {
+                    background: $background-lighter;
+                    padding: 6px;
+                    border-radius: $border-radius;
+
+                    .stat-label {
+                        font-size: 0.8em;
+                        color: $text-light;
+                    }
+
+                    .stat-value {
+                        font-weight: bold;
+                        color: $text-color;
+                    }
+                }
+            }
+
+            .distribution-chart {
+                margin-top: 15px;
+                padding: 10px;
+                background: $background-lighter;
+                border-radius: $border-radius;
+                height: 150px;
+
+                canvas {
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+
+            .percentile-markers {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 5px;
+                font-size: 0.8em;
+                color: $text-light;
+            }
+        }
+    }
+
+    .filter-button {
+        margin-top: 12px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+
+        button {
+            padding: 6px 12px;
+            border: 1px solid $border-color;
+            border-radius: $border-radius;
+            background: white;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+
+            &:hover {
+                background: $background-lighter;
+                border-color: darken($border-color, 10%);
+            }
+
+            &:first-child {
+                background: $primary-color;
+                color: white;
+                border-color: $primary-color;
+
+                &:hover {
+                    background: darken($primary-color, 5%);
+                }
+            }
+        }
+    }
+}

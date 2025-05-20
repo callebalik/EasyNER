@@ -1,0 +1,67 @@
+{
+    "('disease1', 'phenomenon1')": [
+        {
+            "pmid": "1",
+            "sentences": [
+                "[1] Sentence with disease1 and phenomenon1.",
+                "[1] Another sentence with disease1 and phenomenon1.",
+                "[1] Sentence with disease1, disease2 and phenomenon1.",
+                "[1] Sentence with disease1, disease1, phenomenon1 and phenomenon2."
+            ]
+        },
+        {
+            "pmid": "2",
+            "sentences": [
+                "[2] Yet another sentence with disease1 and phenomenon1.",
+                "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2."
+            ]
+        }
+    ],
+    "('disease1', 'phenomenon2')": [
+        {
+            "pmid": "1",
+            "sentences": [
+                "[1] Sentence with disease1, disease1, phenomenon1 and phenomenon2."
+            ]
+        },
+        {
+            "pmid": "2",
+            "sentences": [
+                "[2] Sentence with disease1 and phenomenon2.",
+                "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2."
+            ]
+        }
+    ],
+    "('disease2', 'phenomenon1')": [
+        {
+            "pmid": "1",
+            "sentences": [
+                "[1] Sentence with disease1, disease2 and phenomenon1."
+            ]
+        }
+    ],
+    "('disease2', 'phenomenon2')": [
+        {
+            "pmid": "1",
+            "sentences": [
+                "[1] Sentence with disease2 and phenomenon2."
+            ]
+        }
+    ],
+    "('disease3', 'phenomenon1')": [
+        {
+            "pmid": "2",
+            "sentences": [
+                "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2."
+            ]
+        }
+    ],
+    "('disease3', 'phenomenon2')": [
+        {
+            "pmid": "2",
+            "sentences": [
+                "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2."
+            ]
+        }
+    ]
+}

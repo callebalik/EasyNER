@@ -1,0 +1,28 @@
+.error-message,
+.empty-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    text-align: center;
+    border-radius: $border-radius;
+    margin: 10px 0;
+    font-size: 0.9em;
+
+    i {
+        font-size: 1.2em;
+    }
+}
+
+.error-message {
+    background-color: $error-light;
+    border: 1px solid $error-border;
+    color: $error-color;
+}
+
+.empty-message {
+    background-color: $background-lighter;
+    border: 1px solid $border-color;
+    color: $text-light;
+}

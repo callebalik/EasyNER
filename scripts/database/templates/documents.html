@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+
+{% block title %}Documents{% endblock %}
+
+{% block head %}
+<style>
+    .search-box {
+        margin-bottom: 2rem;
+    }
+    .search-box input[type="text"] {
+        padding: 0.5rem;
+        width: 300px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin-right: 0.5rem;
+    }
+    .search-box button {
+        padding: 0.5rem 1rem;
+        background: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .document-item {
+        background: white;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .document-item:hover {
+        border-color: #2196f3;
+    }
+    .document-item h3 {
+        margin: 0 0 0.5rem 0;
+    }
+    .document-item h3 a {
+        color: #2196f3;
+        text-decoration: none;
+    }
+    .document-meta {
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .load-more {
+        display: inline-block;
+        margin: 1rem 0;
+        padding: 0.5rem 1rem;
+        background: #f5f5f5;
+        color: #666;
+        text-decoration: none;
+        border-radius: 4px;
+    }
+    .load-more:hover {
+        background: #e0e0e0;
+    }
+    .search-form {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    .search-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .search-group label {
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .search-group input[type="number"] {
+        width: 100px;
+    }
+    .entity-filters {
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-radius: 4px;
+    }
+    .entity-filters h3 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1rem;
+        color: #666;
+    }
+    .entity-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .entity-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <h1>Documents</h1>
+    
+    <div class="search-box">
+        <form method="GET" action="/documents" class="search-form">
+            <div class="search-group">
+                <label for="query">Title:</label>
+                <input type="text" 
+                       id="query"
+                       name="query" 
+                       placeholder="Search by title..." 
+                       value="{{ query }}">
+            </div>
+            <div class="search-group">
+                <label for="doc_id">Document ID:</label>
+                <input type="number" 
+                       id="doc_id"
+                       name="doc_id" 
+                       placeholder="Filter by ID"
+                       value="{{ doc_id if doc_id else '' }}"
+                       min="1">
+            </div>
+            {% if entities %}
+            <div class="entity-filters">
+                <h3>Filter by entities:</h3>
+                <div class="entity-list">
+                    {% for entity_id, entity_name in entities %}
+                    <label class="entity-checkbox">
+                        <input type="checkbox" 
+                               name="entities" 
+                               value="{{ entity_id }}"
+                               {% if entity_id|string in selected_entities %}checked{% endif %}>
+                        {{ entity_name }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            <button type="submit">Search</button>
+        </form>
+    </div>
+
+    <div class="documents-list">
+        {% for doc in documents %}
+            <div class="document-item">
+                <h3>
+                    <a href="/document/{{ doc.id }}">{{ doc.title }}</a>
+                </h3>
+                <div class="document-meta">
+                    <span>ID: {{ doc.id }}</span>
+                    <span>Words: {{ doc.word_count }}</span>
+                </div>
+            </div>
+        {% else %}
+            <p>No documents found.</p>
+        {% endfor %}
+    </div>
+
+    {% if has_more %}
+        <a href="/documents?page={{ page + 1 }}{% if query %}&query={{ query }}{% endif %}{% if doc_id %}&doc_id={{ doc_id }}{% endif %}{% for entity in selected_entities %}&entities={{ entity }}{% endfor %}" 
+           class="load-more">
+            Load more documents
+        </a>
+    {% endif %}
+{% endblock %}

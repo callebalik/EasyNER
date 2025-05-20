@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer Tools - Server Reload</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .reload-container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-running {
+            background-color: #28a745;
+        }
+        .status-error {
+            background-color: #dc3545;
+        }
+        .status-reloading {
+            background-color: #ffc107;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+        .module-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 10px 0;
+            background: #fff;
+            border-radius: 4px;
+        }
+        .btn-reload {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn-reload:hover {
+            background-color: #0069d9;
+        }
+        .btn-reload:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .log-container {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background: #f8f9fa;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .log-entry {
+            margin: 4px 0;
+            padding: 2px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .log-success {
+            color: #28a745;
+        }
+        .log-error {
+            color: #dc3545;
+        }
+        .log-info {
+            color: #17a2b8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>EasyNer Developer Tools</h1>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/tables">Tables</a></li>
+                <li><a href="/views">Views</a></li>
+                <li><a href="/dev/reload" class="active">Reload Server</a></li>
+                <li><a href="/dev/monitor">Statistics</a></li>
+            </ul>
+        </nav>
+
+        <div class="reload-container">
+            <h2>Server Reload</h2>
+            <p>
+                This tool allows you to reload the server modules without restarting the process.
+                Use this during development to apply code changes quickly.
+            </p>
+
+            <div class="server-status">
+                <h3>Server Status</h3>
+                <p>
+                    <span class="status-indicator status-running" id="status-indicator"></span>
+                    <span id="status-text">{{ server_status }}</span>
+                </p>
+                <p>Loaded modules: {{ modules_count }}</p>
+            </div>
+
+            <button id="reload-btn" class="btn-reload">Reload Server Modules</button>
+
+            <div class="log-container" id="log-container">
+                <div class="log-entry log-info">Ready to reload. Click the button to refresh server modules.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const reloadBtn = document.getElementById('reload-btn');
+            const statusIndicator = document.getElementById('status-indicator');
+            const statusText = document.getElementById('status-text');
+            const logContainer = document.getElementById('log-container');
+
+            function addLogEntry(message, type = 'info') {
+                const logEntry = document.createElement('div');
+                logEntry.className = `log-entry log-${type}`;
+                logEntry.textContent = message;
+                logContainer.appendChild(logEntry);
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+
+            reloadBtn.addEventListener('click', function() {
+                // Disable button during reload
+                reloadBtn.disabled = true;
+
+                // Update status indicator
+                statusIndicator.className = 'status-indicator status-reloading';
+                statusText.textContent = 'Reloading...';
+
+                addLogEntry('Sending reload request to server...', 'info');
+
+                // Send reload request
+                fetch('/reload-server', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({}),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        statusIndicator.className = 'status-indicator status-running';
+                        statusText.textContent = 'Running';
+                        addLogEntry(`${data.message}`, 'success');
+                    } else {
+                        statusIndicator.className = 'status-indicator status-error';
+                        statusText.textContent = 'Error';
+                        addLogEntry(`Failed to reload: ${data.message}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    statusIndicator.className = 'status-indicator status-error';
+                    statusText.textContent = 'Error';
+                    addLogEntry(`Error: ${error.message}`, 'error');
+                })
+                .finally(() => {
+                    // Re-enable button
+                    reloadBtn.disabled = false;
+                });
+            });
+        });
+    </script>
+</body>
+</html>

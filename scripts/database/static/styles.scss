@@ -1,0 +1,25 @@
+// Import base variables and mixins first
+@import 'partials/variables';
+@import 'partials/loading';
+@import 'partials/states';
+
+// Base styles
+@import 'partials/base';
+
+// Import tables partial
+@import 'partials/tables';
+
+// Component styles
+@import 'partials/table';
+@import 'partials/entity';
+@import 'partials/document';
+@import 'partials/cooccurrences';
+@import 'partials/stats';
+@import 'partials/indexes';
+@import 'partials/numeric_filters';
+@import 'partials/value_bars';  // Add value bars component
+@import 'partials/sankey';  // Add the new Sankey styles
+@import 'partials/clear_cache_button';
+
+// Error handling styles
+@import 'partials/error';

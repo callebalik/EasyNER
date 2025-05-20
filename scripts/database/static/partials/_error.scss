@@ -1,0 +1,36 @@
+@import 'variables';
+
+/* Styling for error messages */
+.error {
+    color: red;
+    font-weight: bold;
+}
+
+.error-message {
+    background-color: lighten($error-color, 45%);
+    border: 1px solid $error-color;
+    color: darken($error-color, 10%);
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: $border-radius;
+
+    h2 {
+        color: $error-color;
+        margin-top: 0;
+    }
+}
+
+.warning-message {
+    background-color: #fff3cd;
+    border: 1px solid #ffeeba;
+    color: $warning-color;
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: $border-radius;
+}
+
+.validation-error {
+    color: $error-color;
+    font-size: 0.9em;
+    margin-top: 0.25rem;
+}

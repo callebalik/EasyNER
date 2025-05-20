@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% block title %}{% endblock %} - EasyNer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-content">
+            <div class="nav-left">
+                <div class="nav-group">
+                    <a href="{{ url_for('home') }}">Home</a>
+                    <a href="{{ url_for('health_check') }}">Health Check</a>
+                </div>
+                <div class="nav-group">
+                    <a href="{{ url_for('list_documents') }}">Documents</a>
+                    <a href="{{ url_for('list_named_entity_classes') }}">Named Entities</a>
+                </div>
+                <div class="nav-group">
+                    <a href="{{ url_for('list_entity_occurrences') }}">Entity Occurrences</a>
+                    <a href="{{ url_for('list_aggregated_entity_occurrences') }}">Aggregated Entity Occurrences</a>
+                </div>
+                <div class="nav-group">
+                    <a href="{{ url_for('raw_cooccurrences') }}">Raw Co-occurrences</a>
+                    <a href="{{ url_for('summary_cooccurrences') }}">Summary Co-occurrences</a>
+                </div>
+                <div class="nav-group presentations-group">
+                    <a href="{{ url_for('dis_pnm_presentation') }}">DIS_PNM</a>
+                    <a href="{{ url_for('ne_presentation') }}">NE_PRESENTATION</a>
+                    <a href="{{ url_for('table_view', table_name='v_DIS_PNM_AGGR_ROW_FACTORY') }}">DIS_PNM_AGGR</a>
+                </div>
+                <div class="nav-group">
+                    <a href="{{ url_for('show_tables') }}">Tables</a>
+                    <a href="{{ url_for('show_indexes') }}">Indexes</a>
+                    <a href="{{ url_for('show_views') }}">Views</a>
+                </div>
+                <div class="nav-group">
+                    <a href="{{ url_for('database_stats.index') }}">Statistics Home</a>
+                    <a href="{{ url_for('database_stats.data_flowchart') }}">Entity Distribution</a>
+                </div>
+                <a href="{{ url_for('disease_phenomena.index') }}">Disease-Phenomena Sankey</a>
+            </div>
+            <div class="nav-right">
+                <div class="nav-group">
+                    <a href="{{ url_for('show_monitoring_status') }}">Developer Tools</a>
+                    <button onclick="openQueryModal()" class="query-button">SQL Query</button>
+                    <button id="reloadServerBtn" class="reload-button" title="Reload server modules">⟳</button>
+                    <button id="clearCacheBtn" class="clear-cache-button" title="Clear visualization cache">🗑️</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Query Modal -->
+    <div id="queryModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>SQL Query</h2>
+                <span class="close" onclick="closeQueryModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <textarea id="queryInput" placeholder="Enter your SELECT query here..." rows="6"></textarea>
+                <button onclick="executeQuery()" class="action-button">Execute Query</button>
+            </div>
+            <div id="queryResult" class="query-result">
+                <div id="queryMessage"></div>
+                <div id="queryTable" style="overflow-x: auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reload Confirmation Modal -->
+    <div id="reloadModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2>Reload Server</h2>
+                <span class="close" onclick="closeReloadModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="reloadConfirmation">
+                    <p>Are you sure you want to reload all server modules?</p>
+                    <p><strong>Note:</strong> This will refresh Python modules without restarting the server.</p>
+
+                    <div class="modal-buttons">
+                        <button onclick="closeReloadModal()" class="cancel-button">Cancel</button>
+                        <button onclick="reloadServer()" class="confirm-button">Reload Server</button>
+                    </div>
+                </div>
+
+                <div id="reloadStatus" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p id="reloadStatusMessage">Reloading modules...</p>
+                </div>
+
+                <div id="reloadResults" style="display: none;">
+                    <div class="reload-summary">
+                        <h3>Reload Summary</h3>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Attempted:</span>
+                                <span id="stats-attempted" class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item success">
+                                <span class="stat-label">Reloaded:</span>
+                                <span id="stats-reloaded" class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item warning">
+                                <span class="stat-label">Skipped:</span>
+                                <span id="stats-skipped" class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item error">
+                                <span class="stat-label">Failed:</span>
+                                <span id="stats-failed" class="stat-value">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="reload-details">
+                        <div class="tab-container">
+                            <div class="tab-buttons">
+                                <button class="tab-button active" data-tab="successful">Successful</button>
+                                <button class="tab-button" data-tab="skipped">Skipped</button>
+                                <button class="tab-button" data-tab="failed">Failed</button>
+                            </div>
+                            <div class="tab-content">
+                                <div class="tab-pane active" id="tab-successful">
+                                    <div class="module-list" id="successful-modules">
+                                        <p class="empty-message">No modules reloaded</p>
+                                    </div>
+                                </div>
+                                <div class="tab-pane" id="tab-skipped">
+                                    <div class="module-list" id="skipped-modules">
+                                        <p class="empty-message">No modules skipped</p>
+                                    </div>
+                                </div>
+                                <div class="tab-pane" id="tab-failed">
+                                    <div class="module-list" id="failed-modules">
+                                        <p class="empty-message">No modules failed</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-buttons">
+                        <button onclick="closeReloadModal()" class="cancel-button">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <style>
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+    }
+
+    .modal-content {
+        background-color: white;
+        margin: 5% auto;
+        padding: 20px;
+        border-radius: 8px;
+        width: 80%;
+        max-width: 1200px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .close {
+        color: #aaa;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .close:hover {
+        color: #555;
+    }
+
+    #queryInput {
+        width: 100%;
+        padding: 10px;
+        margin-bottom: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-family: monospace;
+        resize: vertical;
+    }
+
+    .query-result {
+        margin-top: 20px;
+        max-height: 50vh;
+        overflow-y: auto;
+    }
+
+    #queryMessage {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 4px;
+    }
+
+    #queryMessage.error {
+        background-color: #fee;
+        color: #c33;
+        border: 1px solid #fcc;
+    }
+
+    #queryMessage.success {
+        background-color: #efe;
+        color: #3c3;
+        border: 1px solid #cfc;
+    }
+
+    .query-button {
+        background: #4CAF50;
+        color: white;
+        border: none;
+        padding: 8px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        height: fit-content;  /* Ensure button height is based on content */
+        margin: auto 0;      /* Center vertically */
+    }
+
+    .query-button:hover {
+        background: #45a049;
+    }
+
+    .reload-button {
+        background: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 18px;
+        height: 36px;
+        width: 36px;
+        margin: auto 0 auto 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.3s ease;
+    }
+
+    .reload-button:hover {
+        background: #0b7dda;
+        transform: rotate(180deg);
+    }
+
+    .reload-button:active {
+        background: #0a67b3;
+    }
+
+    #queryTable table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+
+    #queryTable th, #queryTable td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+    }
+
+    #queryTable th {
+        background-color: #f5f5f5;
+        font-weight: bold;
+    }
+
+    #queryTable tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+
+    .nav {
+        background-color: #2196f3;  /* Using direct color instead of variable */
+        padding: 1rem;
+        margin: -20px -20px 2rem -20px;
+        color: white;
+    }
+
+    .nav-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;  /* Changed from flex-start to center */
+        max-width: 1200px;
+        margin: 0 auto;
+        min-height: 50px;  /* Added minimum height for consistency */
+    }
+
+    .nav-left {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        flex: 1;
+    }
+
+    .nav-right {
+        padding-left: 1rem;
+        display: flex;
+        align-items: center;
+        align-self: stretch;  /* Make it stretch to nav height */
+    }
+
+    .nav-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding: 0.5rem;
+        background: rgba(255,255,255,0.05);
+        border-radius: 6px;
+        min-width: 200px;
+    }
+
+    .modal-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+    }
+
+    .cancel-button {
+        background: #f1f1f1;
+        color: #333;
+        border: none;
+        padding: 8px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .confirm-button {
+        background: #2196f3;
+        color: white;
+        border: none;
+        padding: 8px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .cancel-button:hover {
+        background: #e1e1e1;
+    }
+
+    .confirm-button:hover {
+        background: #0b7dda;
+    }
+
+    .loading-spinner {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #2196f3;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 10px auto;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    #reloadStatusMessage {
+        text-align: center;
+        margin: 0;
+    }
+
+    #reloadStatus {
+        padding: 10px;
+        border-radius: 4px;
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+    }
+
+    /* Reload results styling */
+    .reload-summary {
+        margin-bottom: 20px;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 4px;
+        border: 1px solid #e9ecef;
+    }
+
+    .reload-summary h3 {
+        margin-top: 0;
+        margin-bottom: 10px;
+        color: #495057;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+    }
+
+    .stat-item {
+        padding: 10px;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        text-align: center;
+    }
+
+    .stat-label {
+        display: block;
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    .stat-value {
+        display: block;
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #495057;
+    }
+
+    .stat-item.success .stat-value {
+        color: #28a745;
+    }
+
+    .stat-item.warning .stat-value {
+        color: #ffc107;
+    }
+
+    .stat-item.error .stat-value {
+        color: #dc3545;
+    }
+
+    .reload-details {
+        margin-top: 20px;
+    }
+
+    .tab-container {
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+    }
+
+    .tab-buttons {
+        display: flex;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .tab-button {
+        padding: 10px 15px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        font-weight: 500;
+        color: #6c757d;
+    }
+
+    .tab-button:hover {
+        background-color: #f8f9fa;
+        color: #495057;
+    }
+
+    .tab-button.active {
+        border-bottom: 2px solid #2196f3;
+        color: #2196f3;
+    }
+
+    .tab-content {
+        padding: 15px;
+    }
+
+    .tab-pane {
+        display: none;
+    }
+
+    .tab-pane.active {
+        display: block;
+    }
+
+    .module-list {
+        max-height: 250px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 0.9rem;
+    }
+
+    .module-item {
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .module-item:last-child {
+        border-bottom: none;
+    }
+
+    .module-error {
+        color: #dc3545;
+        font-size: 0.85rem;
+        margin-left: 20px;
+        margin-top: 2px;
+        font-style: italic;
+    }
+
+    .empty-message {
+        color: #6c757d;
+        font-style: italic;
+        text-align: center;
+        padding: 20px;
+    }
+    </style>
+
+    <script>
+    function openQueryModal() {
+        document.getElementById('queryModal').style.display = 'block';
+        document.getElementById('queryInput').focus();
+    }
+
+    function closeQueryModal() {
+        document.getElementById('queryModal').style.display = 'none';
+    }
+
+    // Reload modal functions
+    function openReloadModal() {
+        document.getElementById('reloadModal').style.display = 'block';
+
+        // Reset the UI state when opening the modal
+        document.getElementById('reloadConfirmation').style.display = 'block';
+        document.getElementById('reloadStatus').style.display = 'none';
+        document.getElementById('reloadResults').style.display = 'none';
+
+        // Reset tab state
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelectorAll('.tab-pane').forEach(pane => {
+            pane.classList.remove('active');
+        });
+        document.querySelector('[data-tab="successful"]').classList.add('active');
+        document.getElementById('tab-successful').classList.add('active');
+    }
+
+    function closeReloadModal() {
+        document.getElementById('reloadModal').style.display = 'none';
+        // Reset UI state for future use
+        document.getElementById('reloadStatus').style.display = 'none';
+        document.getElementById('reloadStatusMessage').textContent = 'Reloading modules...';
+    }
+
+    function reloadServer() {
+        // Hide confirmation UI and show loading state
+        const reloadConfirmation = document.getElementById('reloadConfirmation');
+        const reloadStatus = document.getElementById('reloadStatus');
+        const reloadResults = document.getElementById('reloadResults');
+        const reloadStatusMessage = document.getElementById('reloadStatusMessage');
+
+        reloadConfirmation.style.display = 'none';
+        reloadStatus.style.display = 'block';
+        reloadResults.style.display = 'none';
+
+        // Send reload request
+        fetch('/reload-server', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({}),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Update status message while we process the results
+                reloadStatusMessage.textContent = data.message;
+                reloadStatus.style.backgroundColor = '#d4edda';
+                reloadStatus.style.borderColor = '#c3e6cb';
+
+                // Display detailed reload information
+                displayReloadResults(data.details);
+
+                // Hide status and show results after processing
+                setTimeout(() => {
+                    reloadStatus.style.display = 'none';
+                    reloadResults.style.display = 'block';
+                }, 500);
+            } else {
+                // Show error state
+                reloadStatusMessage.textContent = 'Error: ' + data.message;
+                reloadStatus.style.backgroundColor = '#f8d7da';
+                reloadStatus.style.borderColor = '#f5c6cb';
+
+                // Return to confirmation after error
+                setTimeout(() => {
+                    reloadStatus.style.display = 'none';
+                    reloadConfirmation.style.display = 'block';
+                }, 2000);
+            }
+        })
+        .catch(error => {
+            // Handle unexpected fetch error
+            reloadStatusMessage.textContent = 'Error: ' + error.message;
+            reloadStatus.style.backgroundColor = '#f8d7da';
+            reloadStatus.style.borderColor = '#f5c6cb';
+
+            // Return to confirmation after error
+            setTimeout(() => {
+                reloadStatus.style.display = 'none';
+                reloadConfirmation.style.display = 'block';
+            }, 2000);
+        });
+    }
+
+    function displayReloadResults(details) {
+        // Update summary statistics
+        document.getElementById('stats-attempted').textContent = details.modules.attempted;
+        document.getElementById('stats-reloaded').textContent = details.modules.reloaded;
+        document.getElementById('stats-skipped').textContent = details.modules.skipped;
+        document.getElementById('stats-failed').textContent = details.modules.failed;
+
+        // Clear previous module lists
+        const successfulList = document.getElementById('successful-modules');
+        const skippedList = document.getElementById('skipped-modules');
+        const failedList = document.getElementById('failed-modules');
+
+        successfulList.innerHTML = '';
+        skippedList.innerHTML = '';
+        failedList.innerHTML = '';
+
+        // Populate successful modules list
+        if (details.successful_modules.length > 0) {
+            details.successful_modules.forEach(module => {
+                const moduleItem = document.createElement('div');
+                moduleItem.className = 'module-item';
+                moduleItem.textContent = module;
+                successfulList.appendChild(moduleItem);
+            });
+        } else {
+            const emptyMessage = document.createElement('p');
+            emptyMessage.className = 'empty-message';
+            emptyMessage.textContent = 'No modules reloaded';
+            successfulList.appendChild(emptyMessage);
+        }
+
+        // Populate skipped modules list
+        if (details.skipped_modules.length > 0) {
+            details.skipped_modules.forEach(module => {
+                const moduleItem = document.createElement('div');
+                moduleItem.className = 'module-item';
+                moduleItem.textContent = module;
+                skippedList.appendChild(moduleItem);
+            });
+        } else {
+            const emptyMessage = document.createElement('p');
+            emptyMessage.className = 'empty-message';
+            emptyMessage.textContent = 'No modules skipped';
+            skippedList.appendChild(emptyMessage);
+        }
+
+        // Populate failed modules list with error details
+        if (Object.keys(details.failed_modules).length > 0) {
+            Object.entries(details.failed_modules).forEach(([module, error]) => {
+                const moduleItem = document.createElement('div');
+                moduleItem.className = 'module-item';
+
+                const moduleName = document.createElement('div');
+                moduleName.textContent = module;
+                moduleItem.appendChild(moduleName);
+
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'module-error';
+                errorMessage.textContent = error;
+                moduleItem.appendChild(errorMessage);
+
+                failedList.appendChild(moduleItem);
+            });
+        } else {
+            const emptyMessage = document.createElement('p');
+            emptyMessage.className = 'empty-message';
+            emptyMessage.textContent = 'No modules failed';
+            failedList.appendChild(emptyMessage);
+        }
+
+        // Setup tab navigation
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', function() {
+                // Remove active class from all buttons and panes
+                document.querySelectorAll('.tab-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelectorAll('.tab-pane').forEach(pane => {
+                    pane.classList.remove('active');
+                });
+
+                // Add active class to clicked button and corresponding pane
+                this.classList.add('active');
+                const tabName = this.getAttribute('data-tab');
+                document.getElementById('tab-' + tabName).classList.add('active');
+            });
+        });
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        if (event.target == document.getElementById('queryModal')) {
+            closeQueryModal();
+        }
+        if (event.target == document.getElementById('reloadModal')) {
+            closeReloadModal();
+        }
+    }
+
+    function executeQuery() {
+        const query = document.getElementById('queryInput').value.trim();
+        const messageDiv = document.getElementById('queryMessage');
+        const tableDiv = document.getElementById('queryTable');
+
+        if (!query) {
+            messageDiv.textContent = 'Please enter a query';
+            messageDiv.className = 'error';
+            return;
+        }
+
+        messageDiv.textContent = 'Executing query...';
+        messageDiv.className = '';
+        tableDiv.innerHTML = '';
+
+        fetch('/execute-query', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query: query })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                messageDiv.textContent = 'Error: ' + data.error;
+                messageDiv.className = 'error';
+                return;
+            }
+
+            // Create results table
+            const table = document.createElement('table');
+
+            // Add headers
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            data.columns.forEach(column => {
+                const th = document.createElement('th');
+                th.textContent = column;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            // Add data rows
+            const tbody = document.createElement('tbody');
+            data.rows.forEach(row => {
+                const tr = document.createElement('tr');
+                data.columns.forEach(column => {
+                    const td = document.createElement('td');
+                    td.textContent = row[column] !== null ? row[column] : 'NULL';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+
+            // Show results
+            tableDiv.innerHTML = '';
+            tableDiv.appendChild(table);
+
+            messageDiv.textContent = `Query returned ${data.rowCount} rows${data.truncated ? ' (limited to 1000 rows)' : ''}`;
+            messageDiv.className = 'success';
+        })
+        .catch(error => {
+            messageDiv.textContent = 'Error executing query: ' + error;
+            messageDiv.className = 'error';
+        });
+    }
+
+    // Add event listener to reload button
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('reloadServerBtn').addEventListener('click', openReloadModal);
+
+        // Initialize tab buttons
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', function() {
+                document.querySelectorAll('.tab-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelectorAll('.tab-pane').forEach(pane => {
+                    pane.classList.remove('active');
+                });
+
+                this.classList.add('active');
+                const tabName = this.getAttribute('data-tab');
+                document.getElementById('tab-' + tabName).classList.add('active');
+            });
+        });
+
+        // Add event listener to clear cache button
+        document.getElementById('clearCacheBtn').addEventListener('click', clearVisualizationCache);
+    });
+
+    function clearVisualizationCache() {
+        if (!confirm('Are you sure you want to clear the visualization cache?')) {
+            return;
+        }
+
+        fetch('/clear-visualization-cache', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({}),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error.message);
+        });
+    }
+    </script>
+</body>
+</html>

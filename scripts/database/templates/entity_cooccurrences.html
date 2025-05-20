@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Entity Co-occurrences</title>
+    <link rel="stylesheet" href="{{ url_for('styles') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <div class="nav">
+        <a href="/">Home</a>
+        <a href="/tables">Tables</a>
+        <a href="/documents">Documents</a>
+        <a href="/named-entities">Named Entities</a>
+        <a href="/entities">Entity Occurrences</a>
+        <a href="/entity-cooccurrences/">Entity Co-occurrences</a>
+        <a href="/health">Health Check</a>
+    </div>
+    <h1>Entity Co-occurrences</h1>
+    <div class="cooccurrences-controls">
+        <div class="control-group">
+            <label>
+                <input type="radio" name="view-type" value="raw" checked> Raw Co-occurrences
+            </label>
+            <label>
+                <input type="radio" name="view-type" value="summary"> Summarized Co-occurrences
+            </label>
+            <label class="summary-control">
+                <input type="checkbox" id="include-self" checked> Exclude self co-occurrences
+            </label>
+        </div>
+    </div>
+    <div id="table-view" class="view"></div>
+    <div id="plot-view" class="view">
+        <h2>Frequency Distribution Plot</h2>
+        <label for="freq-column">Frequency Column:</label>
+        <select id="freq-column">
+            <option value="fq_document_level">Document Level</option>
+            <option value="fq_sentence_level">Sentence Level</option>
+        </select>
+        <label for="min-freq">Min Frequency:</label>
+        <input type="number" id="min-freq" value="0">
+        <label for="max-freq">Max Frequency:</label>
+        <input type="number" id="max-freq" value="100">
+        <button id="update-plot">Update Plot</button>
+        <canvas id="freq-plot"></canvas>
+    </div>
+    <div id="summary-view" class="view">
+        <h2>Entity Co-occurrences Summary</h2>
+        <table id="summary-table" class="data-table">
+            <thead>
+                <tr>
+                    <th class="entity-text">Entity 1</th>
+                    <th class="entity-text">Entity 2</th>
+                    <th class="numeric">Document Freq.</th>
+                    <th class="numeric">Document Norm.</th>
+                    <th class="numeric">Sentence Freq.</th>
+                    <th class="numeric">Sentence Norm.</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+        <button id="load-more-summary" class="load-more-button">Load More</button>
+    </div>
+    <script>
+        $(document).ready(function() {
+            let currentPage = 1;
+            let currentViewType = 'raw';
+            let frequencyPlot = null;
+
+            function loadTable(page, viewType) {
+                const endpoint = viewType === 'raw' ?
+                    '/entity-cooccurrences/table' :
+                    '/entity-cooccurrences/summary/table';
+
+                const params = {
+                    page: page
+                };
+
+                if (viewType === 'summary') {
+                    params.include_self = !$('#include-self').prop('checked');
+                }
+
+                $.get(endpoint, params).done(function(data) {
+                    const table = $('<table class="cooccurrences-table">').append(
+                        $('<thead>').append(
+                            $('<tr>').append(
+                                $('<th>').text('Entity 1'),
+                                $('<th>').text('Entity 2'),
+                                viewType === 'raw' ?
+                                    [
+                                        $('<th>').text('Document ID'),
+                                        $('<th>').text('Sentence'),
+                                        $('<th>').text('Distance')
+                                    ] :
+                                    [
+                                        $('<th>').text('Document Freq.'),
+                                        $('<th>').text('Document Norm.'),
+                                        $('<th>').text('Sentence Freq.'),
+                                        $('<th>').text('Sentence Norm.')
+                                    ]
+                            )
+                        )
+                    );
+
+                    const tbody = $('<tbody>');
+                    if (viewType === 'raw') {
+                        data.cooccurrences.forEach(cooc => {
+                            tbody.append(
+                                $('<tr>').append(
+                                    $('<td>').append(
+                                        $('<span>')
+                                            .text(cooc.entity1_text)
+                                            .attr('title', `ID: ${cooc.e1_id}`)
+                                    ),
+                                    $('<td>').append(
+                                        $('<span>')
+                                            .text(cooc.entity2_text)
+                                            .attr('title', `ID: ${cooc.e2_id}`)
+                                    ),
+                                    $('<td>').append(
+                                        $('<a>')
+                                            .attr('href', '/document/' + cooc.document_id)
+                                            .text(cooc.document_id)
+                                    ),
+                                    $('<td>').text(cooc.sentence_index),
+                                    $('<td>').text(cooc.sentence_distance || 'N/A')
+                                )
+                            );
+                        });
+                    } else {
+                        data.summaries.forEach(summary => {
+                            tbody.append(
+                                $('<tr>').append(
+                                    $('<td>').append(
+                                        $('<span>')
+                                            .text(summary.entity1_text)
+                                            .attr('title', `ID: ${summary.e1_id_normalized}`)
+                                    ),
+                                    $('<td>').append(
+                                        $('<span>')
+                                            .text(summary.entity2_text)
+                                            .attr('title', `ID: ${summary.e2_id_normalized}`)
+                                    ),
+                                    $('<td class="numeric">').text(summary.fq_document_level || '0'),
+                                    $('<td class="numeric">').text(
+                                        summary.fq_document_level_normalized
+                                            ? summary.fq_document_level_normalized.toFixed(4)
+                                            : '0.0000'
+                                    ),
+                                    $('<td class="numeric">').text(summary.fq_sentence_level || '0'),
+                                    $('<td class="numeric">').text(
+                                        summary.fq_sentence_level_normalized
+                                            ? summary.fq_sentence_level_normalized.toFixed(4)
+                                            : '0.0000'
+                                    )
+                                )
+                            );
+                        });
+                    }
+
+                    table.append(tbody);
+                    $('#table-view').empty().append(table);
+
+                    // Add pagination if needed
+                    if ((viewType === 'raw' && data.has_more) ||
+                        (viewType === 'summary' && data.has_more)) {
+                        $('#table-view').append(
+                            $('<button>')
+                                .text('Load More')
+                                .click(() => loadTable(page + 1, viewType))
+                        );
+                    }
+                });
+            }
+
+            $('input[name="view-type"]').change(function() {
+                currentViewType = $(this).val();
+                $('.summary-control').toggle(currentViewType === 'summary');
+                currentPage = 1;
+                loadTable(currentPage, currentViewType);
+            });
+
+            $('#include-self').change(function() {
+                if (currentViewType === 'summary') {
+                    currentPage = 1;
+                    loadTable(currentPage, currentViewType);
+                }
+            });
+
+            // Plot view functionality
+            function initializePlot() {
+                const ctx = document.getElementById('freq-plot').getContext('2d');
+                frequencyPlot = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Count',
+                            data: [],
+                            backgroundColor: 'rgba(33, 150, 243, 0.5)',
+                            borderColor: 'rgba(33, 150, 243, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Number of Co-occurrences'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Frequency'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function updatePlot() {
+                const freqColumn = $('#freq-column').val();
+                const minFreq = parseInt($('#min-freq').val());
+                const maxFreq = parseInt($('#max-freq').val());
+
+                $.get('/entity-cooccurrences/plot-data', {
+                    freq_column: freqColumn,
+                    min_freq: minFreq,
+                    max_freq: maxFreq
+                }).done(function(data) {
+                    const plotData = data.plot_data;
+                    frequencyPlot.data.labels = plotData.map(item => item.fq_document_level || item.fq_sentence_level);
+                    frequencyPlot.data.datasets[0].data = plotData.map(item => item.count);
+                    frequencyPlot.options.scales.x.title.text = `Frequency (${freqColumn})`;
+                    frequencyPlot.update();
+                });
+            }
+
+            // View switching
+            $('#table-view-link').click(function(e) {
+                e.preventDefault();
+                $('.view').hide();
+                $('#table-view').show();
+                loadTable(currentPage, currentViewType);
+            });
+
+            $('#summary-view-link').click(function(e) {
+                e.preventDefault();
+                $('.view').hide();
+                $('#summary-view').show();
+                currentViewType = 'summary';
+                loadTable(currentPage, 'summary');
+            });
+
+            $('#plot-view-link').click(function(e) {
+                e.preventDefault();
+                $('.view').hide();
+                $('#plot-view').show();
+                if (!frequencyPlot) {
+                    initializePlot();
+                }
+                updatePlot();
+            });
+
+            $('#update-plot').click(function() {
+                updatePlot();
+            });
+
+            // Initial load
+            loadTable(currentPage, currentViewType);
+            initializePlot();
+        });
+    </script>
+</body>
+</html>

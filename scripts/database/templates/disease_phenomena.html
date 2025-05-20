@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-3">
+            <!-- Filter Panel -->
+            <div class="card filter-card">
+                <div class="card-header">
+                    <h5>Filter Co-occurrences</h5>
+                </div>
+                <div class="card-body">
+                    <form id="filterForm" method="GET" action="">
+                        <!-- Text Filters -->
+                        <div class="form-group mb-3">
+                            <label for="e1_txt_like">Disease Contains:</label>
+                            <input type="text" class="form-control" id="e1_txt_like" name="e1_txt_like"
+                                   value="{{ request.args.get('e1_txt_like', '') }}" placeholder="e.g., diabetes">
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label for="e2_txt_like">Phenomenon Contains:</label>
+                            <input type="text" class="form-control" id="e2_txt_like" name="e2_txt_like"
+                                   value="{{ request.args.get('e2_txt_like', '') }}" placeholder="e.g., fever">
+                        </div>
+
+                        <!-- NPMI Filter with Range Slider -->
+                        <div class="form-group mb-4">
+                            <label>Normalized PMI (NPMI):</label>
+                            <div class="range-slider-container" data-filter-type="npmi" data-min="-1" data-max="1" data-step="0.01">
+                                <div class="range-inputs">
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">Min</span>
+                                        <input type="number" class="form-control" id="min_npmi" name="min_npmi"
+                                               value="{{ request.args.get('min_npmi', '') }}" step="0.01" min="-1" max="1">
+                                    </div>
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">Max</span>
+                                        <input type="number" class="form-control" id="max_npmi" name="max_npmi"
+                                               value="{{ request.args.get('max_npmi', '') }}" step="0.01" min="-1" max="1">
+                                    </div>
+                                </div>
+                                <div class="range-slider"></div>
+
+                                <!-- Percentile Presets -->
+                                <div class="percentile-presets mt-2">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary percentile-preset"
+                                            data-filter="npmi" data-percentile="25">Bottom 25%</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary percentile-preset"
+                                            data-filter="npmi" data-percentile="50">Middle 50%</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary percentile-preset"
+                                            data-filter="npmi" data-percentile="75">Top 25%</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Document Frequency Filter -->
+                        <div class="form-group mb-4">
+                            <label>Document Frequency:</label>
+                            <div class="range-slider-container" data-filter-type="fq_doc_level" data-min="1" data-max="1000" data-step="1">
+                                <div class="range-inputs">
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">Min</span>
+                                        <input type="number" class="form-control" id="min_fq_doc_level" name="min_fq_doc_level"
+                                               value="{{ request.args.get('min_fq_doc_level', '') }}" step="1" min="1">
+                                    </div>
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">Max</span>
+                                        <input type="number" class="form-control" id="max_fq_doc_level" name="max_fq_doc_level"
+                                               value="{{ request.args.get('max_fq_doc_level', '') }}" step="1" min="1">
+                                    </div>
+                                </div>
+                                <div class="range-slider"></div>
+                            </div>
+                        </div>
+
+                        <!-- Unique Documents Filter -->
+                        <div class="form-group mb-4">
+                            <label>Unique Documents:</label>
+                            <div class="range-slider-container" data-filter-type="uniq_docs" data-min="1" data-max="1000" data-step="1">
+                                <div class="range-inputs">
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">Min</span>
+                                        <input type="number" class="form-control" id="min_uniq_docs" name="min_uniq_docs"
+                                               value="{{ request.args.get('min_uniq_docs', '') }}" step="1" min="1">
+                                    </div>
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">Max</span>
+                                        <input type="number" class="form-control" id="max_uniq_docs" name="max_uniq_docs"
+                                               value="{{ request.args.get('max_uniq_docs', '') }}" step="1" min="1">
+                                    </div>
+                                </div>
+                                <div class="range-slider"></div>
+                            </div>
+                        </div>
+
+                        <!-- Results Limit -->
+                        <div class="form-group mb-3">
+                            <label for="limit">Result Limit:</label>
+                            <input type="number" class="form-control" id="limit" name="limit"
+                                   value="{{ request.args.get('limit', '50') }}" min="1" max="1000" step="1">
+                        </div>
+
+                        <!-- Submit Buttons -->
+                        <div class="form-group d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">Apply Filters</button>
+                            <a href="{{ url_for('disease_phenomena.index') }}" class="btn btn-outline-secondary">Reset All</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-9">
+            <!-- Visualization Area -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5>Disease-Phenomenon Relationships</h5>
+                    <div class="btn-group">
+                        <button id="exportHtmlBtn" class="btn btn-sm btn-outline-secondary">Export HTML</button>
+                        <button id="exportImageBtn" class="btn btn-sm btn-outline-secondary">Export Image</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="loadingIndicator" class="text-center" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p>Generating visualization...</p>
+                    </div>
+                    <div id="sankeyContainer">
+                        {% if sankey_html %}
+                            {{ sankey_html|safe }}
+                        {% else %}
+                            <div class="text-center p-5 text-muted">
+                                <i class="fas fa-chart-network fa-3x mb-3"></i>
+                                <p>Apply filters to see relationships between diseases and phenomena.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Panel -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5>Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div id="infoPanel">
+                        {% if stats %}
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="stat-box">
+                                        <span class="stat-label">Total Relationships:</span>
+                                        <span class="stat-value">{{ stats.total_relationships }}</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="stat-box">
+                                        <span class="stat-label">Unique Diseases:</span>
+                                        <span class="stat-value">{{ stats.unique_diseases }}</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="stat-box">
+                                        <span class="stat-label">Unique Phenomena:</span>
+                                        <span class="stat-value">{{ stats.unique_phenomena }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-md-4">
+                                    <div class="stat-box">
+                                        <span class="stat-label">Avg. NPMI:</span>
+                                        <span class="stat-value">{{ "%.3f"|format(stats.avg_npmi) }}</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="stat-box">
+                                        <span class="stat-label">Max. NPMI:</span>
+                                        <span class="stat-value">{{ "%.3f"|format(stats.max_npmi) }}</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="stat-box">
+                                        <span class="stat-label">Min. NPMI:</span>
+                                        <span class="stat-value">{{ "%.3f"|format(stats.min_npmi) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <p class="text-muted">Apply filters to see statistics.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.js"></script>
+<script src="{{ url_for('static', filename='js/numeric-filters.js') }}"></script>
+<script src="{{ url_for('static', filename='js/range-slider.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sankey-filter-handler.js') }}"></script>
+<script src="{{ url_for('static', filename='js/disease_phenomena.js') }}"></script>
+<script>
+    // Initialize manager when DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+        // Get defaults from server rather than hardcoding them
+        const dpDefaults = {
+            min_npmi: "{{ defaults.min_npmi }}",
+            min_fq_doc_level: "{{ defaults.min_fq_doc_level }}",
+            limit: "{{ defaults.limit }}"
+        };
+
+        // Initialize the DiseasePhenomenaManager
+        window.dpManager = new DiseasePhenomenaManager({
+            formId: 'filterForm',
+            sankeyContainerId: 'sankeyContainer',
+            loadingIndicatorId: 'loadingIndicator',
+            infoPanelId: 'infoPanel',
+            defaultValues: dpDefaults,
+            apiEndpoint: '/api/disease-phenomena'
+        });
+
+        // Setup export buttons
+        document.getElementById('exportHtmlBtn').addEventListener('click', () => {
+            window.dpManager.exportDiagram('html');
+        });
+
+        document.getElementById('exportImageBtn').addEventListener('click', () => {
+            window.dpManager.exportDiagram('image');
+        });
+    });
+</script>
+{% endblock %}

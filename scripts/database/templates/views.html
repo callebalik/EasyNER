@@ -1,0 +1,499 @@
+{% extends "base.html" %}
+
+{% block title %}Database Views{% endblock %}
+
+{% block content %}
+<div class="content">
+    <h1>Database Views</h1>
+    {% for view_name, view_info in views.items() %}
+        <div class="view-section" id="view-{{ view_name }}">
+            <h2>{{ view_name }}</h2>
+
+            <div class="view-actions">
+                <a href="{{ url_for('table_view', table_name=view_name) }}" class="action-button">View Data</a>
+                <button class="action-button" onclick="loadSampleData('{{ view_name }}')" id="sample-btn-{{ view_name }}">Load Sample Data</button>
+                <button class="action-button delete-button" onclick="deleteView('{{ view_name }}')" style="background: #dc3545;">Delete View</button>
+            </div>
+
+            <h3>Schema</h3>
+            <table class="schema-table">
+                <thead>
+                    <tr>
+                        <th>Column</th>
+                        <th>Type</th>
+                        <th>Not Null</th>
+                        <th>Default</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for col in view_info.schema %}
+                    <tr>
+                        <td>{{ col.name }}</td>
+                        <td>{{ col.type }}</td>
+                        <td>{{ "Yes" if col.notnull else "No" }}</td>
+                        <td>{{ col.dflt_value if col.dflt_value else "-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <h3>View Definition</h3>
+            <div class="definition-container">
+                <div class="definition-header">
+                    <button class="action-button explain-button" onclick="explainView('{{ view_name }}')" style="float: right;">Explain Query Plan</button>
+                </div>
+                <pre class="sql-definition">{{ view_info.definition }}</pre>
+                <div id="explain-{{ view_name }}" class="explain-result" style="display: none;"></div>
+            </div>
+
+            <div id="sample-container-{{ view_name }}" style="display: none;">
+                <h3>Sample Data</h3>
+                <div class="sample-loading" id="sample-loading-{{ view_name }}" style="display: none;">
+                    Loading sample data...
+                </div>
+                <div class="sample-error" id="sample-error-{{ view_name }}" style="display: none;"></div>
+                <div class="sample-content" id="sample-content-{{ view_name }}"></div>
+            </div>
+        </div>
+    {% endfor %}
+    <!-- Tables section removed for separate pages as per request -->
+</div>
+
+<style>
+.content {
+    padding: 20px;
+}
+
+.view-section {
+    margin-bottom: 40px;
+    padding: 20px;
+    background-color: #f5f5f5;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+}
+
+.schema-table, .sample-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    border: 1px solid #ddd;
+}
+
+.schema-table th, .schema-table td,
+.sample-table th, .sample-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+.schema-table th, .sample-table th {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.schema-table tr:nth-child(even),
+.sample-table tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+.sql-definition {
+    background-color: #fff;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    font-family: monospace;
+}
+
+h2 {
+    color: #333;
+    border-bottom: 2px solid #4CAF50;
+    padding-bottom: 5px;
+}
+
+h3 {
+    color: #666;
+    margin-top: 20px;
+}
+
+.view-actions {
+    margin: 15px 0;
+}
+
+.action-button {
+    background: #2196f3;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    margin-right: 10px;
+}
+
+.action-button:hover {
+    background: #1976d2;
+}
+
+.delete-button:hover {
+    background: #c82333 !important;
+}
+
+.definition-container {
+    background-color: #fff;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    margin: 15px 0;
+}
+
+.definition-header {
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.explain-button {
+    background: #4CAF50 !important;
+    font-size: 0.9em;
+    padding: 5px 10px;
+}
+
+.explain-button:hover {
+    background: #3d8b40 !important;
+}
+
+.explain-result {
+    margin-top: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+.explain-result table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.explain-result th, .explain-result td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.explain-result th {
+    background: #eee;
+    font-weight: bold;
+}
+
+.loading {
+    text-align: center;
+    padding: 1rem;
+    color: #666;
+}
+
+.error-message, .info-message {
+    padding: 1rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.error-message {
+    background-color: #fee;
+    color: #c33;
+    border: 1px solid #fcc;
+}
+
+.info-message {
+    background-color: #e8f4f8;
+    color: #0277bd;
+    border: 1px solid #b3e5fc;
+}
+
+.error-message i, .info-message i {
+    font-size: 1.2em;
+}
+
+.query-plan {
+    margin-top: 15px;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.query-plan table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.query-plan th {
+    background: #b0bbc6;
+    padding: 10px;
+    text-align: left;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+}
+
+.query-plan td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #dee2e6;
+    vertical-align: top;
+}
+
+.query-plan tr:hover {
+    background: #f8f9fa;
+}
+
+.query-plan td:last-child {
+    color: #666;
+    max-width: 500px;
+    word-break: break-word;
+}
+
+.loading {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-style: italic;
+}
+
+.error-message {
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    background-color: #fff3f3;
+    color: #d32f2f;
+    border: 1px solid #ffcdd2;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.info-message {
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    background-color: #e3f2fd;
+    color: #1976d2;
+    border: 1px solid #bbdefb;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.error-message i, .info-message i {
+    font-size: 1.2em;
+}
+
+.sample-loading {
+    text-align: center;
+    padding: 1rem;
+    color: #666;
+    font-style: italic;
+}
+
+.sample-error {
+    padding: 1rem;
+    margin: 1rem 0;
+    background-color: #fee;
+    color: #c33;
+    border: 1px solid #fcc;
+    border-radius: 4px;
+}
+</style>
+
+<script>
+function deleteView(viewName) {
+    if (confirm(`Are you sure you want to delete the view "${viewName}"? This action cannot be undone.`)) {
+        fetch(`/view/${viewName}/delete`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error deleting view: ' + data.error);
+            } else {
+                // Remove the view section from the page
+                document.getElementById('view-' + viewName).remove();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting view. Please try again.');
+        });
+    }
+}
+
+function explainView(viewName) {
+    const container = document.getElementById('explain-' + viewName);
+
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        container.innerHTML = '<div class="loading">Analyzing query plan...</div>';
+
+        // Get and properly encode the view definition
+        const viewDefinition = document.querySelector(`#view-${viewName} .sql-definition`).textContent.trim();
+
+        fetch('/explain-query?query=' + encodeURIComponent(viewDefinition))
+            .then(response => response.json().then(data => ({
+                ok: response.ok,
+                status: response.status,
+                body: data
+            })))
+            .then(({ ok, status, body }) => {
+                if (!ok) {
+                    throw new Error(body.error || `HTTP error! status: ${status}`);
+                }
+                return body;
+            })
+            .then(data => {
+                if (data.error) {
+                    container.innerHTML = `<div class="error-message">
+                        <i class="fas fa-exclamation-circle"></i>
+                        ${data.error}
+                    </div>`;
+                } else if (!data.length) {
+                    container.innerHTML = `<div class="info-message">
+                        <i class="fas fa-info-circle"></i>
+                        No query plan available for this view.
+                    </div>`;
+                } else {
+                    let tableHTML = `
+                        <div class="query-plan">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Step</th>
+                                        <th>Parent</th>
+                                        <th>Used</th>
+                                        <th>Operation Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+
+                    data.forEach(row => {
+                        const used = row.notused ? 'No' : 'Yes';
+                        tableHTML += `
+                            <tr>
+                                <td>${row.id}</td>
+                                <td>${row.parent}</td>
+                                <td>${used}</td>
+                                <td>${row.detail}</td>
+                            </tr>`;
+                    });
+
+                    tableHTML += `
+                                </tbody>
+                            </table>
+                        </div>`;
+                    container.innerHTML = tableHTML;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                container.innerHTML = `<div class="error-message">
+                    <i class="fas fa-exclamation-circle"></i>
+                    ${error.message || 'Error loading query plan'}
+                </div>`;
+            });
+    } else {
+        container.style.display = 'none';
+    }
+}
+
+function loadSampleData(viewName) {
+    const container = document.getElementById('sample-container-' + viewName);
+    const loading = document.getElementById('sample-loading-' + viewName);
+    const error = document.getElementById('sample-error-' + viewName);
+    const content = document.getElementById('sample-content-' + viewName);
+    const button = document.getElementById('sample-btn-' + viewName);
+
+    // If already loaded and visible, just toggle visibility
+    if (container.style.display !== 'none' && content.innerHTML) {
+        container.style.display = 'none';
+        button.textContent = 'Load Sample Data';
+        return;
+    }
+
+    // Show loading state
+    container.style.display = 'block';
+    loading.style.display = 'block';
+    error.style.display = 'none';
+    content.innerHTML = '';
+    button.textContent = 'Loading...';
+
+    fetch('/view/' + viewName + '/sample')
+        .then(response => response.json())
+        .then(data => {
+            loading.style.display = 'none';
+
+            if (data.error) {
+                error.textContent = data.error;
+                error.style.display = 'block';
+                button.textContent = 'Load Sample Data';
+                return;
+            }
+
+            if (data.message === 'No data available') {
+                error.textContent = 'No sample data available';
+                error.style.display = 'block';
+                button.textContent = 'Load Sample Data';
+                return;
+            }
+
+            // Create table for sample data
+            const sample = data.sample;
+            if (sample && sample.length > 0) {
+                const table = document.createElement('table');
+                table.className = 'sample-table';
+
+                // Create header
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                Object.keys(sample[0]).forEach(key => {
+                    const th = document.createElement('th');
+                    th.textContent = key;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+
+                // Create body
+                const tbody = document.createElement('tbody');
+                sample.forEach(row => {
+                    const tr = document.createElement('tr');
+                    Object.values(row).forEach(value => {
+                        const td = document.createElement('td');
+                        td.textContent = value !== null ? value : 'NULL';
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+
+                content.appendChild(table);
+                button.textContent = 'Hide Sample Data';
+            } else {
+                error.textContent = 'No sample data available';
+                error.style.display = 'block';
+                button.textContent = 'Load Sample Data';
+            }
+        })
+        .catch(err => {
+            loading.style.display = 'none';
+            error.textContent = 'Error loading sample data: ' + err.message;
+            error.style.display = 'block';
+            button.textContent = 'Load Sample Data';
+        });
+}
+</script>
+{% endblock %}

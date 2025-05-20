@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}Error{% endblock %}
+
+{% block content %}
+<div class="error-container {% if error_name == 'Visualization Error' %}visualization-error{% endif %}">
+    <div class="error-content">
+        <div class="error-icon">
+            {% if error_code == 404 %}
+            <i class="fas fa-search"></i>
+            {% elif error_name == 'Visualization Error' %}
+            <i class="fas fa-chart-bar"></i>
+            {% else %}
+            <i class="fas fa-exclamation-circle"></i>
+            {% endif %}
+        </div>
+
+        <h1>{{ error_code }} - {{ error_name }}</h1>
+        <p class="error-description">{{ error_description }}</p>
+
+        {% if error_details and debug %}
+        <div class="error-details">
+            <h3>Technical Details:</h3>
+            <pre><code>{{ error_details }}</code></pre>
+        </div>
+        {% endif %}
+
+        {% if error_name == 'Visualization Error' %}
+        <div class="visualization-tips">
+            <h3>Troubleshooting Tips:</h3>
+            <ul>
+                <li>Check if your filter parameters are within valid ranges</li>
+                <li>Try reducing the result limit if the dataset is too large</li>
+                <li>Ensure your search terms match existing entries</li>
+                <li>Consider widening your NPMI range if no results are found</li>
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="error-actions">
+            <a href="javascript:history.back()" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Go Back
+            </a>
+            <a href="/" class="btn btn-primary">
+                <i class="fas fa-home"></i> Home Page
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+.error-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+    padding: 2rem;
+}
+
+.error-content {
+    max-width: 600px;
+    text-align: center;
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.error-icon {
+    font-size: 3rem;
+    margin-bottom: 1.5rem;
+    color: #dc3545;
+}
+
+.visualization-error .error-icon {
+    color: #007bff;
+}
+
+.error-content h1 {
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.error-description {
+    color: #666;
+    margin-bottom: 1.5rem;
+}
+
+.error-details {
+    margin: 1.5rem 0;
+    text-align: left;
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 4px;
+}
+
+.error-details pre {
+    margin: 0;
+    white-space: pre-wrap;
+    font-size: 0.9rem;
+}
+
+.visualization-tips {
+    text-align: left;
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: #e7f5ff;
+    border-radius: 4px;
+}
+
+.visualization-tips ul {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.visualization-tips li {
+    margin: 0.5rem 0;
+    color: #555;
+}
+
+.error-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 2rem;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn i {
+    font-size: 0.9em;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}
+
+@media (max-width: 576px) {
+    .error-actions {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+</style>
+{% endblock %}

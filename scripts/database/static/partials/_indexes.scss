@@ -1,0 +1,33 @@
+@import 'variables';
+
+.table-index-grid {
+    gap: 20px;
+    grid-template-columns: 1fr 1fr;
+    display: grid;
+}
+
+.table-schema, .table-indexes {
+    border-radius: 5px;
+    border: 1px solid #ddd;
+    padding: 15px;
+}
+
+.table-schema h3, .table-indexes h3 {
+    margin-bottom: 10px;
+    margin-top: 0;
+}
+
+.table-schema ul, .table-indexes ul {
+    padding: 0;
+    list-style-type: none;
+}
+
+.table-schema li, .table-indexes li {
+    margin-bottom: 5px;
+}
+
+.indexed {
+    background-color: #dff0d8; /* Mellow green */
+    padding: 2px;
+    border-radius: 3px;
+}
