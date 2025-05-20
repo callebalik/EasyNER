@@ -243,7 +243,7 @@ def worker_process(
                     nlp,
                     segments_batch,
                 )  # Now a list of dicts
-
+                nlp.batch_size = SPACY_BATCH_SIZE  # Reset batch size
                 # Send result to the writer process along with the count
                 result_queue.put(
                     (len(segments_batch), sentences_data),
