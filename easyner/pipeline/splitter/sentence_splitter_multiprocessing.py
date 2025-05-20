@@ -75,19 +75,19 @@ logger.info(
 TEXT_SEGMENTS_TABLE = "abstract_segments"
 TEMP_TABLE = "segments_to_process"
 SENTENCES_TABLE = "sentences"
-BATCH_SIZE = 20000  # Reduced batch size for better memory management
-WORKER_BATCH_SIZE = 1000  # Small batches for workers to process
+BATCH_SIZE = 10000  # Reduced batch size for better memory management
+WORKER_BATCH_SIZE = 2000  # Small batches for workers to process
 SPACY_MODEL = "en_core_web_sm"
 SPACY_N_PROCESSES = 1  # Set to 1 for multiprocessing
-SPACY_BATCH_SIZE = 200  # Batch size for spaCy processing not same as worker batch size
+SPACY_BATCH_SIZE = 500  # Batch size for spaCy processing not same as worker batch size
 # Number of parallel worker processes - adjust based on your machine
 NUM_WORKERS = min(32, max(1, mp.cpu_count() - 1))
 # Memory threshold in MB - adjust based on your system
-MEMORY_HIGH_THRESHOLD = 75  # When to start applying backpressure
-MEMORY_CRITICAL_THRESHOLD = 80  # When to temporarily pause processing
-COMMIT_EVERY = 100
+MEMORY_HIGH_THRESHOLD = 71  # When to start applying backpressure
+MEMORY_CRITICAL_THRESHOLD = 75  # When to temporarily pause processing
+COMMIT_EVERY = 30
 DUCK_DB_GB_MEMORY_LIMIT = 6  # Set a memory limit for DuckDB
-DUCK_DB_THREADS = 4  # Number of threads for DuckDB
+DUCK_DB_THREADS = 8  # Number of threads for DuckDB
 PREFETCH_SIZE = 1  # Number of batches to prefetch
 RESULT_QUEUE_TIMEOUT = 0.2  # Shorter timeout for more responsive queue handling
 TIME_LIMIT_SECONDS = 600  # 10 min
