@@ -421,17 +421,6 @@ def main() -> None:
                     },
                 )
 
-        # Final report
-        logger.info(f"Finished processing {total_processed} segments")
-        logger.info(f"Total sentences inserted: {total_sentences}")
-        time_taken = time.time() - start_time
-        logger.info(f"Total time: {time_taken:.2f} seconds")
-        if total_processed > 0 and time_taken > 0:
-            logger.info(f"Speed: {total_processed / time_taken:.2f} segments/second")
-
-        # Clean up temp table
-        con.execute(f"DROP TABLE IF EXISTS {TEMP_TABLE}")
-
     except KeyboardInterrupt:
         logger.warning("KeyboardInterrupt: Exiting the script.")
         # The 'finally' block below will be executed before the script terminates.
@@ -454,6 +443,12 @@ def main() -> None:
         if total_processed > 0 and time_taken > 0:
             segments_per_second = total_processed / time_taken
 
+        # Final report
+        logger.info(f"Finished processing {total_processed} segments")
+        logger.info(f"Total sentences inserted: {total_sentences}")
+        logger.info(f"Total time: {time_taken:.2f} seconds")
+        if total_processed > 0 and time_taken > 0:
+            logger.info(f"Speed: {total_processed / time_taken:.2f} segments/second")
         #  Create a summary of the processing, even if interrupted
         # Store in .benchmarks/splitter_summary.csv
         with open(".benchmarks/splitter_summary.csv", "w") as f:
@@ -465,6 +460,8 @@ def main() -> None:
             )
 
         if con:
+            con.execute(f"DROP TABLE IF EXISTS {TEMP_TABLE}")
+
             con.close()
             logger.info("DuckDB connection closed.")
 
@@ -473,7 +470,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Check if the database path is provided as a command-line argument
-    # If not, prompt the user for the database path
 
     main()
