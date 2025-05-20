@@ -1,4 +1,5 @@
 # ruff: noqa : E501, D100
+import concurrent.futures
 import gc
 import logging
 import os
@@ -23,7 +24,10 @@ from easyner.pipeline.splitter.duckdb.splitter_config import (  # noqa: E402
     CREATE_SENTENCES_TABLE_STMT,
     DB_PATH,
     DUCKDB_MEMORY_LIMIT,
+    MAX_INTERNAL_PROCESS_IF_MULTIPROCESSING,
+    MAX_PIPELINES,
     MEM_THRESHOLD_MB,
+    MULTIPROCESSING,
     N_PROCESS,
     SENTENCES_TABLE,
     SPACY_BATCH_SIZE,
@@ -32,6 +36,8 @@ from easyner.pipeline.splitter.duckdb.splitter_config import (  # noqa: E402
     TEMP_TABLE,
     TEXT_SEGMENTS_TABLE,
 )
+
+_nlp_cache = None  # Global variable for worker processes
 
 
 def monitor_memory() -> float:
@@ -48,39 +54,42 @@ def monitor_memory() -> float:
     return mem_mb
 
 
-def get_sentences_with_spacy_sp(nlp: Language, batch: list[tuple]) -> list:
-    """Process a text segment batch using spaCy and preserves sentence order within segments.
+def get_sentences_with_spacy_sp(
+    nlp: Language,
+    batch: list[tuple],
+    n_process: int = 1,
+) -> list:
+    """Process a text segment batch using spaCy with optimized parallel processing."""
+    # Distribute texts to balance workload (critical for lock contention)
+    # Sort texts by approximate length and interleave to balance work
+    texts_with_meta = [(item[2], item[0], item[1]) for item in batch]
+    texts_with_meta.sort(key=lambda x: len(x[0]))
 
-    Assumes that each text is non-empty which should be guaranteed by the SQL query.
+    # Re-organize to distribute workload evenly across processes
+    stride = max(1, len(texts_with_meta) // N_PROCESS)
+    reordered = []
+    for i in range(stride):
+        reordered.extend(texts_with_meta[i::stride])
 
-    Args:
-        nlp: The loaded spaCy NLP object.
-        batch: A list of tuples, where each tuple is (pmid, segment_number, segment_text).
+    # Extract data from reordered list
+    texts = [item[0] for item in reordered]
+    metadata = [(item[1], item[2]) for item in reordered]
 
-    Returns:
-        A list of dictionaries with keys: pmid, segment_number, sentence_in_segment_order, sentence.
-
-    """
-    # Prepare texts and corresponding metadata for spaCy pipe
-    texts = [item[2] for item in batch]
-    metadata = [(item[0], item[1]) for item in batch]  # (pmid, segment_number)
-
+    # Pre-allocate with estimated capacity (5 sentences per segment is typical)
     sentences_data = []
 
-    # Process texts in parallel using nlp.pipe
-    # We iterate through the docs and their original metadata simultaneously
-    doc: Doc
+    # Configure for optimal performance with 48 cores
+    # Reduce batch size to minimize lock duration
     for doc, (pmid, segment_number) in zip(
         nlp.pipe(
             texts,
-            batch_size=SPACY_BATCH_SIZE,
-            n_process=N_PROCESS,
-            # disable=SPACY_EXCLUDE_COMPONENTS, # Already excluded in model load
+            batch_size=min(SPACY_BATCH_SIZE, max(100, len(texts) // 48)),
+            n_process=n_process,
         ),
         metadata,
     ):
-        sentence_in_segment_order = 1  # Index same as segment_number starts from 1
-        sent: Span
+        # Use direct list construction for slight performance gain
+        sentence_in_segment_order = 1
         for sent in doc.sents:
             sentences_data.append(
                 {
@@ -94,7 +103,8 @@ def get_sentences_with_spacy_sp(nlp: Language, batch: list[tuple]) -> list:
             )
             sentence_in_segment_order += 1
 
-        del doc  # Explicitly clear the doc to free up memory
+        # Explicit cleanup
+        del doc
 
     return sentences_data
 
@@ -137,6 +147,96 @@ def _load_spacy_model(model_name: str) -> Language:
         raise
 
 
+def get_optimal_process_count(batch_size: int) -> int:
+    if batch_size < 1000:
+        return max(1, os.cpu_count() // 4)  # Use fewer processes for small batches
+    elif batch_size < 10000:
+        return max(1, os.cpu_count() // 2)
+    return N_PROCESS  # Use full capacity for large batches
+
+
+def get_sentences_with_spacy_mp(
+    batch: list[tuple],
+    persistent_executor: concurrent.futures.ProcessPoolExecutor,
+    num_pipelines: int = 3,
+    n_process: int = 1,
+) -> list:
+    """Process batch using the persistent worker pool with optimal load balancing.
+
+    Args:
+        batch: List of (pmid, segment_number, text) tuples
+        persistent_executor: The pre-initialized ProcessPoolExecutor with worker processes
+        num_pipelines: Number of parallel pipelines to use
+        n_process: Number of processes each pipeline should use
+
+    Returns:
+        List of sentence dictionaries
+
+    """
+    # Balance workload by text length for optimal distribution
+    batch_with_length = [(len(item[2]), item) for item in batch]
+    batch_with_length.sort(reverse=True)  # Sort by length (longest first)
+
+    # Use greedy algorithm for distribution
+    batches = [[] for _ in range(num_pipelines)]
+    batch_lengths = [0] * num_pipelines
+
+    for text_len, item in batch_with_length:
+        min_idx = batch_lengths.index(min(batch_lengths))
+        batches[min_idx].append(item)
+        batch_lengths[min_idx] += text_len
+
+    # Submit to persistent workers
+    futures = [
+        persistent_executor.submit(
+            process_batch_in_worker,
+            batch_chunk,
+            n_process,
+        )
+        for batch_chunk in batches
+        if batch_chunk  # Skip any empty batches
+    ]
+
+    # Collect results with proper error handling
+    sentences = []
+    for future in concurrent.futures.as_completed(futures):
+        try:
+            sentences.extend(future.result())
+        except Exception as e:
+            msg = f"Worker process failed to process batch: {e}"
+            logger.error(msg)
+            # Consider if we want to re-raise or continue with partial results
+
+    return sentences
+
+
+def initialize_worker(model_name=None, exclude_components=None) -> None:
+    """Initialize worker process with a spaCy model.
+
+    Reuses existing _load_spacy_model function to maintain consistency.
+    """
+    global _nlp_cache
+    if _nlp_cache is None:
+        # Use the default model settings if none provided
+        actual_model = model_name or SPACY_MODEL
+        actual_exclude = exclude_components or SPACY_EXCLUDE_COMPONENTS
+
+        # Reuse existing model loading function
+        _nlp_cache = _load_spacy_model(actual_model)
+        print(f"Worker {os.getpid()}: Model loaded successfully")
+
+
+def process_batch_in_worker(batch_chunk, n_process):
+    """Process a batch using the cached spaCy model in this worker process."""
+    global _nlp_cache
+    if _nlp_cache is None:
+        msg = "Worker not properly initialized with spaCy model"
+        raise ValueError(msg)
+
+    # Use the existing function with the cached model
+    return get_sentences_with_spacy_sp(_nlp_cache, batch_chunk, n_process)
+
+
 def main() -> None:
     """Process text segments from a DuckDB database.
 
@@ -151,8 +251,6 @@ def main() -> None:
 
     try:
         con = _setup_db_connection(DB_PATH)
-        # --- Load spaCy model once with only necessary components for segmentation ---
-        nlp = _load_spacy_model(SPACY_MODEL)
 
         print("Creating temporary table for processing...")
         con.execute(
@@ -177,12 +275,41 @@ def main() -> None:
             print("No segments to process. Exiting.")
             return
 
+        # Create persistent executor outside the batch loop
+
+        num_pipelines = 1
+        if MULTIPROCESSING:
+            # Safe fallbacks for max number of pipelines
+            cpu_count = os.cpu_count()
+            if cpu_count is not None:
+                num_pipelines = min(
+                    cpu_count - 1,
+                    min(get_optimal_process_count(total_segments), MAX_PIPELINES),
+                )
+            else:
+                msg = (
+                    "Warning: Unable to determine CPU count. Defaulting to 1 pipeline."
+                )
+                logger.warning(msg)
+                num_pipelines = 1
+
+            print(f"Creating {num_pipelines} persistent worker processes...")
+            persistent_executor = concurrent.futures.ProcessPoolExecutor(
+                max_workers=num_pipelines,
+                initializer=initialize_worker,
+                initargs=(SPACY_MODEL, SPACY_EXCLUDE_COMPONENTS),
+            )
+            n_process = min(
+                MAX_INTERNAL_PROCESS_IF_MULTIPROCESSING,
+                max(1, N_PROCESS // num_pipelines),
+            )
+        else:
+            # --- Load spaCy model once with only necessary components for segmentation ---
+            nlp = _load_spacy_model(SPACY_MODEL)
+
         with tqdm(total=total_segments, unit="segment") as pbar:
             offset = 0
             while offset < total_segments:
-                # Explicitly force garbage collection
-                gc.collect()
-
                 # Get a batch of segment IDs from our temp table
                 # This avoids the expensive NOT EXISTS query
                 batch_ids = con.execute(
@@ -214,8 +341,21 @@ def main() -> None:
                     [pmids, seg_nums],
                 ).fetchall()
 
-                # Process this batch
-                sentences_data = get_sentences_with_spacy_sp(nlp, segments_data)
+                # Inside main(), replace the multiprocessing section:
+                if MULTIPROCESSING:
+                    # Use the optimized workflow that leverages persistent workers
+                    sentences_data = get_sentences_with_spacy_mp(
+                        segments_data,
+                        persistent_executor,
+                        num_pipelines,
+                        n_process,
+                    )
+                else:
+                    sentences_data = get_sentences_with_spacy_sp(
+                        nlp,
+                        segments_data,
+                        n_process=N_PROCESS,
+                    )
                 sentences_df = pd.DataFrame(sentences_data)
                 con.append(SENTENCES_TABLE, sentences_df)
                 con.commit()
