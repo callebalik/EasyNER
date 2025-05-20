@@ -142,6 +142,13 @@ def main() -> None:
 
     Split them into sentences and store the sentences back into the database, with progress reporting.
     """
+    # Initialize variables that are used in the finally block
+    total_processed = 0
+    total_sentences = 0
+    start_time = time.time()
+    time_taken = 0
+    con = None
+
     try:
         con = _setup_db_connection(DB_PATH)
         # --- Load spaCy model once with only necessary components for segmentation ---
@@ -169,10 +176,6 @@ def main() -> None:
         if total_segments == 0:
             print("No segments to process. Exiting.")
             return
-
-        total_processed = 0
-        total_sentences = 0
-        start_time = time.time()
 
         with tqdm(total=total_segments, unit="segment") as pbar:
             offset = 0
@@ -216,8 +219,6 @@ def main() -> None:
                 sentences_df = pd.DataFrame(sentences_data)
                 con.append(SENTENCES_TABLE, sentences_df)
                 con.commit()
-                del sentences_data
-                del sentences_df
 
                 # # Insert in smaller chunks to reduce memory pressure
                 # if not sentences_df.empty:
@@ -231,9 +232,12 @@ def main() -> None:
                 # Update counters
                 batch_size = len(segments_data)
                 total_processed += batch_size
+                total_sentences += len(sentences_df) if not sentences_df.empty else 0
                 offset += batch_size
                 pbar.update(batch_size)
 
+                del sentences_data
+                del sentences_df
                 # Update progress display
                 pbar.set_postfix(
                     {
@@ -265,9 +269,33 @@ def main() -> None:
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
     finally:
+        # Calculate time_taken if not already done
+        time_taken = time.time() - start_time
+
+        # Create a directory for benchmarks if it doesn't exist
+        os.makedirs(".benchmarks", exist_ok=True)
+
+        # Handle the case where total_processed might be 0
+        segments_per_second = 0
+        if total_processed > 0 and time_taken > 0:
+            segments_per_second = total_processed / time_taken
+
+        #  Create a summary of the processing, even if interrupted
+        # Store in .benchmarks/splitter_summary.csv
+        with open(".benchmarks/splitter_summary.csv", "w") as f:
+            f.write(
+                f"Total segments processed, {total_processed}\n"
+                f"Total sentences inserted, {total_sentences}\n"
+                f"Total time taken, {time_taken:.2f} seconds\n"
+                f"Speed, {segments_per_second:.2f} segments/second\n",
+            )
+
         if con:
             con.close()
             print("DuckDB connection closed.")
+
+        if "persistent_executor" in locals():
+            persistent_executor.shutdown(wait=True)
 
 
 if __name__ == "__main__":
