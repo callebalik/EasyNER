@@ -5,7 +5,6 @@ import logging
 import os
 import sys  # Added for sys.exit
 import time
-from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
@@ -14,7 +13,6 @@ import pandas as pd
 import psutil
 import spacy
 from spacy.language import Language
-from spacy.tokens import Doc, Span
 from tqdm import tqdm  # Added tqdm
 
 # Configure logging with both console and file handlers
@@ -183,10 +181,23 @@ def _load_spacy_model(model_name: str) -> Language:
 
 
 def get_optimal_process_count(batch_size: int) -> int:
+    """Determine the optimal number of processes to use based on the batch size.
+
+    Args:
+        batch_size: The number of items in the batch.
+
+    Returns:
+        The recommended number of processes to use.
+
+    """
+    cpu_count = os.cpu_count()
+    if cpu_count is None:
+        logger.warning("Unable to determine CPU count. Defaulting to 1 process.")
+        return 1
     if batch_size < 1000:
-        return max(1, os.cpu_count() // 4)  # Use fewer processes for small batches
+        return max(1, cpu_count // 4)  # Use fewer processes for small batches
     elif batch_size < 10000:
-        return max(1, os.cpu_count() // 2)
+        return max(1, cpu_count // 2)
     return N_PROCESS  # Use full capacity for large batches
 
 
@@ -237,7 +248,7 @@ def get_sentences_with_spacy_mp(
     for future in concurrent.futures.as_completed(futures):
         try:
             sentences.extend(future.result())
-        except Exception as e:
+        except Exception as e:  # noqa: PERF203
             msg = f"Worker process failed to process batch: {e}"
             logger.error(msg)
             # Consider if we want to re-raise or continue with partial results
@@ -245,7 +256,10 @@ def get_sentences_with_spacy_mp(
     return sentences
 
 
-def initialize_worker(model_name=None, exclude_components=None) -> None:
+def initialize_worker(
+    model_name: Optional[str] = None,
+    exclude_components: Optional[list] = None,
+) -> None:
     """Initialize worker process with a spaCy model.
 
     Reuses existing _load_spacy_model function to maintain consistency.
@@ -254,14 +268,14 @@ def initialize_worker(model_name=None, exclude_components=None) -> None:
     if _nlp_cache is None:
         # Use the default model settings if none provided
         actual_model = model_name or SPACY_MODEL
-        actual_exclude = exclude_components or SPACY_EXCLUDE_COMPONENTS
+        actual_exclude = exclude_components or SPACY_EXCLUDE_COMPONENTS  # noqa: F841
 
         # Reuse existing model loading function
         _nlp_cache = _load_spacy_model(actual_model)
         logger.info(f"Worker [PID:{os.getpid()}]: Model loaded successfully")
 
 
-def process_batch_in_worker(batch_chunk, n_process):
+def process_batch_in_worker(batch_chunk: list[tuple], n_process: int) -> list:
     """Process a batch using the cached spaCy model in this worker process."""
     global _nlp_cache
     if _nlp_cache is None:
@@ -272,7 +286,7 @@ def process_batch_in_worker(batch_chunk, n_process):
     return get_sentences_with_spacy_sp(_nlp_cache, batch_chunk, n_process)
 
 
-def main() -> None:
+def main() -> None:  # noqa: C901
     """Process text segments from a DuckDB database.
 
     Split them into sentences and store the sentences back into the database, with progress reporting.
