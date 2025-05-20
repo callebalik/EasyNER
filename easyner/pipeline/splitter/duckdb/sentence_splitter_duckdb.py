@@ -1,35 +1,37 @@
 # ruff: noqa : E501, D100
 import gc
+import logging
 import os
 import sys  # Added for sys.exit
 import time
+from typing import Optional
 
 import duckdb
 import pandas as pd
 import psutil
 import spacy
-import spacy.tokens
-from dotenv import load_dotenv
 from spacy.language import Language
 from spacy.tokens import Doc, Span
 from tqdm import tqdm  # Added tqdm
 
-# --- Configuration ---
-load_dotenv()
-DB_PATH = os.getenv("DB_PATH")
-if DB_PATH is None or DB_PATH.strip() == "":
-    msg = "DB_PATH environment variable is not set."
-    raise ValueError(msg)
-else:
-    print(f"Using database path: {DB_PATH}")
-TEXT_SEGMENTS_TABLE = "abstract_segments"  # Use the view you created
-TEMP_TABLE = "segments_to_process"
-SENTENCES_TABLE = "sentences"  # New table name to reflect order
-BATCH_SIZE = 20000  # Batch size for reading from DuckDB
-SPACY_MODEL = "en_core_web_sm"  # Same sentence performance as en_core_web_md
-N_PROCESS = 16  # Number of parallel spaCy processes
-SPACY_BATCH_SIZE = 10000
-MEM_THRESHOLD_MB = 25000  # 25GB threshold
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# Import configuration from splitter_config.py
+from easyner.pipeline.splitter.duckdb.splitter_config import (  # noqa: E402
+    BATCH_SIZE,
+    CREATE_SENTENCES_TABLE_STMT,
+    DB_PATH,
+    DUCKDB_MEMORY_LIMIT,
+    MEM_THRESHOLD_MB,
+    N_PROCESS,
+    SENTENCES_TABLE,
+    SPACY_BATCH_SIZE,
+    SPACY_EXCLUDE_COMPONENTS,
+    SPACY_MODEL,
+    TEMP_TABLE,
+    TEXT_SEGMENTS_TABLE,
+)
 
 
 def monitor_memory() -> float:
@@ -95,50 +97,53 @@ def process_batch(nlp: Language, batch: list[tuple]) -> pd.DataFrame:
     return pd.DataFrame(sentences_data)
 
 
+def _setup_db_connection(db_path: Optional[str]) -> duckdb.DuckDBPyConnection:
+    """Set up db connection to DuckDB."""
+    if not db_path:
+        msg = "DB_PATH environment variable is not set."
+        raise ValueError(msg)
+    try:
+        con = duckdb.connect(database=db_path, read_only=False)
+        con.execute(f"PRAGMA memory_limit='{DUCKDB_MEMORY_LIMIT}'")
+        con.execute(CREATE_SENTENCES_TABLE_STMT)
+        msg = f"Connected to DuckDB database at {DB_PATH} and created table {SENTENCES_TABLE}"
+        logger.info(msg)
+        return con
+    except duckdb.Error as e:
+        logger.error(f"DuckDB Error: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected Error: {e}")
+        raise
+
+
+def _load_spacy_model(model_name: str) -> Language:
+    """Load a spaCy model with specific components excluded."""
+    try:
+        nlp = spacy.load(model_name, exclude=SPACY_EXCLUDE_COMPONENTS)
+        monitor_memory()  # Check memory after loading model
+        msg = (
+            f"spaCy model '{model_name}' loaded with "
+            f"\n Included components: {', '.join([c for c in nlp.pipe_names if c not in SPACY_EXCLUDE_COMPONENTS])}"
+            f"\n Excluded components: {', '.join(SPACY_EXCLUDE_COMPONENTS)}"
+            f"\n (Current Memory Usage: {monitor_memory():.1f} MB)"
+        )
+        logger.info(msg)
+        return nlp
+    except Exception as e:
+        logger.error(f"Error loading spaCy model: {e}")
+        raise
+
+
 def main() -> None:
     """Process text segments from a DuckDB database.
 
     Split them into sentences and store the sentences back into the database, with progress reporting.
     """
-    con = None
     try:
-        # This assertion confirms DB_PATH is not None. It serves two main purposes:
-        # 1. Runtime check: Ensures DB_PATH is valid before use, though an earlier
-        #    module-level check should already guarantee this.
-        # 2. Static analysis hint: Informs type checkers (e.g., Mypy) that DB_PATH
-        #    can be treated as `str` (not `Optional[str]`) beyond this point,
-        #    preventing potential false positive type errors.
-        assert (
-            DB_PATH is not None
-        ), "DB_PATH cannot be None at this point due to module-level check."
-        con = duckdb.connect(database=DB_PATH, read_only=False)
-
-        # Configure DuckDB with modest memory settings
-        con.execute("PRAGMA memory_limit='8GB'")
-
-        # --- Ensure sentences table exists with new schema ---
-        con.execute(
-            f"""--sql
-            CREATE TABLE IF NOT EXISTS {SENTENCES_TABLE} (
-                pmid INTEGER,
-                segment_number INTEGER,
-                sentence_in_segment_order INTEGER,
-                sentence VARCHAR,
-                start_char INTEGER,
-                end_char INTEGER
-            );
-        """,
-        )
-
-        # --- Load spaCy model once ---
-        print(f"Loading spaCy model: {SPACY_MODEL}...")
-        # Load only components needed for sentence segmentation
-        nlp = spacy.load(
-            SPACY_MODEL,
-            exclude=["ner", "attribute_ruler", "lemmatizer", "tagger"],
-        )
-        print("SpaCy model loaded.")
-        monitor_memory()  # Check memory after loading model
+        con = _setup_db_connection(DB_PATH)
+        # --- Load spaCy model once with only necessary components for segmentation ---
+        nlp = _load_spacy_model(SPACY_MODEL)
 
         print("Creating temporary table for processing...")
         con.execute(
