@@ -73,7 +73,7 @@ def process_batch(nlp: Language, batch: list[tuple]) -> list:
             texts,
             batch_size=SPACY_BATCH_SIZE,
             n_process=N_PROCESS,
-            disable=["tagger", "ner"],
+            # disable=SPACY_EXCLUDE_COMPONENTS, # Already excluded in model load
         ),
         metadata,
     ):
