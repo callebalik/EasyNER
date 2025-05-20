@@ -328,6 +328,8 @@ def progress_reporter_thread(
     sentences_counter: Value,
     stop_event: Event,
     active_workers_counter: Value,
+    task_queue: JoinableQueue,
+    result_queue: Queue,
 ) -> None:
     """Thread that reports progress.
 
@@ -537,6 +539,8 @@ def main() -> None:
                 sentences_counter,
                 stop_event,
                 active_workers_counter,
+                task_queue,
+                result_queue,
             ),
             name="progress-reporter",
         )
@@ -544,55 +548,93 @@ def main() -> None:
         progress_thread.start()
 
         # === MAIN THREAD READS FROM DATABASE AND FEEDS WORKERS ===
+        # === PREFETCH AND DISTRIBUTE STRATEGY ===
         try:
-            # Create a thread-local cursor from the main connection
-
             offset = 0
-            while offset < total_segments:
-                # Check memory pressure
-                if pause_event.is_set():
-                    logger.info("Main thread paused due to memory pressure")
-                    time.sleep(2)  # Wait before checking again
-                    continue
+            prefetched_segments = []  # Buffer for prefetched segments
+            processing_complete = False
 
-                # Get a batch of segment IDs - using thread-local cursor
-                batch_ids = reader_con.execute(
-                    f"""--sql
-                    SELECT pmid, segment_number
-                    FROM {TEMP_TABLE}
-                    LIMIT {BATCH_SIZE} OFFSET {offset}
-                    """,
-                ).fetchall()
+            start_time = time.time()
+            logger.info("Starting data distribution to workers")
 
-                if not batch_ids:
-                    break
-
-                # Convert to native Python lists to avoid serialization issues
-                pmids = [int(id[0]) for id in batch_ids]
-                seg_nums = [int(id[1]) for id in batch_ids]
-
-                # Get segments with thread-local cursor
-                segments_data = reader_con.execute(
-                    f"""--sql
-                    SELECT s.pmid, s.segment_number, s.segment
-                    FROM {TEXT_SEGMENTS_TABLE} s
-                    WHERE (pmid, segment_number) IN (
-                        SELECT UNNEST(?), UNNEST(?)
+            while not processing_complete:
+                # First, check if we need more data in our prefetch buffer
+                if (
+                    TIME_LIMIT_SECONDS > 0
+                    and time.time() - start_time > TIME_LIMIT_SECONDS
+                ):
+                    logger.info(
+                        f"Time limit of {TIME_LIMIT_SECONDS} seconds reached, stopping processing",
                     )
-                    """,
-                    [pmids, seg_nums],
-                ).fetchall()
+                    processing_complete = True
+                    continue
+                if (
+                    len(prefetched_segments) < WORKER_BATCH_SIZE * PREFETCH_SIZE
+                    and offset < total_segments
+                ):
+                    # Only fetch more if we're not paused
+                    if not pause_event.is_set():
+                        # Get a batch of segment IDs
+                        batch_ids = reader_con.execute(
+                            f"SELECT pmid, segment_number FROM {TEMP_TABLE} LIMIT {BATCH_SIZE} OFFSET {offset}",
+                        ).fetchall()
 
-                # Add to worker queue in smaller batches
-                for i in range(0, len(segments_data), WORKER_BATCH_SIZE):
-                    worker_batch = segments_data[i : i + WORKER_BATCH_SIZE]
+                        if not batch_ids:
+                            # No more segments to fetch
+                            logger.info("No more segments to fetch from database")
+                            offset = total_segments  # Force end of fetching
+                        else:
+                            # Convert to native Python lists and fetch segments
+                            pmids = [int(id[0]) for id in batch_ids]
+                            seg_nums = [int(id[1]) for id in batch_ids]
+
+                            segments_data = reader_con.execute(
+                                f"SELECT s.pmid, s.segment_number, s.segment FROM {TEXT_SEGMENTS_TABLE} s "
+                                f"WHERE (pmid, segment_number) IN (SELECT UNNEST(?), UNNEST(?))",
+                                [pmids, seg_nums],
+                            ).fetchall()
+
+                            # Add to prefetch buffer
+                            prefetched_segments.extend(segments_data)
+                            offset += len(batch_ids)
+
+                            # Clean up immediately
+                            del batch_ids, pmids, seg_nums, segments_data
+                    else:
+                        # We're paused, wait a bit
+                        time.sleep(0.5)
+
+                # Distribute available segments to workers if queue has space and we have data
+                while (
+                    prefetched_segments
+                    and task_queue.qsize() < NUM_WORKERS * 2
+                    and not pause_event.is_set()
+                ):
+                    # Get a worker batch
+                    batch_size = min(WORKER_BATCH_SIZE, len(prefetched_segments))
+                    worker_batch = prefetched_segments[:batch_size]
+                    prefetched_segments = prefetched_segments[batch_size:]
+
+                    # Put in queue
                     task_queue.put(worker_batch)
 
-                offset += len(batch_ids)
+                # Check if we're done
+                if (
+                    offset >= total_segments
+                    and not prefetched_segments
+                    and task_queue.empty()
+                    and result_queue.empty()
+                ):
+                    # Double-check no workers are active
+                    with active_workers_counter.get_lock():
+                        if active_workers_counter.value == 0:
+                            logger.info(
+                                "All segments processed, no active workers, shutting down",
+                            )
+                            processing_complete = True
 
-                # Memory management
-                del batch_ids, segments_data, pmids, seg_nums
-                # gc.collect()
+                # Brief pause to allow other threads/processes to run
+                time.sleep(0.1)
 
             # Signal that no more tasks will be added
             logger.info("All segments queued for processing")
@@ -663,14 +705,17 @@ def result_writer_thread(
                         processed_counter.value += count
 
                     # Add sentences to database
-                    if (
-                        isinstance(sentences_df, pd.DataFrame)
-                        and not sentences_df.empty
-                    ):
+                    if isinstance(sentences_data, list) and len(sentences_data) > 0:
+                        start_time = time.time()
+                        # Create DataFrame only once in the main thread
+                        sentences_df = pd.DataFrame(sentences_data)
                         writer_con.append(SENTENCES_TABLE, sentences_df)
                         append_count += 1
                         total_sentences_since_commit += len(sentences_df)
-
+                        stop_time = time.time()
+                        logger.info(
+                            f"Appended {len(sentences_df)} sentences in {stop_time - start_time:.2f} seconds",
+                        )
                         # Only commit periodically
                         if append_count >= COMMIT_EVERY:
                             logger.debug(
