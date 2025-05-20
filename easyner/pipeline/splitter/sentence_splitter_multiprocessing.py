@@ -356,6 +356,15 @@ def progress_reporter_thread(
                 with sentences_counter.get_lock():
                     current_sentences = sentences_counter.value
 
+                # Get queue sizes
+                try:
+                    task_queue_size = task_queue.qsize()
+                    result_queue_size = result_queue.qsize()
+                except NotImplementedError:
+                    # Fallback for platforms where qsize() is not implemented
+                    task_queue_size = "?"
+                    result_queue_size = "?"
+
                 # Update progress bar
                 if current_processed > last_processed:
                     increment = current_processed - last_processed
@@ -380,11 +389,24 @@ def progress_reporter_thread(
                     mem_mb = process.memory_info().rss / (1024 * 1024)
                     memory_display = f"{mem_mb:.0f}MB"
 
+                # More detailed status display
+                queue_status = f"TQ:{task_queue_size} RQ:{result_queue_size}"
+
+                # Log detailed status periodically (every 30 seconds)
+                if int(elapsed) % 30 == 0:
+                    logger.info(
+                        f"Status: {current_processed}/{total_segments} segments processed, "
+                        f"{current_sentences} sentences, "
+                        f"Queues[{queue_status}], "
+                        f"Memory: {memory_display}",
+                    )
+
                 pbar.set_postfix(
                     {
                         "Avg Speed": f"{speed:.1f} seg/s",
                         "Sent": current_sentences,
                         "Active Workers": f"{active_workers}/{NUM_WORKERS}",
+                        "Queues": queue_status,
                         "Used Memory": memory_display,
                     },
                 )
@@ -637,6 +659,7 @@ def main() -> None:
                 time.sleep(0.1)
 
             # Signal that no more tasks will be added
+            # logger.info("All segments processed, sending stop signals to workers")
             logger.info("All segments queued for processing")
 
         except Exception as e:
