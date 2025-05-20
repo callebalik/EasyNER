@@ -10,20 +10,17 @@ anymore.
 TODO: Check if truncation is surronded by newline.
 """
 
+import os
 import sys
-from pathlib import Path
 
 import duckdb
+from dotenv import load_dotenv
 
 
-def find_truncated_abstracts(db_path: Path) -> None:
+def find_truncated_abstracts(conn: duckdb.DuckDBPyConnection) -> None:
     """Find mark in abstract text and remove it, marking the abstract as truncated."""
     descriptive_pattern = "(ABSTRACT TRUNCATED AT <number> WORDS)"
     regex_pattern = r"\(ABSTRACT TRUNCATED AT \d+ WORDS\)"
-    conn = duckdb.connect(db_path)
-    if conn is None:
-        print(f"Failed to connect to the database at {db_path}")
-        return
     # Check for the pattern in all abstracts using regex
     result = conn.execute(
         """--sql
@@ -39,14 +36,10 @@ def find_truncated_abstracts(db_path: Path) -> None:
     )
 
 
-def remove_truncation_mark_and_add_truncated(db_path: Path) -> None:
+def remove_truncation_mark_and_add_truncated(conn: duckdb.DuckDBPyConnection) -> None:
     """Remove truncation mark from abstracts and add a 'truncated' flag."""
     descriptive_pattern = "(ABSTRACT TRUNCATED AT <number> WORDS)"
     regex_pattern = r"\(ABSTRACT TRUNCATED AT \d+ WORDS\)"  # Regex for "digits"
-    conn = duckdb.connect(str(db_path))  # Ensure db_path is string for DuckDB < 0.9.0
-    if conn is None:
-        print(f"Failed to connect to the database at {db_path}")
-        return
     # Add a new column to mark truncated abstracts
     conn.execute(
         """--sql
@@ -71,9 +64,18 @@ def remove_truncation_mark_and_add_truncated(db_path: Path) -> None:
 
 if __name__ == "__main__":
     try:
-        db_path = Path("/home/callebalik/EasyNER/data/temp/pubmed.db")
-        find_truncated_abstracts(db_path)
-        remove_truncation_mark_and_add_truncated(db_path)
+        load_dotenv()
+        DB_PATH = os.getenv("DB_PATH")
+        if DB_PATH is None or DB_PATH.strip() == "":
+            msg = "DB_PATH environment variable is not set."
+            raise ValueError(msg)
+        else:
+            print(f"Using database path: {DB_PATH}")
+
+        conn = duckdb.connect(DB_PATH)
+
+        find_truncated_abstracts(conn)
+        remove_truncation_mark_and_add_truncated(conn)
     except KeyboardInterrupt:
         print("KeyboardInterrupt: Exiting the script.")
         sys.exit(0)
