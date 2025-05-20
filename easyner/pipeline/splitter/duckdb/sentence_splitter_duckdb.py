@@ -5,6 +5,8 @@ import logging
 import os
 import sys  # Added for sys.exit
 import time
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from typing import Optional
 
 import duckdb
@@ -15,8 +17,39 @@ from spacy.language import Language
 from spacy.tokens import Doc, Span
 from tqdm import tqdm  # Added tqdm
 
+# Configure logging with both console and file handlers
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logger.setLevel(logging.DEBUG)
+
+# Create a logs directory if it doesn't exist
+os.makedirs("logs", exist_ok=True)
+log_file = os.path.join("logs", "sentence_splitter.log")
+
+# Console handler with INFO level
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# File handler with DEBUG level and rotation
+file_handler = RotatingFileHandler(
+    log_file,
+    maxBytes=10 * 1024 * 1024,
+    backupCount=5,  # 10MB max file size
+)
+file_handler.setLevel(logging.DEBUG)
+
+# Create formatters with timezone and include PID
+log_format = "%(asctime)s %(levelname)s [PID:%(process)d] %(name)s: %(message)s"
+date_format = "%Y-%m-%d %H:%M:%S %z"
+console_formatter = logging.Formatter(log_format, datefmt=date_format)
+file_formatter = logging.Formatter(log_format, datefmt=date_format)
+
+# Set formatters to handlers
+console_handler.setFormatter(console_formatter)
+file_handler.setFormatter(file_formatter)
+
+# Add handlers to logger
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 # Import configuration from splitter_config.py
 from easyner.pipeline.splitter.duckdb.splitter_config import (  # noqa: E402
@@ -46,10 +79,12 @@ def monitor_memory() -> float:
     mem_mb = process.memory_info().rss / (1024 * 1024)
 
     if mem_mb > MEM_THRESHOLD_MB:
-        print(f"Memory usage high ({mem_mb:.1f} MB). Forcing garbage collection...")
+        logger.info(
+            f"Memory usage high ({mem_mb:.1f} MB). Forcing garbage collection...",
+        )
         gc.collect()
         mem_mb = process.memory_info().rss / (1024 * 1024)
-        print(f"Memory after collection: {mem_mb:.1f} MB")
+        logger.info(f"Memory after collection: {mem_mb:.1f} MB")
 
     return mem_mb
 
@@ -223,7 +258,7 @@ def initialize_worker(model_name=None, exclude_components=None) -> None:
 
         # Reuse existing model loading function
         _nlp_cache = _load_spacy_model(actual_model)
-        print(f"Worker {os.getpid()}: Model loaded successfully")
+        logger.info(f"Worker [PID:{os.getpid()}]: Model loaded successfully")
 
 
 def process_batch_in_worker(batch_chunk, n_process):
@@ -252,7 +287,7 @@ def main() -> None:
     try:
         con = _setup_db_connection(DB_PATH)
 
-        print("Creating temporary table for processing...")
+        logger.info("Creating temporary table for processing...")
         con.execute(
             f"""--sql
             CREATE TEMPORARY TABLE {TEMP_TABLE} AS
@@ -269,10 +304,10 @@ def main() -> None:
         # Calculate total number of segments to process for tqdm
         count_result = con.execute(f"SELECT COUNT(*) FROM {TEMP_TABLE}").fetchone()
         total_segments = count_result[0] if count_result else 0
-        print(f"Total segments to process: {total_segments}")
+        logger.info(f"Total segments to process: {total_segments}")
 
         if total_segments == 0:
-            print("No segments to process. Exiting.")
+            logger.info("No segments to process. Exiting.")
             return
 
         # Create persistent executor outside the batch loop
@@ -287,13 +322,12 @@ def main() -> None:
                     min(get_optimal_process_count(total_segments), MAX_PIPELINES),
                 )
             else:
-                msg = (
-                    "Warning: Unable to determine CPU count. Defaulting to 1 pipeline."
+                logger.warning(
+                    "Unable to determine CPU count. Defaulting to 1 pipeline.",
                 )
-                logger.warning(msg)
                 num_pipelines = 1
 
-            print(f"Creating {num_pipelines} persistent worker processes...")
+            logger.info(f"Creating {num_pipelines} persistent worker processes...")
             persistent_executor = concurrent.futures.ProcessPoolExecutor(
                 max_workers=num_pipelines,
                 initializer=initialize_worker,
@@ -388,26 +422,26 @@ def main() -> None:
                 )
 
         # Final report
-        print(f"Finished processing {total_processed} segments")
-        print(f"Total sentences inserted: {total_sentences}")
+        logger.info(f"Finished processing {total_processed} segments")
+        logger.info(f"Total sentences inserted: {total_sentences}")
         time_taken = time.time() - start_time
-        print(f"Total time: {time_taken:.2f} seconds")
+        logger.info(f"Total time: {time_taken:.2f} seconds")
         if total_processed > 0 and time_taken > 0:
-            print(f"Speed: {total_processed / time_taken:.2f} segments/second")
+            logger.info(f"Speed: {total_processed / time_taken:.2f} segments/second")
 
         # Clean up temp table
         con.execute(f"DROP TABLE IF EXISTS {TEMP_TABLE}")
 
     except KeyboardInterrupt:
-        print("KeyboardInterrupt: Exiting the script.")
+        logger.warning("KeyboardInterrupt: Exiting the script.")
         # The 'finally' block below will be executed before the script terminates.
         sys.exit(130)  # Exit with status 130 (standard for SIGINT)
     except duckdb.Error as e:
-        print(f"DuckDB Error: {e}")
+        logger.error(f"DuckDB Error: {e}")
     except spacy.errors as e:
-        print(f"SpaCy Error: {e}")
+        logger.error(f"SpaCy Error: {e}")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
     finally:
         # Calculate time_taken if not already done
         time_taken = time.time() - start_time
@@ -432,7 +466,7 @@ def main() -> None:
 
         if con:
             con.close()
-            print("DuckDB connection closed.")
+            logger.info("DuckDB connection closed.")
 
         if "persistent_executor" in locals():
             persistent_executor.shutdown(wait=True)
