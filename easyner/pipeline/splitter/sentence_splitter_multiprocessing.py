@@ -131,7 +131,7 @@ def check_memory_pressure() -> int:
         return 0  # OK
 
 
-def process_batch(nlp: Language, batch: list[tuple]) -> pd.DataFrame:
+def process_batch(nlp: Language, batch: list[tuple]) -> list[dict]:
     """Process a text segment batch using spaCy and preserves sentence order within segments.
 
     Args:
@@ -172,7 +172,7 @@ def process_batch(nlp: Language, batch: list[tuple]) -> pd.DataFrame:
         # Explicitly clear the doc to free up memory
         del doc
 
-    return pd.DataFrame(sentences_data)
+    return sentences_data  # Return the list of dicts directly
 
 
 def worker_process(
@@ -239,10 +239,15 @@ def worker_process(
                     active_workers_counter.value += 1
 
                 # Process this batch with spaCy
-                sentences_df = process_batch(nlp, segments_batch)
+                sentences_data = process_batch(
+                    nlp,
+                    segments_batch,
+                )  # Now a list of dicts
 
                 # Send result to the writer process along with the count
-                result_queue.put((len(segments_batch), sentences_df))
+                result_queue.put(
+                    (len(segments_batch), sentences_data),
+                )  # Much cheaper to serialize
 
                 # Mark the task as done
                 task_queue.task_done()
@@ -256,7 +261,7 @@ def worker_process(
 
                 # Clean up to help with memory
                 del segments_batch
-                del sentences_df
+                del sentences_data
                 # gc.collect()
 
             except Empty:
