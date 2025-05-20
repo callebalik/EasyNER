@@ -75,17 +75,19 @@ logger.info(
 TEXT_SEGMENTS_TABLE = "abstract_segments"
 TEMP_TABLE = "segments_to_process"
 SENTENCES_TABLE = "sentences"
-BATCH_SIZE = 10000  # Reduced batch size for better memory management
-WORKER_BATCH_SIZE = 500  # Small batches for workers to process
+BATCH_SIZE = 20000  # Reduced batch size for better memory management
+WORKER_BATCH_SIZE = 1000  # Small batches for workers to process
 SPACY_MODEL = "en_core_web_sm"
 SPACY_N_PROCESSES = 1  # Set to 1 for multiprocessing
 SPACY_BATCH_SIZE = 200  # Batch size for spaCy processing not same as worker batch size
 # Number of parallel worker processes - adjust based on your machine
-NUM_WORKERS = min(16, max(1, mp.cpu_count() - 1))
+NUM_WORKERS = min(32, max(1, mp.cpu_count() - 1))
 # Memory threshold in MB - adjust based on your system
 MEMORY_HIGH_THRESHOLD = 75  # When to start applying backpressure
 MEMORY_CRITICAL_THRESHOLD = 80  # When to temporarily pause processing
-COMMIT_EVERY = 50
+COMMIT_EVERY = 100
+DUCK_DB_GB_MEMORY_LIMIT = 6  # Set a memory limit for DuckDB
+DUCK_DB_THREADS = 4  # Number of threads for DuckDB
 
 
 def monitor_memory() -> dict:
@@ -255,7 +257,7 @@ def worker_process(
                 # Clean up to help with memory
                 del segments_batch
                 del sentences_df
-                gc.collect()
+                # gc.collect()
 
             except Empty:
                 # No tasks available - just continue
@@ -458,7 +460,8 @@ def main() -> None:
 
         # --- SINGLE DATABASE CONNECTION FOR ALL THREADS ---
         duckdb_con = duckdb.connect(database=DB_PATH, read_only=False)
-        duckdb_con.execute("PRAGMA memory_limit='4GB'")
+        duckdb_con.execute(f"PRAGMA memory_limit='{DUCK_DB_GB_MEMORY_LIMIT}GB'")
+        duckdb_con.execute(f"PRAGMA threads={DUCK_DB_THREADS}")
 
         reader_con = duckdb_con.cursor()
 
@@ -584,7 +587,7 @@ def main() -> None:
 
                 # Memory management
                 del batch_ids, segments_data, pmids, seg_nums
-                gc.collect()
+                # gc.collect()
 
             # Signal that no more tasks will be added
             logger.info("All segments queued for processing")
@@ -680,7 +683,7 @@ def result_writer_thread(
 
                 # Clean up
                 del result
-                gc.collect()
+                # gc.collect()
 
             except Empty:
                 # Commit any pending changes while idle
