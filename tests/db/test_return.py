@@ -16,7 +16,7 @@ def test_insert_on_conflict_returning_generic():
     try:
         # 1. Setup Target Table with Primary Key (for UNIQUE constraint/ART index)
         con.execute(
-            f"CREATE TABLE {table_name} ({id_col} INTEGER PRIMARY KEY, {value_col} VARCHAR)"
+            f"CREATE TABLE {table_name} ({id_col} INTEGER PRIMARY KEY, {value_col} VARCHAR)",
         )
 
         # 2. Insert Some Initial Data (These will be duplicates in the source)
@@ -77,7 +77,7 @@ def test_insert_on_conflict_returning_generic():
 
         # Assert that the values of initial rows were not updated
         initial_rows_final_state = con.execute(
-            f"SELECT {id_col}, {value_col} FROM {table_name} WHERE {id_col} IN (1, 2) ORDER BY {id_col}"
+            f"SELECT {id_col}, {value_col} FROM {table_name} WHERE {id_col} IN (1, 2) ORDER BY {id_col}",
         ).fetchall()
         # Values for IDs 1 and 2 should still be 'original_A' and 'original_B'
         assert (

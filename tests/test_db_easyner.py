@@ -1,10 +1,10 @@
-import sqlite3
-import unittest
-import os
-import sys
-import pprint
-import json
 import csv
+import json
+import os
+import pprint
+import sqlite3
+import sys
+import unittest
 
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -40,7 +40,9 @@ class TestDBAnalysis(unittest.TestCase):
         expected_title = "Title 1"
         title = self.db.get_title(pmid)
         self.assertEqual(
-            title, expected_title, f"Title for PMID {pmid} does not match."
+            title,
+            expected_title,
+            f"Title for PMID {pmid} does not match.",
         )
         TestDBAnalysis.successful_tests.append("test_get_title")
 
@@ -65,7 +67,7 @@ class TestDBAnalysis(unittest.TestCase):
                 "freq": 4,
                 "pmid": ["9", "10", "15"],
                 "sentence_ids": [9, 10, 15],
-            }
+            },
         }
         # Find and record cooccurrences
         self.db.record_entity_cooccurrences(self.entity1, self.entity2)
@@ -127,7 +129,7 @@ class TestDBAnalysis(unittest.TestCase):
         output_file = "test_export_cooccurrences.csv"
         self.db.export_cooccurrences(output_file)
 
-        with open(output_file, "r", encoding="utf-8") as f:
+        with open(output_file, encoding="utf-8") as f:
             reader = csv.reader(f)
             header = next(reader)
             self.assertEqual(header, ["entity_1", "entity_2", "fq"])
@@ -144,7 +146,9 @@ class TestDBAnalysis(unittest.TestCase):
         updated_entity = self.cursor.fetchone()
         self.assertIsNotNone(updated_entity, f"Entity {new_name} not found.")
         self.assertEqual(
-            updated_entity[0], new_name, f"Entity name not updated correctly."
+            updated_entity[0],
+            new_name,
+            "Entity name not updated correctly.",
         )
         TestDBAnalysis.successful_tests.append("test_update_entity_name")
 
@@ -156,7 +160,9 @@ class TestDBAnalysis(unittest.TestCase):
         reverted_entity = self.cursor.fetchone()
         self.assertIsNotNone(reverted_entity, f"Entity {old_name} not found.")
         self.assertEqual(
-            reverted_entity[0], old_name, f"Entity name not reverted correctly."
+            reverted_entity[0],
+            old_name,
+            "Entity name not reverted correctly.",
         )
 
     def test_get_named_entity_id(self, entity="disease"):

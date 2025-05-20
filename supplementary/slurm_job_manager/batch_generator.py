@@ -1,13 +1,12 @@
-import json
 import argparse
+import json
 
 
 def split_articles_into_batches(total_articles, batch_size):
-    """
-    Splits the total number of articles into batches, each with a specified number of articles.
+    """Splits the total number of articles into batches, each with a specified number of articles.
     :param total_articles: Total number of articles
     :param batch_size: Number of articles per batch
-    :return: List of tuples with (start, end) indices for each batch
+    :return: List of tuples with (start, end) indices for each batch.
     """
     batches = []
     start = 1  # Start from 1 (inclusive)
@@ -20,26 +19,31 @@ def split_articles_into_batches(total_articles, batch_size):
     return batches
 
 
-def save_batches_to_file(batches, output_file):
-    """
-    Saves the list of batch intervals to a file in JSON format.
+def save_batches_to_file(batches, output_file) -> None:
+    """Saves the list of batch intervals to a file in JSON format.
     :param batches: List of batch intervals
-    :param output_file: File to save the batch intervals
+    :param output_file: File to save the batch intervals.
     """
     with open(output_file, "w") as f:
         json.dump(batches, f, indent=2)
     print(f"{len(batches)} Batches saved to {output_file}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate batch intervals for articles"
+        description="Generate batch intervals for articles",
     )
     parser.add_argument(
-        "--total-articles", type=int, required=True, help="Total number of articles"
+        "--total-articles",
+        type=int,
+        required=True,
+        help="Total number of articles",
     )
     parser.add_argument(
-        "--batch-size", type=int, required=True, help="Number of articles per batch"
+        "--batch-size",
+        type=int,
+        required=True,
+        help="Number of articles per batch",
     )
     parser.add_argument(
         "--output-file",

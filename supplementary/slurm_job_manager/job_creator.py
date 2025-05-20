@@ -1,18 +1,17 @@
-import os
-import json
 import argparse
+import json
+import os
 
 
 def generate_slurm_script(start, end, batch_number, setup_script="setup_env.sh"):
-    """
-    Generates and saves a SLURM job script for processing a batch of articles.
+    """Generates and saves a SLURM job script for processing a batch of articles.
     Embeds the setup script content directly into the SLURM job script, skipping the shebang (#!/bin/bash).
     """
     # Define the job name
     job_name = f"batch_{batch_number}"
 
     # Read the content of the setup script (setup_env.sh), skipping the first line if it's a shebang
-    with open(setup_script, "r") as f:
+    with open(setup_script) as f:
         setup_script_lines = f.readlines()
 
     # Skip the first line if it starts with #! (the shebang)
@@ -53,20 +52,17 @@ python main.py
 
 
 def load_batches_from_file(batch_file):
-    """
-    Loads batch intervals from a file (JSON format).
+    """Loads batch intervals from a file (JSON format).
     :param batch_file: File containing batch intervals
-    :return: List of batch intervals (start, end tuples)
+    :return: List of batch intervals (start, end tuples).
     """
-    with open(batch_file, "r") as f:
+    with open(batch_file) as f:
         batches = json.load(f)
     return batches
 
 
-def create_jobs(batch_file, metadata_file, setup_script="setup_env.sh"):
-    """
-    Loads the batch intervals from a file, generates SLURM job scripts, and saves metadata.
-    """
+def create_jobs(batch_file, metadata_file, setup_script="setup_env.sh") -> None:
+    """Loads the batch intervals from a file, generates SLURM job scripts, and saves metadata."""
     # Load batches from the file
     batches = load_batches_from_file(batch_file)
     job_metadata = {}
@@ -74,7 +70,10 @@ def create_jobs(batch_file, metadata_file, setup_script="setup_env.sh"):
     # Generate SLURM scripts for each batch
     for i, (start, end) in enumerate(batches, 1):
         script_filename, job_name = generate_slurm_script(
-            start, end, i, setup_script=setup_script
+            start,
+            end,
+            i,
+            setup_script=setup_script,
         )
 
         # Store metadata for the job, including job name
@@ -95,7 +94,7 @@ def create_jobs(batch_file, metadata_file, setup_script="setup_env.sh"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Generate SLURM job scripts based on batch intervals"
+        description="Generate SLURM job scripts based on batch intervals",
     )
     parser.add_argument(
         "--batch-file",

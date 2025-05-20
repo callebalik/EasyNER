@@ -1,12 +1,11 @@
+import argparse
 import json
 import os
 import re
-import argparse
 
 
 def extract_errors_from_err_file(err_file, output_file):
-    """
-    Extracts the error messages (traceback and SLURM job cancellations) from a SLURM .err file
+    """Extracts the error messages (traceback and SLURM job cancellations) from a SLURM .err file
     and writes them to a separate output file, including the last batch status before the error.
     """
     if not os.path.exists(err_file):
@@ -21,19 +20,19 @@ def extract_errors_from_err_file(err_file, output_file):
 
     # Regular expressions for batch status, traceback start, and slurmstepd errors
     batch_status_pattern = re.compile(
-        r"batch:(\d+):\s+(\d+)%\|"
+        r"batch:(\d+):\s+(\d+)%\|",
     )  # Matches batch status lines
     traceback_start_pattern = re.compile(
-        r"Traceback \(most recent call last\):"
+        r"Traceback \(most recent call last\):",
     )  # Start of traceback
     slurm_error_pattern = re.compile(
-        r"slurmstepd: error: (.*)"
+        r"slurmstepd: error: (.*)",
     )  # Matches slurmstepd errors
     error_line_pattern = re.compile(
-        r"^\s*raise\s+(\w+Error)"
+        r"^\s*raise\s+(\w+Error)",
     )  # Matches the error type after 'raise'
 
-    with open(err_file, "r") as f:
+    with open(err_file) as f:
         for line in f:
             # Track the last batch status line before an error
             batch_match = batch_status_pattern.search(line)
@@ -55,7 +54,7 @@ def extract_errors_from_err_file(err_file, output_file):
                 if error_match:
                     error_type = error_match.group(1)
                     error_summary.append(
-                        {"error": error_type, "last_batch_status": last_batch_status}
+                        {"error": error_type, "last_batch_status": last_batch_status},
                     )
                     errors_present = True
                     capture_traceback = False  # Stop capturing once we have the error
@@ -64,7 +63,7 @@ def extract_errors_from_err_file(err_file, output_file):
             slurm_error_match = slurm_error_pattern.search(line)
             if slurm_error_match:
                 error_summary.append(
-                    {"error": "Slurm error", "last_batch_status": last_batch_status}
+                    {"error": "Slurm error", "last_batch_status": last_batch_status},
                 )
                 errors_present = True
 
@@ -74,7 +73,7 @@ def extract_errors_from_err_file(err_file, output_file):
             {
                 "error": "Traceback Error Not Parsed",
                 "last_batch_status": last_batch_status,
-            }
+            },
         )
 
     # Write errors to the output file
@@ -82,7 +81,7 @@ def extract_errors_from_err_file(err_file, output_file):
         with open(output_file, "w") as f_out:
             for error in error_summary:
                 f_out.write(
-                    f"Error: {error['error']}, Last Batch Status: {error['last_batch_status']}\n"
+                    f"Error: {error['error']}, Last Batch Status: {error['last_batch_status']}\n",
                 )
 
         return {
@@ -94,13 +93,12 @@ def extract_errors_from_err_file(err_file, output_file):
     return None
 
 
-def process_job_errors(job_metadata_file, err_dir, output_dir):
-    """
-    Processes jobs from job_metadata.json and creates error logs for each job, including the last
+def process_job_errors(job_metadata_file, err_dir, output_dir) -> None:
+    """Processes jobs from job_metadata.json and creates error logs for each job, including the last
     batch status before the error occurs. Also updates the metadata with error information.
     """
     # Read the job metadata
-    with open(job_metadata_file, "r") as f:
+    with open(job_metadata_file) as f:
         job_metadata = json.load(f)
 
     # Make sure output directory exists
@@ -140,12 +138,11 @@ def process_job_errors(job_metadata_file, err_dir, output_dir):
     with open(job_metadata_file, "w") as f:
         json.dump(job_metadata, f, indent=2)
 
-    print(f"Job metadata updated with error information.")
+    print("Job metadata updated with error information.")
 
 
-def run_error_logging(metadata_file, err_dir, output_dir):
-    """
-    Callable function to run the error logging process programmatically.
+def run_error_logging(metadata_file, err_dir, output_dir) -> None:
+    """Callable function to run the error logging process programmatically.
     This function can be called from other Python scripts.
     """
     process_job_errors(metadata_file, err_dir, output_dir)
@@ -153,7 +150,7 @@ def run_error_logging(metadata_file, err_dir, output_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Extract errors from SLURM .err files for jobs in job_metadata.json"
+        description="Extract errors from SLURM .err files for jobs in job_metadata.json",
     )
     parser.add_argument(
         "--metadata-file",

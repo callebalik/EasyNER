@@ -1,17 +1,19 @@
 import pandas as pd
 
 
-def compare_total_count(tsv_file, csv_file, output_file):
+def compare_total_count(tsv_file, csv_file, output_file) -> None:
     # Read the TSV and CSV files
     tsv_data = pd.read_csv(tsv_file, sep="\t")
     csv_data = pd.read_csv(csv_file)
 
     # Ensure the total_count columns are numeric
     tsv_data["total_count"] = pd.to_numeric(
-        tsv_data["total_count"], errors="coerce"
+        tsv_data["total_count"],
+        errors="coerce",
     ).fillna(0)
     csv_data["total_count"] = pd.to_numeric(
-        csv_data["total_count"], errors="coerce"
+        csv_data["total_count"],
+        errors="coerce",
     ).fillna(0)
 
     # Merge the data on the first column of TSV and entity_text of CSV

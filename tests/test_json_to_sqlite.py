@@ -1,11 +1,12 @@
 import json
 import unittest
-from scripts.database.json_to_sqlite import process_chunk
+
+from scripts.sqlite_backend.json_to_sqlite import process_chunk
 
 
 class TestJsonToSqlite(unittest.TestCase):
     def setUp(self):
-        with open("/home/carloa/Desktop/EasyNer/tests/mockup.json", "r") as f:
+        with open("/home/carloa/Desktop/EasyNer/tests/mockup.json") as f:
             self.data = json.load(f)
 
     def test_process_chunk(self):

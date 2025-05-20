@@ -1,14 +1,16 @@
-import os
-import sys
-import signal
 import argparse
-import tempfile
-import psutil
+import os
 import pwd
-from socket import socket, AF_INET, SOCK_STREAM
+import signal
+import sys
+import tempfile
 import traceback
+from socket import AF_INET, SOCK_STREAM, socket
+from typing import Optional
 
-from scripts.database.db_server import get_db_easyner_context_connection
+import psutil
+
+from scripts.sqlite_backend.db_server import get_db_easyner_context_connection
 
 # Set environment variables before importing app modules
 # This prevents the invalid subscript error by ensuring variables are set before any tracking happens
@@ -22,11 +24,11 @@ os.environ.setdefault("SERVER_PORT", "5001")
 # Improved error handling for imports
 try:
     # Now import Flask app after environment variables are set
-    from scripts.database.db_server import app, get_db_easyner, setup_logging
+    from scripts.sqlite_backend.db_server import app, get_db_easyner, setup_logging
 
     # Import the monitoring module only if it exists
     try:
-        from scripts.database.db_server import operation_monitor
+        from scripts.sqlite_backend.db_server import operation_monitor
     except ImportError:
         operation_monitor = None
 except ImportError as e:
@@ -45,18 +47,18 @@ REQUIRED_ENV_VARS = {
 }
 
 
-def validate_environment():
-    """Validate and set required environment variables"""
+def validate_environment() -> bool:
+    """Validate and set required environment variables."""
     missing_vars = []
     for var, default in REQUIRED_ENV_VARS.items():
         if var not in os.environ:
             os.environ[var] = str(default)
             print(
-                f"Warning: Environment variable {var} not set, using default: {default}"
+                f"Warning: Environment variable {var} not set, using default: {default}",
             )
     if missing_vars:
         print(
-            f"Warning: Missing recommended environment variables: {', '.join(missing_vars)}"
+            f"Warning: Missing recommended environment variables: {', '.join(missing_vars)}",
         )
     return True
 
@@ -96,8 +98,8 @@ def find_process_using_port(port):
     return None
 
 
-def cleanup_server(pid_file=None):
-    """Clean up server resources on exit"""
+def cleanup_server(pid_file=None) -> None:
+    """Clean up server resources on exit."""
     print("Cleaning up server resources...")
     # Remove PID file if it exists
     if pid_file and os.path.exists(pid_file):
@@ -108,21 +110,21 @@ def cleanup_server(pid_file=None):
             print(f"Error cleaning up PID file: {e}")
 
 
-def signal_handler(sig, frame, pid_file=None):
-    """Handle termination signals gracefully"""
+def signal_handler(sig, frame, pid_file=None) -> None:
+    """Handle termination signals gracefully."""
     print(f"Received signal {sig}, shutting down server...")
     cleanup_server(pid_file)
     sys.exit(0)
 
 
-def kill_process_on_port(port):
-    """Kill any process using the specified port"""
+def kill_process_on_port(port) -> bool:
+    """Kill any process using the specified port."""
     process_info = find_process_using_port(port)
     if process_info:
         try:
             process = psutil.Process(process_info["pid"])
             print(
-                f"Force-terminating process {process_info['pid']} ({process_info['name']}) using port {port}"
+                f"Force-terminating process {process_info['pid']} ({process_info['name']}) using port {port}",
             )
             process.terminate()
             try:
@@ -137,7 +139,7 @@ def kill_process_on_port(port):
 
 
 def find_available_port(start_port=5001, end_port=5030):
-    """Find an available port within the specified range"""
+    """Find an available port within the specified range."""
     for port in range(start_port, end_port):
         s = socket(AF_INET, SOCK_STREAM)
         try:
@@ -149,11 +151,11 @@ def find_available_port(start_port=5001, end_port=5030):
     return None
 
 
-def check_pid_file(pid_file):
-    """Check for existing PID file and handle orphaned processes"""
+def check_pid_file(pid_file) -> bool:
+    """Check for existing PID file and handle orphaned processes."""
     if os.path.exists(pid_file):
         try:
-            with open(pid_file, "r") as f:
+            with open(pid_file) as f:
                 old_pid = int(f.read().strip())
             if psutil.pid_exists(old_pid):
                 old_process = psutil.Process(old_pid)
@@ -166,7 +168,7 @@ def check_pid_file(pid_file):
                         else "unknown"
                     )
                     print(
-                        f"Found previous process: PID={old_pid}, name={proc_name}, user={username}, command={cmdline}"
+                        f"Found previous process: PID={old_pid}, name={proc_name}, user={username}, command={cmdline}",
                     )
                     if (
                         "python" in proc_name.lower()
@@ -178,13 +180,13 @@ def check_pid_file(pid_file):
                             old_process.wait(timeout=3)
                         except psutil.TimeoutExpired:
                             print(
-                                f"Process {old_pid} did not terminate gracefully, killing it"
+                                f"Process {old_pid} did not terminate gracefully, killing it",
                             )
                             old_process.kill()
                         return True
                 except (psutil.AccessDenied, psutil.NoSuchProcess) as e:
                     print(f"Cannot access process {old_pid} details: {e}")
-        except (ValueError, IOError, psutil.NoSuchProcess, psutil.AccessDenied) as e:
+        except (OSError, ValueError, psutil.NoSuchProcess, psutil.AccessDenied) as e:
             print(f"Error checking PID file: {e}")
             # Remove invalid PID file
             try:
@@ -196,11 +198,11 @@ def check_pid_file(pid_file):
 
 
 def optimize_performance():
-    """Optimize database settings for better performance"""
+    """Optimize database settings for better performance."""
     try:
         # Import the monitoring module
-        from scripts.database.monitoring import OperationMonitor
-        from scripts.database.db_server import app
+        from scripts.sqlite_backend.db_server import app
+        from scripts.sqlite_backend.monitoring import OperationMonitor
 
         # Create a temporary monitor if needed
         temp_monitor = OperationMonitor(app.logger)
@@ -220,8 +222,8 @@ def optimize_performance():
         return False
 
 
-def test_database_connection():
-    """Test the database connection to verify it's working correctly"""
+def test_database_connection() -> Optional[bool]:
+    """Test the database connection to verify it's working correctly."""
     try:
         # Use the context manager directly
         with get_db_easyner_context_connection() as db:
@@ -242,10 +244,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EasyNer DB Server")
     parser.add_argument("--port", type=int, help="Port to run the server on")
     parser.add_argument(
-        "--force", action="store_true", help="Force kill any process using the port"
+        "--force",
+        action="store_true",
+        help="Force kill any process using the port",
     )
     parser.add_argument(
-        "--optimize", action="store_true", help="Optimize database performance"
+        "--optimize",
+        action="store_true",
+        help="Optimize database performance",
     )
     parser.add_argument(
         "--test-db-only",
@@ -273,10 +279,12 @@ if __name__ == "__main__":
 
     # Register signal handlers for clean shutdown
     signal.signal(
-        signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, pid_file)
+        signal.SIGINT,
+        lambda sig, frame: signal_handler(sig, frame, pid_file),
     )
     signal.signal(
-        signal.SIGTERM, lambda sig, frame: signal_handler(sig, frame, pid_file)
+        signal.SIGTERM,
+        lambda sig, frame: signal_handler(sig, frame, pid_file),
     )
 
     # Determine port to use
@@ -310,7 +318,7 @@ if __name__ == "__main__":
                 print(f"  User: {process_info['username']}")
                 print(f"  Command: {process_info['cmdline']}")
                 print(
-                    "Use --force to kill the process or specify a different port with --port"
+                    "Use --force to kill the process or specify a different port with --port",
                 )
                 sys.exit(1)
 

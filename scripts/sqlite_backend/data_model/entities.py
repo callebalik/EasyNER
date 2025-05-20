@@ -4,7 +4,7 @@ import sqlite3
 import numpy as np
 from tqdm import tqdm
 
-from scripts.database.db_main import EasyNerDBHandler
+from scripts.sqlite_backend.db_main import EasyNerDBHandler
 
 from ..core.db_engine import ReaderWriterPair
 import pandas as pd

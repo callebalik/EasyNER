@@ -1,7 +1,7 @@
-import unittest
 import json
-import sys
 import os
+import sys
+import unittest
 
 # TODO test for multiple occurrences of the same entity in a sentence
 # TODO check when sorting is done, as it seems results must be alphabetically sorted
@@ -11,11 +11,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 # Use absolute import
 from scripts.co_occurence import (
-    get_inter_entity_co_occurrences,
-    load_json,
-    get_batch_index,
-    get_intra_entity_co_occurrences,
     create_df_from_pairs,
+    get_batch_index,
+    get_inter_entity_co_occurrences,
+    get_intra_entity_co_occurrences,
+    load_json,
 )
 
 
@@ -33,9 +33,9 @@ class TestGetPairs(unittest.TestCase):
 
     def test_get_pairs(self):
         # Test the get_pairs function
-        with open(self.mockup_path, "r") as f:
+        with open(self.mockup_path) as f:
             test_data = json.load(f)
-        with open(self.expected_path, "r") as f:
+        with open(self.expected_path) as f:
             expected_pairs = json.load(f)
 
         sorted_files = [self.mockup_path]
@@ -69,7 +69,7 @@ class TestGetPairs(unittest.TestCase):
 
     def test_load_json(self):
         # Test the load_json function
-        with open(self.mockup_path, "r") as f:
+        with open(self.mockup_path) as f:
             expected_data = json.load(f)
 
         loaded_data = load_json(self.mockup_path)
@@ -94,7 +94,7 @@ class TestGetPairs(unittest.TestCase):
 
     def test_get_inter_entity_co_occurrences(self):
         # Test the get_inter_entity_co_occurrences function
-        with open(self.mockup_path, "r") as f:
+        with open(self.mockup_path) as f:
             test_data = json.load(f)
         sorted_files = [self.mockup_path]
         entity1 = "disease"
@@ -116,7 +116,7 @@ class TestGetPairs(unittest.TestCase):
         with open(self.output_path, "w") as f:
             json.dump(pairs_str_keys, f, indent=4)
 
-        with open(self.expected_path, "r") as f:
+        with open(self.expected_path) as f:
             expected_pairs = json.load(f)
 
         # Assert that the generated pairs match the expected pairs
@@ -128,7 +128,7 @@ class TestGetPairs(unittest.TestCase):
 
     def test_create_df_from_pairs(self):
         # Test the create_df_from_pairs function
-        with open(self.expected_path, "r") as f:
+        with open(self.expected_path) as f:
             pairs_dict = json.load(f)
         df = create_df_from_pairs(pairs_dict)
         # Assert that the DataFrame is not empty

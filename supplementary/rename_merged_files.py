@@ -2,10 +2,8 @@ import os
 import re
 
 
-def rename_merged_files(directory):
-    """
-    Rename up to `limit` merged files in the specified directory to include a hyphen between the prefix and the numeric part.
-    """
+def rename_merged_files(directory) -> None:
+    """Rename up to `limit` merged files in the specified directory to include a hyphen between the prefix and the numeric part."""
     for filename in os.listdir(directory):
         if filename.startswith("merged") and filename.endswith(".json"):
             # Extract the numeric part from the filename

@@ -1,19 +1,22 @@
-import unittest
 import json
 import os
 import sys
+import unittest
 
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from scripts.co_occurence_db import get_inter_entity_co_occurrences
-from scripts.co_occurence_db import store_co_occurrences_in_db, query_co_occurrences
+from scripts.co_occurence_db import (
+    get_inter_entity_co_occurrences,
+    query_co_occurrences,
+    store_co_occurrences_in_db,
+)
 
 
 class TestCoOccurrenceDB(unittest.TestCase):
     def setUp(self):
         self.mockup_file_path = "/home/x_caoll/EasyNer/tests/co_occurence_mockup.json"
-        with open(self.mockup_file_path, "r") as f:
+        with open(self.mockup_file_path) as f:
             self.mockup_data = json.load(f)  # Read mockup_data from the file
 
     def tearDown(self):
@@ -56,7 +59,7 @@ class TestCoOccurrenceDB(unittest.TestCase):
                 {
                     "pmid": "1",
                     "sentences": [
-                        "[1] Sentence with disease1, disease1, phenomenon1 and phenomenon2."
+                        "[1] Sentence with disease1, disease1, phenomenon1 and phenomenon2.",
                     ],
                 },
                 {
@@ -71,31 +74,31 @@ class TestCoOccurrenceDB(unittest.TestCase):
                 {
                     "pmid": "1",
                     "sentences": [
-                        "[1] Sentence with disease1, disease2 and phenomenon1."
+                        "[1] Sentence with disease1, disease2 and phenomenon1.",
                     ],
-                }
+                },
             ],
             "('disease2', 'phenomenon2')": [
                 {
                     "pmid": "1",
                     "sentences": ["[1] Sentence with disease2 and phenomenon2."],
-                }
+                },
             ],
             "('disease3', 'phenomenon1')": [
                 {
                     "pmid": "2",
                     "sentences": [
-                        "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2."
+                        "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2.",
                     ],
-                }
+                },
             ],
             "('disease3', 'phenomenon2')": [
                 {
                     "pmid": "2",
                     "sentences": [
-                        "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2."
+                        "[2] Sentence with disease1, disease3, phenomenon1 and phenomenon2.",
                     ],
-                }
+                },
             ],
         }
 
@@ -106,7 +109,9 @@ class TestCoOccurrenceDB(unittest.TestCase):
         entity1 = "disease1"
         entity2 = "phenomenon1"
         co_occurrences = get_inter_entity_co_occurrences(
-            sorted_files, "disease", "phenomenon"
+            sorted_files,
+            "disease",
+            "phenomenon",
         )
 
         db_path = "/home/x_caoll/EasyNer/tests/co_occurrences.db"

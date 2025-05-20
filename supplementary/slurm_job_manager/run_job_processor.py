@@ -1,6 +1,7 @@
-from process_job_errors import run_error_logging
-from process_batch_completion import run_completion_logging
 import os
+
+from process_batch_completion import run_completion_logging
+from process_job_errors import run_error_logging
 
 # Get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,5 +24,8 @@ run_error_logging(metadata_file, err_dir, error_log_dir)
 
 # Run the batch completion logging process
 run_completion_logging(
-    metadata_file, err_dir, batch_completion_log_file, rerun_file=batch_rerun_file
+    metadata_file,
+    err_dir,
+    batch_completion_log_file,
+    rerun_file=batch_rerun_file,
 )

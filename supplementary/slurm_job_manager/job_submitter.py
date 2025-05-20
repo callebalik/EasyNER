@@ -1,18 +1,18 @@
-import os
-import json
 import argparse
+import json
+import os
 import subprocess
 
 
 def submit_job(script_filename):
-    """
-    Submits a SLURM job using sbatch and returns the job ID.
-    """
+    """Submits a SLURM job using sbatch and returns the job ID."""
     # Submit the job script using sbatch and capture the output
 
     # Universal newlines to handle older python versions
     result = subprocess.run(
-        ["sbatch", script_filename], stdout=subprocess.PIPE, universal_newlines=True
+        ["sbatch", script_filename],
+        stdout=subprocess.PIPE,
+        text=True,
     )
 
     # Extract the job ID from the output
@@ -25,14 +25,13 @@ def submit_job(script_filename):
     return job_id
 
 
-def update_metadata_with_job_id(metadata_file, job_ids):
-    """
-    Updates the job metadata file with the job IDs.
+def update_metadata_with_job_id(metadata_file, job_ids) -> None:
+    """Updates the job metadata file with the job IDs.
     :param metadata_file: Path to the job metadata file (JSON format).
     :param job_ids: Dictionary mapping batch numbers to SLURM job IDs.
     """
     # Load the existing metadata
-    with open(metadata_file, "r") as f:
+    with open(metadata_file) as f:
         job_metadata = json.load(f)
 
     # Update each job entry with its corresponding job ID
@@ -48,8 +47,7 @@ def update_metadata_with_job_id(metadata_file, job_ids):
 
 
 def submit_jobs(script_dir):
-    """
-    Submits SLURM job scripts and returns a dictionary of job IDs.
+    """Submits SLURM job scripts and returns a dictionary of job IDs.
     :param script_dir: Directory where the SLURM job scripts are located.
     :return: Dictionary mapping batch numbers to SLURM job IDs.
     """
@@ -70,7 +68,7 @@ def submit_jobs(script_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Submit SLURM job scripts and optionally update job metadata with job IDs"
+        description="Submit SLURM job scripts and optionally update job metadata with job IDs",
     )
     parser.add_argument(
         "--script-dir",

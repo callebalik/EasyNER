@@ -3,7 +3,7 @@ import seaborn as sns
 import numpy as np
 import matplotlib.gridspec as gridspec
 from matplotlib.patches import Rectangle
-from scripts.database.statistics.color_scheme import *
+from scripts.sqlite_backend.statistics.color_scheme import *
 
 
 class CooccurenceHorizontalBarplot:

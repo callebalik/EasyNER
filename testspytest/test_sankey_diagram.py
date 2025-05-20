@@ -1,48 +1,65 @@
 import os
 import tempfile
 from pathlib import Path
-import pytest
 from unittest.mock import MagicMock, patch
+
 import numpy as np
 import plotly.graph_objects as go
+import pytest
 
-from scripts.database.statistics.sankey_diagram import CooccurenceSankey
-from scripts.database.data_model.entity_cooccurrence import (
+from scripts.sqlite_backend.data_model.entity_cooccurrence import (
     Cooccurrence,
     NormallizedNamedEntity,
 )
-from scripts.database.data_model.schema import (
-    FQ_DOCUMENT_LEVEL,
-    UNIQ_DOCS,
-    PMI,
-    NPMI,
-    TXT,
+from scripts.sqlite_backend.data_model.schema import (
     FQ,
+    FQ_DOCUMENT_LEVEL,
+    NPMI,
+    PMI,
+    TXT,
+    UNIQ_DOCS,
 )
+from scripts.sqlite_backend.statistics.sankey_diagram import CooccurenceSankey
 
 
 @pytest.fixture
 def mock_entities():
-    """Create mock NormallizedNamedEntity objects for testing"""
+    """Create mock NormallizedNamedEntity objects for testing."""
     return {
         "covid": NormallizedNamedEntity(
-            norm_id=1, txt="COVID-19", fq=100, uniq_docs=50, ne_class="DISEASE"
+            norm_id=1,
+            txt="COVID-19",
+            fq=100,
+            uniq_docs=50,
+            ne_class="DISEASE",
         ),
         "influenza": NormallizedNamedEntity(
-            norm_id=2, txt="Influenza", fq=80, uniq_docs=40, ne_class="DISEASE"
+            norm_id=2,
+            txt="Influenza",
+            fq=80,
+            uniq_docs=40,
+            ne_class="DISEASE",
         ),
         "fever": NormallizedNamedEntity(
-            norm_id=101, txt="Fever", fq=90, uniq_docs=45, ne_class="PHENOMENON"
+            norm_id=101,
+            txt="Fever",
+            fq=90,
+            uniq_docs=45,
+            ne_class="PHENOMENON",
         ),
         "cough": NormallizedNamedEntity(
-            norm_id=102, txt="Cough", fq=85, uniq_docs=42, ne_class="PHENOMENON"
+            norm_id=102,
+            txt="Cough",
+            fq=85,
+            uniq_docs=42,
+            ne_class="PHENOMENON",
         ),
     }
 
 
 @pytest.fixture
 def mock_cooccurrences(mock_entities):
-    """Create mock Cooccurrence objects with valid data"""
+    """Create mock Cooccurrence objects with valid data."""
     return [
         Cooccurrence(
             e1=mock_entities["covid"],
@@ -76,7 +93,7 @@ def mock_cooccurrences(mock_entities):
 
 @pytest.fixture
 def mock_cooccurrences_with_none(mock_entities):
-    """Create mock Cooccurrence objects with some None values to test edge cases"""
+    """Create mock Cooccurrence objects with some None values to test edge cases."""
     return [
         Cooccurrence(
             e1=mock_entities["covid"],
@@ -86,7 +103,7 @@ def mock_cooccurrences_with_none(mock_entities):
             uniq_docs=None,  # None value to test handling
             npmi=None,  # None value to test handling
             pmi=None,  # None value to test handling
-        )
+        ),
     ]
 
 
@@ -97,8 +114,8 @@ def sankey_diagram():
 
 
 class TestCooccurenceSankey:
-    def test_process_data(self, sankey_diagram, mock_cooccurrences):
-        """Test that _process_data correctly processes entity data"""
+    def test_process_data(self, sankey_diagram, mock_cooccurrences) -> None:
+        """Test that _process_data correctly processes entity data."""
         result = sankey_diagram._process_data(mock_cooccurrences)
 
         # Verify data structure
@@ -116,8 +133,8 @@ class TestCooccurenceSankey:
         assert result["disease_data"]["COVID-19"][FQ_DOCUMENT_LEVEL] == 100
         assert result["phenomenon_data"]["Fever"][UNIQ_DOCS] == 45
 
-    def test_create_link_data(self, sankey_diagram, mock_cooccurrences):
-        """Test that _create_link_data correctly generates link data"""
+    def test_create_link_data(self, sankey_diagram, mock_cooccurrences) -> None:
+        """Test that _create_link_data correctly generates link data."""
         processed_data = sankey_diagram._process_data(mock_cooccurrences)
         result = sankey_diagram._create_link_data(processed_data)
 
@@ -132,8 +149,12 @@ class TestCooccurenceSankey:
         # Verify link values use NPMI
         assert abs(result["value"][0] - 0.6) < 0.01
 
-    def test_handle_none_values(self, sankey_diagram, mock_cooccurrences_with_none):
-        """Test that the class handles None values gracefully"""
+    def test_handle_none_values(
+        self,
+        sankey_diagram,
+        mock_cooccurrences_with_none,
+    ) -> None:
+        """Test that the class handles None values gracefully."""
         processed_data = sankey_diagram._process_data(mock_cooccurrences_with_none)
         link_data = sankey_diagram._create_link_data(processed_data)
         node_colors = sankey_diagram._create_node_colors(processed_data)
@@ -144,8 +165,8 @@ class TestCooccurenceSankey:
         assert len(link_data["value"]) == 1
         assert len(node_colors["node_colors"]) == 2  # 1 diseases + 1 phenomena
 
-    def test_create_sankey_diagram(self, sankey_diagram, mock_cooccurrences):
-        """Test that create_sankey_diagram returns a valid Figure object"""
+    def test_create_sankey_diagram(self, sankey_diagram, mock_cooccurrences) -> None:
+        """Test that create_sankey_diagram returns a valid Figure object."""
         # Test the core diagram creation
         fig = sankey_diagram.create_sankey_diagram(mock_cooccurrences)
 
@@ -162,14 +183,14 @@ class TestCooccurenceSankey:
         assert len(sankey_data.node.label) == 4  # 2 diseases + 2 phenomena
         assert len(sankey_data.link.source) == 3  # 3 cooccurrences
 
-    def test_empty_input(self, sankey_diagram):
-        """Test behavior with empty input"""
+    def test_empty_input(self, sankey_diagram) -> None:
+        """Test behavior with empty input."""
         result = sankey_diagram.create_sankey_diagram([])
         # When cooccurrences list is empty, the method should return an HTML message
         assert isinstance(result, str)
         assert "No data available" in result
 
-    def test_export_as_html_mock(self, sankey_diagram, mock_cooccurrences):
+    def test_export_as_html_mock(self, sankey_diagram, mock_cooccurrences) -> None:
         """Test HTML export using mocks."""
         # Setup mock for write_html
         with patch.object(go.Figure, "write_html") as mock_write_html:
@@ -179,7 +200,7 @@ class TestCooccurenceSankey:
             # Verify write_html was called with correct filename
             mock_write_html.assert_called_once_with("test_output.html")
 
-    def test_export_as_image_mock(self, sankey_diagram, mock_cooccurrences):
+    def test_export_as_image_mock(self, sankey_diagram, mock_cooccurrences) -> None:
         """Test image export using mocks."""
         # Setup mock for write_image
         with patch.object(go.Figure, "write_image") as mock_write_image:
@@ -189,7 +210,7 @@ class TestCooccurenceSankey:
             # Verify write_image was called with correct filename
             mock_write_image.assert_called_once_with("test_output.png")
 
-    def test_export_as_html_file(self, sankey_diagram, mock_cooccurrences):
+    def test_export_as_html_file(self, sankey_diagram, mock_cooccurrences) -> None:
         """Test actual HTML file generation."""
         # Create a temporary file for the test
         with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp_file:
@@ -205,7 +226,7 @@ class TestCooccurenceSankey:
             assert file_size > 0
 
             # Verify it contains expected HTML content
-            with open(filename, "r") as f:
+            with open(filename) as f:
                 content = f.read()
                 assert "Plotly" in content
                 assert "Sankey" in content
@@ -215,7 +236,7 @@ class TestCooccurenceSankey:
             if os.path.exists(filename):
                 os.unlink(filename)
 
-    def test_export_as_image_file(self, sankey_diagram, mock_cooccurrences):
+    def test_export_as_image_file(self, sankey_diagram, mock_cooccurrences) -> None:
         """Test actual image file generation.
         Note: This test requires Plotly's kaleido package to be installed.
         """

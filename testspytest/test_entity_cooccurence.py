@@ -1,34 +1,45 @@
-import pytest
 from unittest.mock import MagicMock, patch
-from scripts.database.data_model.entity_cooccurrence import (
+
+import pytest
+
+from scripts.sqlite_backend.data_model.entity_cooccurrence import (
     Cooccurrence,
     NormallizedNamedEntity,
 )
-from scripts.database.data_model.schema import *
+from scripts.sqlite_backend.data_model.schema import *
 
 
 # Fixtures for mock objects
 @pytest.fixture
 def mock_entity1():
-    """Create a sample normalized entity"""
+    """Create a sample normalized entity."""
     return NormallizedNamedEntity(
-        txt="Diabetes", norm_id=1, fq=50, uniq_docs=20, ne_class="DISEASE"
+        txt="Diabetes",
+        norm_id=1,
+        fq=50,
+        uniq_docs=20,
+        ne_class="DISEASE",
     )
 
 
 @pytest.fixture
 def mock_entity2():
-    """Create a sample normalized entity"""
+    """Create a sample normalized entity."""
     return NormallizedNamedEntity(
-        txt="Fatigue", norm_id=2, fq=30, uniq_docs=15, ne_class="PHENOMENON"
+        txt="Fatigue",
+        norm_id=2,
+        fq=30,
+        uniq_docs=15,
+        ne_class="PHENOMENON",
     )
 
 
 @pytest.fixture
 def sample_cooccurrence(
-    mock_entity1: NormallizedNamedEntity, mock_entity2: NormallizedNamedEntity
+    mock_entity1: NormallizedNamedEntity,
+    mock_entity2: NormallizedNamedEntity,
 ):
-    """Create a sample cooccurrence object"""
+    """Create a sample cooccurrence object."""
     return Cooccurrence(
         e1=mock_entity1,
         e2=mock_entity2,
@@ -47,23 +58,31 @@ def sample_cooccurrence(
 # Fixtures for mock objects
 @pytest.fixture
 def mock_entity1():
-    """Create a sample normalized entity"""
+    """Create a sample normalized entity."""
     return NormallizedNamedEntity(
-        txt="Diabetes", norm_id=1, fq=50, uniq_docs=20, ne_class="DISEASE"
+        txt="Diabetes",
+        norm_id=1,
+        fq=50,
+        uniq_docs=20,
+        ne_class="DISEASE",
     )
 
 
 @pytest.fixture
 def mock_entity2():
-    """Create a sample normalized entity"""
+    """Create a sample normalized entity."""
     return NormallizedNamedEntity(
-        txt="Fatigue", norm_id=2, fq=30, uniq_docs=15, ne_class="PHENOMENON"
+        txt="Fatigue",
+        norm_id=2,
+        fq=30,
+        uniq_docs=15,
+        ne_class="PHENOMENON",
     )
 
 
 @pytest.fixture
 def sample_cooccurrence(mock_entity1, mock_entity2):
-    """Create a sample cooccurrence object"""
+    """Create a sample cooccurrence object."""
     return Cooccurrence(
         e1=mock_entity1,
         e2=mock_entity2,
@@ -81,7 +100,7 @@ def sample_cooccurrence(mock_entity1, mock_entity2):
 
 @pytest.fixture
 def mock_cursor():
-    """Create a mock cursor with sample description"""
+    """Create a mock cursor with sample description."""
     cursor = MagicMock()
     cursor.description = [
         (E1_NORM_ID, None, None, None, None, None, None),
@@ -107,7 +126,7 @@ def mock_cursor():
 
 @pytest.fixture
 def mock_row():
-    """Create a mock row with sample data matching the cursor description"""
+    """Create a mock row with sample data matching the cursor description."""
     return [
         1,  # E1_NORM_ID
         2,  # E2_NORM_ID
@@ -131,7 +150,7 @@ def mock_row():
 
 @pytest.fixture
 def mock_row_missing_data():
-    """Create a mock row with some missing data to test error handling"""
+    """Create a mock row with some missing data to test error handling."""
     return [
         1,  # E1_NORM_ID
         2,  # E2_NORM_ID
@@ -154,16 +173,16 @@ def mock_row_missing_data():
 
 
 class TestNormallizedNamedEntity:
-    def test_initialization(self, mock_entity1):
-        """Test basic initialization of NormallizedNamedEntity"""
+    def test_initialization(self, mock_entity1) -> None:
+        """Test basic initialization of NormallizedNamedEntity."""
         assert mock_entity1.txt == "Diabetes"
         assert mock_entity1.norm_id == 1
         assert mock_entity1.fq == 50
         assert mock_entity1.uniq_docs == 20
         assert mock_entity1.ne_class == "DISEASE"
 
-    def test_to_dict(self, mock_entity1):
-        """Test to_dict method correctly serializes entity data"""
+    def test_to_dict(self, mock_entity1) -> None:
+        """Test to_dict method correctly serializes entity data."""
         result = mock_entity1.to_dict()
 
         assert result[TXT] == "Diabetes"
@@ -174,8 +193,8 @@ class TestNormallizedNamedEntity:
 
 
 class TestCooccurrence:
-    def test_initialization(self, sample_cooccurrence):
-        """Test basic initialization of Cooccurrence"""
+    def test_initialization(self, sample_cooccurrence) -> None:
+        """Test basic initialization of Cooccurrence."""
         assert sample_cooccurrence.e1.txt == "Diabetes"
         assert sample_cooccurrence.e2.txt == "Fatigue"
         assert sample_cooccurrence.co_aggr_id == 1
@@ -188,8 +207,8 @@ class TestCooccurrence:
         assert sample_cooccurrence.min_sent_dist == 0
         assert sample_cooccurrence.max_sent_dist == 3
 
-    def test_row_factory_success(self, mock_cursor, mock_row):
-        """Test row_factory successfully creates Cooccurrence from valid data"""
+    def test_row_factory_success(self, mock_cursor, mock_row) -> None:
+        """Test row_factory successfully creates Cooccurrence from valid data."""
         result = Cooccurrence.row_factory(mock_cursor, mock_row)
 
         assert isinstance(result, Cooccurrence)
@@ -205,8 +224,12 @@ class TestCooccurrence:
         assert result.min_sent_dist == 0
         assert result.max_sent_dist == 3
 
-    def test_row_factory_with_missing_data(self, mock_cursor, mock_row_missing_data):
-        """Test row_factory handles missing data gracefully"""
+    def test_row_factory_with_missing_data(
+        self,
+        mock_cursor,
+        mock_row_missing_data,
+    ) -> None:
+        """Test row_factory handles missing data gracefully."""
         result = Cooccurrence.row_factory(mock_cursor, mock_row_missing_data)
 
         assert isinstance(result, Cooccurrence)
@@ -217,16 +240,21 @@ class TestCooccurrence:
         assert result.npmi is None  # This should be None
 
     @patch("scripts.database.data_model.entity_cooccurrence.NormallizedNamedEntity")
-    def test_row_factory_entity_error(self, mock_entity_class, mock_cursor, mock_row):
-        """Test row_factory handles errors during entity creation"""
+    def test_row_factory_entity_error(
+        self,
+        mock_entity_class,
+        mock_cursor,
+        mock_row,
+    ) -> None:
+        """Test row_factory handles errors during entity creation."""
         # Make the NormallizedNamedEntity constructor raise an error
         mock_entity_class.side_effect = AttributeError("Test error")
 
         result = Cooccurrence.row_factory(mock_cursor, mock_row)
         assert result is None
 
-    def test_to_dict_method(self, sample_cooccurrence):
-        """Test to_dict method once implemented"""
+    def test_to_dict_method(self, sample_cooccurrence) -> None:
+        """Test to_dict method once implemented."""
         result = sample_cooccurrence.to_dict()
 
         assert result["entity1"] == sample_cooccurrence.e1.to_dict()

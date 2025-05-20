@@ -1,15 +1,16 @@
-import os
-import sys
-import sqlite3
-import unittest
 import csv
+import os
+import sqlite3
+import sys
+import unittest
 
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from scripts.db_easyner import EasyNerDB
 from test_db_convert_json_to_sqlite import TestConvertJsonToSqlite
 from test_db_easyner import suite as easyner_suite
+
+from scripts.db_easyner import EasyNerDB
 
 
 class TestDatabaseExport(unittest.TestCase):
@@ -20,7 +21,7 @@ class TestDatabaseExport(unittest.TestCase):
         print(f"Checking for {self.test_db_path}")
         if not os.path.exists(self.test_db_path):
             print(
-                f"{self.test_db_path} not found. Running TestConvertJsonToSqlite to create it."
+                f"{self.test_db_path} not found. Running TestConvertJsonToSqlite to create it.",
             )
             test_convert = TestConvertJsonToSqlite()
             test_convert.setUp()
@@ -33,7 +34,7 @@ class TestDatabaseExport(unittest.TestCase):
         output_file = "test_entity_fq.csv"
         self.db.export_entity_fq(output_file)
 
-        with open(output_file, "r", encoding="utf-8") as f:
+        with open(output_file, encoding="utf-8") as f:
             reader = csv.reader(f)
             header = next(reader)
             self.assertEqual(header, ["entity_text", "total_count", "entity"])
@@ -46,7 +47,7 @@ class TestDatabaseExport(unittest.TestCase):
         output_file = "test_entity_fq_filtered.csv"
         self.db.export_entity_fq(output_file, entity_filter="PNM")
 
-        with open(output_file, "r", encoding="utf-8") as f:
+        with open(output_file, encoding="utf-8") as f:
             reader = csv.reader(f)
             header = next(reader)
             self.assertEqual(header, ["entity_text", "total_count", "entity"])
@@ -61,7 +62,7 @@ class TestDatabaseExport(unittest.TestCase):
         output_file = "test_export_cooccurrences.csv"
         self.db.export_cooccurrences(output_file)
 
-        with open(output_file, "r", encoding="utf-8") as f:
+        with open(output_file, encoding="utf-8") as f:
             reader = csv.reader(f)
             header = next(reader)
             self.assertEqual(header, ["entity_1", "entity_2", "fq"])

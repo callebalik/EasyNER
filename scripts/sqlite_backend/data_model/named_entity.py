@@ -1,7 +1,7 @@
 # named_entity_module.py
 import sqlite3
 
-from scripts.database.core.core_classes import BaseExecutor
+from scripts.sqlite_backend.core.core_classes import BaseExecutor
 
 
 class NamedEntity:

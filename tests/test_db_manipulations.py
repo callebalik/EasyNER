@@ -1,10 +1,10 @@
-import sqlite3
-import unittest
-import os
-import sys
-import pprint
-import json
 import csv
+import json
+import os
+import pprint
+import sqlite3
+import sys
+import unittest
 
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -31,7 +31,7 @@ class TestDBAnalysis(unittest.TestCase):
         self.db.clone_table("entities", "entities_copy")
         # Verify that the table was created
         self.cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='entities_copy'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='entities_copy'",
         )
         table_exists = self.cursor.fetchone()
         self.assertIsNotNone(
@@ -65,7 +65,7 @@ class TestDBAnalysis(unittest.TestCase):
     def test_drop_table(self):
         self.db.drop_table("entities_copy")
         self.cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='entities_copy'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='entities_copy'",
         )
         table_exists = self.cursor.fetchone()
         self.assertIsNone(
@@ -78,27 +78,28 @@ class TestDBAnalysis(unittest.TestCase):
     def test_lowercase_column(self):
         # Clone the entity_occurrences table
         self.db.clone_table(
-            "entity_occurrences", "entity_occurrences_copy"
+            "entity_occurrences",
+            "entity_occurrences_copy",
         )  # This overwrites the table if it already exists
 
         # Add entries with different cases
         self.cursor.execute(
-            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('Disease')"
+            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('Disease')",
         )
         self.cursor.execute(
-            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('disease')"
+            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('disease')",
         )
         self.cursor.execute(
-            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('DISEASE')"
+            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('DISEASE')",
         )
         self.cursor.execute(
-            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('lowercase')"
+            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('lowercase')",
         )
         self.cursor.execute(
-            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('CamelCase')"
+            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('CamelCase')",
         )
         self.cursor.execute(
-            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('UPPERCASE')"
+            "INSERT INTO entity_occurrences_copy (entity_text) VALUES ('UPPERCASE')",
         )
         self.db.conn.commit()
 
@@ -128,10 +129,10 @@ class TestDBAnalysis(unittest.TestCase):
     def test_drop_entity_cooccurrence(self):
         # Clean up any existing test data
         self.cursor.execute(
-            "DELETE FROM entity_cooccurrences WHERE e1_text = 'drop_1' AND e2_text = 'drop_2'"
+            "DELETE FROM entity_cooccurrences WHERE e1_text = 'drop_1' AND e2_text = 'drop_2'",
         )
         self.cursor.execute(
-            "DELETE FROM entity_occurrences WHERE entity_text IN ('drop_1', 'drop_2')"
+            "DELETE FROM entity_occurrences WHERE entity_text IN ('drop_1', 'drop_2')",
         )
         self.cursor.execute("DELETE FROM entities WHERE entity IN ('drop_1', 'drop_2')")
         self.db.conn.commit()
@@ -140,10 +141,10 @@ class TestDBAnalysis(unittest.TestCase):
         self.cursor.execute("INSERT INTO entities (entity) VALUES ('drop_1')")
         self.cursor.execute("INSERT INTO entities (entity) VALUES ('drop_2')")
         self.cursor.execute(
-            "INSERT INTO entity_occurrences (entity_id, entity_text) VALUES (1, 'drop_1')"
+            "INSERT INTO entity_occurrences (entity_id, entity_text) VALUES (1, 'drop_1')",
         )
         self.cursor.execute(
-            "INSERT INTO entity_occurrences (entity_id, entity_text) VALUES (2, 'drop_2')"
+            "INSERT INTO entity_occurrences (entity_id, entity_text) VALUES (2, 'drop_2')",
         )
 
         drop_1_ne_id = self.db.get_named_entity_id("drop_1")
@@ -158,11 +159,13 @@ class TestDBAnalysis(unittest.TestCase):
 
         # Verify the cooccurrence exists
         self.cursor.execute(
-            "SELECT COUNT(*) FROM entity_cooccurrences WHERE e1_text = 'drop_1' AND e2_text = 'drop_2'"
+            "SELECT COUNT(*) FROM entity_cooccurrences WHERE e1_text = 'drop_1' AND e2_text = 'drop_2'",
         )
         count_before = self.cursor.fetchone()[0]
         self.assertEqual(
-            count_before, 1, "The cooccurrence was not inserted correctly."
+            count_before,
+            1,
+            "The cooccurrence was not inserted correctly.",
         )
 
         # Drop the cooccurrence
@@ -170,12 +173,14 @@ class TestDBAnalysis(unittest.TestCase):
 
         # Verify the cooccurrence was dropped
         self.cursor.execute(
-            "SELECT COUNT(*) FROM entity_cooccurrences WHERE e1_text = 'drop_1' AND e2_text = 'drop_2'"
+            "SELECT COUNT(*) FROM entity_cooccurrences WHERE e1_text = 'drop_1' AND e2_text = 'drop_2'",
         )
         count_after = self.cursor.fetchone()[0]
         self.assertEqual(count_after, 0, "The cooccurrence was not dropped correctly.")
         self.db.drop_entity_cooccurrence(
-            entity1_text="disease1", entity1_type="disease", entity2_type="phenomenon"
+            entity1_text="disease1",
+            entity1_type="disease",
+            entity2_type="phenomenon",
         )
         TestDBAnalysis.successful_tests.append("test_drop_entity_cooccurrence")
 
@@ -186,7 +191,7 @@ class TestDBAnalysis(unittest.TestCase):
         ne_text = "delete_occurrences"
 
         self.cursor.execute(
-            f"DELETE FROM entity_occurrences WHERE entity_text IN ('{occurrence1}', '{occurrence2}')"
+            f"DELETE FROM entity_occurrences WHERE entity_text IN ('{occurrence1}', '{occurrence2}')",
         )
         self.cursor.execute(f"DELETE FROM entities WHERE entity = '{ne_text}'")
         self.db.conn.commit()
@@ -215,27 +220,31 @@ class TestDBAnalysis(unittest.TestCase):
 
         # Verify the occurrence exists
         self.cursor.execute(
-            f"SELECT COUNT(*) FROM entity_occurrences WHERE entity_text = '{occurrence1}'"
+            f"SELECT COUNT(*) FROM entity_occurrences WHERE entity_text = '{occurrence1}'",
         )
 
         count_before = self.cursor.fetchone()[0]
         self.assertEqual(
-            count_before, 1, "The occurrences were not inserted correctly."
+            count_before,
+            1,
+            "The occurrences were not inserted correctly.",
         )
 
         # Test drop the occurrences
         self.db.drop_entities_from_occurrences(
-            entity_text=occurrence1, entity_type=ne_text
+            entity_text=occurrence1,
+            entity_type=ne_text,
         )
         self.db.drop_entities_from_occurrences(
-            entity_text=occurrence2, entity_type=ne_text
+            entity_text=occurrence2,
+            entity_type=ne_text,
         )
 
         self.db.drop_entity_cooccurrence(entity1_text=occurrence1, entity1_type=ne_text)
 
         # Verify the occurrences were dropped both 1 and 2
         self.cursor.execute(
-            f"SELECT COUNT(*) FROM entity_occurrences WHERE entity_text = '{occurrence1}' OR entity_text = '{occurrence2}'"
+            f"SELECT COUNT(*) FROM entity_occurrences WHERE entity_text = '{occurrence1}' OR entity_text = '{occurrence2}'",
         )
         count_after = self.cursor.fetchone()[0]
         self.assertEqual(count_after, 0, "The occurrences were not dropped correctly.")

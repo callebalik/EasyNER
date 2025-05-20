@@ -1,32 +1,29 @@
-import sqlite3
-import unittest
 import os
+import sqlite3
 import sys
-
+import unittest
 
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from scripts.db_easyner import EasyNerDB
 from scripts.db_statistics import (
-    get_entity_occurrences_with_article_id,
-    calc_article_counts,
-    verify_sentences_table,
-    calc_entity_term_fq,
-    get_number_of_articles,
-    tf_idf,
-    count_cooucerence_fq,
-    record_sentence_cooccurrences,
-    record_document_cooccurrences,
-    count_document_cooccurence_fq,
     add_pmid_to_entity_occurrences,
+    calc_article_counts,
+    calc_entity_term_fq,
+    calc_weighted_fqs,
+    count_cooucerence_fq,
+    count_document_cooccurence_fq,
+    get_all_entity_occurrences,
+    get_entity_occurrences_with_article_id,
+    get_number_of_articles,
+    record_document_cooccurrences,
+    record_sentence_cooccurrences,
+    tf_idf,
     update_db_with_entity_occurrence_term_fq,
     update_tf_idf,
-    calc_weighted_fqs,
-    get_all_entity_occurrences,
+    verify_sentences_table,
 )
-
-
-from scripts.db_easyner import EasyNerDB
 
 
 class TestDBStatistics(unittest.TestCase):

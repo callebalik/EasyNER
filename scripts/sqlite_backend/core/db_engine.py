@@ -11,7 +11,7 @@ import os
 import cProfile
 import pstats
 
-from scripts.database.db_main import EasyNerDBHandler
+from scripts.sqlite_backend.db_main import EasyNerDBHandler
 from scripts.utils.log_formatter import TableFormatter
 from scripts.utils.logging_mixins import TableLoggingMixin
 

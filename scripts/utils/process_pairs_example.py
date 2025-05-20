@@ -10,8 +10,8 @@ import sqlite3
 import logging
 from typing import List, Dict, Any
 
-from scripts.database.core.db_engine import ReaderWriterPair
-from scripts.database.db_main import EasyNerDBHandler
+from scripts.sqlite_backend.core.db_engine import ReaderWriterPair
+from scripts.sqlite_backend.db_main import EasyNerDBHandler
 
 
 def example_process_function(batch: List[Dict], conn_params: Dict) -> List[Dict]:

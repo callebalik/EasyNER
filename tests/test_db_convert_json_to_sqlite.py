@@ -1,20 +1,21 @@
-import os
-import sys
-import sqlite3
 import json
+import os
+import random
+import sqlite3
+import sys
 import unittest
 from glob import glob
+
 from tqdm import tqdm
-import random
 
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from scripts.db_convert_json_to_sqlite import (
+    compare_sizes,
     create_database,
     insert_data,
     load_json_to_db,
-    compare_sizes,
 )
 
 
@@ -27,7 +28,7 @@ class TestConvertJsonToSqlite(unittest.TestCase):
             os.remove(self.test_db_path)
 
         self.mock_json_file = "temp_mockup.json"
-        with open(self.mock_json_file, "r", encoding="utf-8") as file:
+        with open(self.mock_json_file, encoding="utf-8") as file:
             self.mock_json_data = json.load(file)
 
         # # Add random count values to each sentence

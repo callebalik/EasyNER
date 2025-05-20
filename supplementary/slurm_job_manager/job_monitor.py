@@ -1,21 +1,18 @@
-import json
 import argparse
+import json
 import subprocess
+
 from prettytable import PrettyTable
 
 
 def read_job_metadata(metadata_file):
-    """
-    Reads the job metadata from the provided JSON file.
-    """
-    with open(metadata_file, "r") as f:
+    """Reads the job metadata from the provided JSON file."""
+    with open(metadata_file) as f:
         return json.load(f)
 
 
 def get_gpu_usage(job_id):
-    """
-    Retrieves GPU usage details for a job using 'nvidia-smi' via 'jobsh'.
-    """
+    """Retrieves GPU usage details for a job using 'nvidia-smi' via 'jobsh'."""
     gpu_usage = None
 
     # Log onto the node running the job and retrieve GPU usage details
@@ -30,7 +27,7 @@ def get_gpu_usage(job_id):
             "--format=csv,noheader,nounits",
         ],
         stdout=subprocess.PIPE,
-        universal_newlines=True,
+        text=True,
     )
 
     if jobsh_result.stdout.strip():
@@ -40,16 +37,14 @@ def get_gpu_usage(job_id):
 
 
 def get_running_job_details(job_id):
-    """
-    Retrieves details for running/pending jobs using 'squeue'.
-    """
+    """Retrieves details for running/pending jobs using 'squeue'."""
     result = {"elapsed_time": None, "status": "running/pending", "gpu_usage": None}
 
     # Retrieve details from 'squeue'
     squeue_result = subprocess.run(
         ["squeue", "--job", job_id, "--format=%M", "--noheader"],
         stdout=subprocess.PIPE,
-        universal_newlines=True,
+        text=True,
     )
 
     if squeue_result.stdout.strip():
@@ -63,9 +58,7 @@ def get_running_job_details(job_id):
 
 
 def get_completed_job_details(job_id):
-    """
-    Retrieves details for completed jobs such as elapsed time, CPU usage, and exit code using 'sacct'.
-    """
+    """Retrieves details for completed jobs such as elapsed time, CPU usage, and exit code using 'sacct'."""
     result = {
         "elapsed_time": None,
         "cpu_usage": None,
@@ -84,7 +77,7 @@ def get_completed_job_details(job_id):
             "--parsable2",
         ],
         stdout=subprocess.PIPE,
-        universal_newlines=True,
+        text=True,
     )
 
     sacct_lines = sacct_result.stdout.strip().split("\n")
@@ -103,9 +96,8 @@ def get_completed_job_details(job_id):
     return result
 
 
-def monitor_jobs(job_metadata, output_file, log_file):
-    """
-    Monitors both running and completed SLURM jobs based on job IDs in the metadata.
+def monitor_jobs(job_metadata, output_file, log_file) -> None:
+    """Monitors both running and completed SLURM jobs based on job IDs in the metadata.
     Writes the monitoring results to an output file (JSON) and a text log (table format).
     """
     monitoring_results = []
@@ -135,7 +127,7 @@ def monitor_jobs(job_metadata, output_file, log_file):
             squeue_result = subprocess.run(
                 ["squeue", "--job", job_id],
                 stdout=subprocess.PIPE,
-                universal_newlines=True,
+                text=True,
             )
 
             if squeue_result.stdout.strip():
@@ -158,7 +150,7 @@ def monitor_jobs(job_metadata, output_file, log_file):
                     result.get("cpu_usage", "N/A"),
                     result.get("gpu_usage", "N/A"),  # Added GPU Usage
                     result.get("exit_code", "N/A"),
-                ]
+                ],
             )
 
             # Append the monitoring result for this job
@@ -180,7 +172,7 @@ def monitor_jobs(job_metadata, output_file, log_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Monitor SLURM jobs using job_metadata.json and export results to a file"
+        description="Monitor SLURM jobs using job_metadata.json and export results to a file",
     )
     parser.add_argument(
         "--metadata-file",

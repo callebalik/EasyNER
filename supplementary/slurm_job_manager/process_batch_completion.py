@@ -1,12 +1,11 @@
+import argparse
+import json
 import os
 import re
-import json
-import argparse
 
 
 def extract_highest_completion_per_batch(err_file, batch_range):
-    """
-    Extracts the highest completion percentage for each batch from a SLURM .err file,
+    """Extracts the highest completion percentage for each batch from a SLURM .err file,
     marking batches not found in the .err file as 'Not Started', and returns the results
     as a dictionary keyed by batch number.
     """
@@ -23,7 +22,7 @@ def extract_highest_completion_per_batch(err_file, batch_range):
     found_any_batch = False  # Flag to check if we find any matching lines
 
     # Read the .err file and check for batch progress
-    with open(err_file, "r") as f:
+    with open(err_file) as f:
         for line in f:
             match = completion_pattern.search(line)
             if match:
@@ -37,7 +36,8 @@ def extract_highest_completion_per_batch(err_file, batch_range):
                         batch_completion[batch_number] = percentage
                     else:
                         batch_completion[batch_number] = max(
-                            batch_completion[batch_number], percentage
+                            batch_completion[batch_number],
+                            percentage,
                         )
 
     if not found_any_batch:
@@ -48,14 +48,18 @@ def extract_highest_completion_per_batch(err_file, batch_range):
     return batch_completion
 
 
-def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file):
-    """
-    Processes jobs from job_metadata.json and writes a single completion log
+def process_batch_completion(
+    job_metadata_file,
+    err_dir,
+    output_file,
+    rerun_file,
+) -> None:
+    """Processes jobs from job_metadata.json and writes a single completion log
     summarizing the highest completion percentage for each batch in all jobs.
     Additionally, updates the job metadata with the completion status.
     """
     # Read the job metadata
-    with open(job_metadata_file, "r") as f:
+    with open(job_metadata_file) as f:
         job_metadata = json.load(f)
 
     total_batches = 0
@@ -82,7 +86,8 @@ def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file
 
                 # Extract highest completion percentages per batch from the .err file
                 batch_completion = extract_highest_completion_per_batch(
-                    err_file, batch_range
+                    err_file,
+                    batch_range,
                 )
 
                 if batch_completion:
@@ -102,7 +107,7 @@ def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file
 
                     # Write the results to the output file with job name
                     f_out.write(
-                        f"Job {job_name} (ID: {job_id}) - {completed_batches}/{len(batch_completion)} ({completion_percentage:.2f}%):\n"
+                        f"Job {job_name} (ID: {job_id}) - {completed_batches}/{len(batch_completion)} ({completion_percentage:.2f}%):\n",
                     )
                     for batch, percentage in batch_completion.items():
                         if percentage == "Not Started":
@@ -113,11 +118,11 @@ def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file
                             in_progress_batches += 1
                             all_batches_completed = False
                             f_out.write(
-                                f"  Batch {batch}: Highest completion percentage: {percentage}%\n"
+                                f"  Batch {batch}: Highest completion percentage: {percentage}%\n",
                             )
                         else:
                             f_out.write(
-                                f"  Batch {batch}: Highest completion percentage: {percentage}%\n"
+                                f"  Batch {batch}: Highest completion percentage: {percentage}%\n",
                             )
                         if percentage == "Not Started" or percentage < 100:
                             incomplete_batches.append((job_name, batch))
@@ -150,12 +155,11 @@ def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file
     with open(job_metadata_file, "w") as f:
         json.dump(job_metadata, f, indent=2)
 
-    print(f"Job metadata updated with completion status.")
+    print("Job metadata updated with completion status.")
 
 
-def run_completion_logging(metadata_file, err_dir, output_file, rerun_file):
-    """
-    Callable function to run the batch completion logging process programmatically.
+def run_completion_logging(metadata_file, err_dir, output_file, rerun_file) -> None:
+    """Callable function to run the batch completion logging process programmatically.
     This function can be called from other Python scripts.
     """
     process_batch_completion(metadata_file, err_dir, output_file, rerun_file)
@@ -163,7 +167,7 @@ def run_completion_logging(metadata_file, err_dir, output_file, rerun_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Summarize the highest completion percentage per batch from SLURM .err files"
+        description="Summarize the highest completion percentage per batch from SLURM .err files",
     )
     parser.add_argument(
         "--metadata-file",
@@ -194,5 +198,8 @@ if __name__ == "__main__":
 
     # Process the jobs and extract highest completion percentages per batch from their .err files
     process_batch_completion(
-        args.metadata_file, args.err_dir, args.output_file, args.rerun_file
+        args.metadata_file,
+        args.err_dir,
+        args.output_file,
+        args.rerun_file,
     )

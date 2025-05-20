@@ -4,14 +4,13 @@ import os
 import re
 
 
-def process_batch_completion(metadata_file, err_dir, output_file, rerun_file):
+def process_batch_completion(metadata_file, err_dir, output_file, rerun_file) -> None:
     # Function implementation here
     pass
 
 
-def run_completion_logging(metadata_file, err_dir, output_file, rerun_file):
-    """
-    Callable function to run the batch completion logging process programmatically.
+def run_completion_logging(metadata_file, err_dir, output_file, rerun_file) -> None:
+    """Callable function to run the batch completion logging process programmatically.
     This function can be called from other Python scripts.
     """
     process_batch_completion(metadata_file, err_dir, output_file, rerun_file)
@@ -19,7 +18,7 @@ def run_completion_logging(metadata_file, err_dir, output_file, rerun_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Summarize the highest completion percentage per batch from SLURM .err files"
+        description="Summarize the highest completion percentage per batch from SLURM .err files",
     )
     parser.add_argument(
         "--metadata-file",
@@ -50,5 +49,8 @@ if __name__ == "__main__":
 
     # Process the jobs and extract highest completion percentages per batch from their .err files
     run_completion_logging(
-        args.metadata_file, args.err_dir, args.output_file, args.rerun_file
+        args.metadata_file,
+        args.err_dir,
+        args.output_file,
+        args.rerun_file,
     )

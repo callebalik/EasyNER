@@ -4,8 +4,8 @@ import random
 import colorsys
 import re
 from typing import List, Dict, Tuple, Any
-from scripts.database.data_model.entity_cooccurrence import Cooccurrence
-from scripts.database.statistics.color_scheme import (
+from scripts.sqlite_backend.data_model.entity_cooccurrence import Cooccurrence
+from scripts.sqlite_backend.statistics.color_scheme import (
     NODE_COLOR_DIS_ONLY,
     NODE_COLOR_PNM_ONLY,
     NODE_COLOR_BOTH_DIS_PNM,

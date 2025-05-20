@@ -8,7 +8,7 @@ import sqlite3
 import time
 import logging
 from typing import Any, Dict, Optional, List
-from scripts.database.core.db_engine import ReaderWriterPair
+from scripts.sqlite_backend.core.db_engine import ReaderWriterPair
 from .schema import *
 from ..db_main import (
     BaseComponent,
