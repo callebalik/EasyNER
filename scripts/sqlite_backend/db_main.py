@@ -8,7 +8,9 @@ import sqlite3
 import time
 from typing import Optional
 
-import traceback  # Add this to the imports at the top of the file
+import traceback
+
+from dotenv import load_dotenv  # Add this to the imports at the top of the file
 from ..utils.table_log_formatter import TableFormatter
 import threading
 from contextlib import contextmanager
@@ -146,8 +148,8 @@ class EasyNerDBHandler:
         try:
             # Try to get database path from environment if not provided
             if not db_path:
-                db_path = os.environ.get("DB_PATH")
-                path_source = "DB_PATH environment variable"
+                db_path = os.environ.get("SQLITE_DB_PATH")
+                path_source = "SQLITE_DB_PATH environment variable"
             else:
                 path_source = "parameter"
 
@@ -625,17 +627,17 @@ class EasyNerDBHandler:
 
     def _setup_path(self, db_path: Optional[str]) -> None:
         # Database path selection with clear precedence:
-        # 1. DB_PATH environment variable
+        # 1.SQLITE_DB_PATH environment variable
         # 2. Development mode default path (if config["develop"]=True)
         # 3. Explicitly provided db_path parameter
         # 4. Path from config file
-
+        load_dotenv()
         path_source = None
-        env_db_path = os.getenv("DB_PATH")
+        env_db_path = os.getenv("SQLITE_DB_PATH")
         resolved_path = None
         if env_db_path:
             resolved_path = env_db_path
-            path_source = "DB_PATH environment variable"
+            path_source = "SQLITE_DB_PATH environment variable"
         elif self.config.get("develop", False):
             pwd = os.path.dirname(os.path.abspath(__file__))
             resolved_path = os.path.join(pwd, "development.db")

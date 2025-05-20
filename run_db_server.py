@@ -9,6 +9,7 @@ from socket import AF_INET, SOCK_STREAM, socket
 from typing import Optional
 
 import psutil
+from dotenv import load_dotenv
 
 from scripts.sqlite_backend.db_server import get_db_easyner_context_connection
 
@@ -18,8 +19,9 @@ os.environ.setdefault("PYTHONPATH", os.path.dirname(os.path.abspath(__file__)))
 os.environ.setdefault("FLASK_APP", "scripts.database.db_server")
 os.environ.setdefault("FLASK_ENV", "development")
 os.environ.setdefault("LOG_LEVEL", "DEBUG")
-os.environ.setdefault("DB_PATH", "/lunarc/nobackup/projects/snic2020-6-41/carl/dev.db")
 os.environ.setdefault("SERVER_PORT", "5001")
+
+load_dotenv()  # This loads the db path from env
 
 # Improved error handling for imports
 try:
@@ -42,7 +44,7 @@ REQUIRED_ENV_VARS = {
     "FLASK_APP": "scripts.database.db_server",
     "FLASK_ENV": "development",
     "LOG_LEVEL": "DEBUG",
-    "DB_PATH": os.path.join(os.path.dirname(os.path.abspath(__file__)), "dev.db"),
+    "DB_PATH": os.getenv("SQLITE_DB_PATH"),  # Set your default DB path
     "SERVER_PORT": "5001",
 }
 

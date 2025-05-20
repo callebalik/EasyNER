@@ -23,12 +23,14 @@ def init_routes(app, get_db, visualization_manager):
             from sqlite3 import connect
 
             if not hasattr(g, "_database_simple"):
-                db_path = current_app.config.get("DB_PATH") or app.config.get("DB_PATH")
+                db_path = current_app.config.get("SQLITE_DB_PATH") or app.config.get(
+                    "SQLITE_DB_PATH"
+                )
                 if not db_path:
                     # Try to get it from environment
                     import os
 
-                    db_path = os.environ.get("DB_PATH")
+                    db_path = os.environ.get("SQLITE_DB_PATH")
                 g._database_simple = connect(db_path)
             return g._database_simple
 

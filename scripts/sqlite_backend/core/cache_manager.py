@@ -138,7 +138,7 @@ class CacheManager:
             env_info = {
                 "batch_size": int(os.environ.get("BATCH_SIZE", "1000")),
                 "log_level": os.environ.get("LOG_LEVEL", "INFO"),
-                "db_path": os.environ.get("DB_PATH", ""),
+                "db_path": os.environ.get("SQLITE_DB_PATH", ""),
             }
             self.set_global("environment", env_info)
 

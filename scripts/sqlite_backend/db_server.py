@@ -23,9 +23,9 @@ import tempfile
 from .core.connection_pool import ConnectionPool
 
 
-DBPATH = os.environ.get("DB_PATH")
+DBPATH = os.environ.get("SQLITE_DB_PATH")
 if not DBPATH:
-    raise ValueError("DB_PATH environment variable is not set")
+    raise ValueError("SQLITE_DB_PATH environment variable is not set")
 if not os.path.exists(DBPATH):
     raise ValueError(f"Database path {DBPATH} does not exist")
 if not os.path.isabs(DBPATH):
