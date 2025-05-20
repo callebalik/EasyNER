@@ -5,13 +5,13 @@ import time
 from tqdm import tqdm
 import sqlite3
 
+
 class Docs:
     def __init__(self, conn, cursor, logger):
         self.conn = conn
         self.cursor = cursor
         self.logger = logger
 
-        
     def doc_calc_word_counts(self, batch_size=100000):
         """
         Calculate word count, token count, and alphabetic character count for each document in batches.
@@ -187,12 +187,14 @@ class Docs:
         start_time = time.time()
 
         # Check documents with null counts or zero word/token counts
-        self.cursor.execute("""
+        self.cursor.execute(
+            """
             SELECT id
             FROM documents
             WHERE word_count IS NULL OR token_count IS NULL
                 OR word_count = 0 OR token_count = 0
-        """)
+        """
+        )
         documents_to_update = self.cursor.fetchall()
         total_to_update = len(documents_to_update)
 
@@ -203,11 +205,15 @@ class Docs:
         self.logger.info(f"Documents needing update: {total_to_update}")
 
         if total_to_update == 0:
-            self.logger.info("All documents have valid word and token counts. No action needed.")
+            self.logger.info(
+                "All documents have valid word and token counts. No action needed."
+            )
             return
 
         # Create temporary index for performance
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS temp_sentences_doc_id ON sentences(document_id)")
+        self.cursor.execute(
+            "CREATE INDEX IF NOT EXISTS temp_sentences_doc_id ON sentences(document_id)"
+        )
 
         # Process documents in batches
         processed = 0
@@ -222,10 +228,13 @@ class Docs:
                 pass
 
         total_time = time.time() - start_time
-        self.logger.info(f"Document count calculation completed. Processed {processed} documents in {total_time:.2f}s")
+        self.logger.info(
+            f"Document count calculation completed. Processed {processed} documents in {total_time:.2f}s"
+        )
 
         # Verify results and provide detailed statistics
-        self.cursor.execute("""
+        self.cursor.execute(
+            """
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN word_count IS NULL OR token_count IS NULL THEN 1 ELSE 0 END) as null_counts,
@@ -234,7 +243,8 @@ class Docs:
                 AVG(CASE WHEN token_count > 0 THEN token_count END) as avg_tokens,
                 AVG(alpha_count) as avg_alpha
             FROM documents
-        """)
+        """
+        )
         stats = self.cursor.fetchone()
         self.logger.info("Final statistics:")
         self.logger.info(f"- Documents with null word/token counts: {stats[1]}")
@@ -244,20 +254,21 @@ class Docs:
         self.logger.info(f"- Average alpha count: {stats[5]:.2f}")
 
         if stats[1] > 0 or stats[2] > 0:
-            self.logger.warning(f"There are still {stats[1]} documents with null counts and {stats[2]} with zero word/token counts")
+            self.logger.warning(
+                f"There are still {stats[1]} documents with null counts and {stats[2]} with zero word/token counts"
+            )
         else:
-            self.logger.info("All documents have been successfully processed with valid word and token counts")
+            self.logger.info(
+                "All documents have been successfully processed with valid word and token counts"
+            )
 
     def export_documents_to_json(self, doc_ids, output_path, metadata):
         """
         Exports the given document IDs and metadata to a JSON file.
         """
-        data = {
-            'document_ids': doc_ids,
-            'metadata': metadata
-        }
+        data = {"document_ids": doc_ids, "metadata": metadata}
         try:
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 json.dump(data, f, indent=2)
             return output_path
         except Exception as e:
@@ -313,7 +324,7 @@ class Docs:
             default_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
                 "results",
-                f'problematic_documents_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+                f'problematic_documents_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json',
             )
             user_input = input(f"Enter output path (default: {default_path}): ")
             output_path = user_input.strip() or default_path
@@ -323,13 +334,15 @@ class Docs:
                 "null_word_count": stats[1],
                 "null_token_count": stats[2],
                 "zero_word_count": stats[3],
-                "zero_token_count": stats[4]
+                "zero_token_count": stats[4],
             }
         }
 
         result = self.export_documents_to_json(doc_ids, output_path, metadata)
         if result:
-            self.logger.info(f"Exported {len(doc_ids)} problematic documents to {output_path}")
+            self.logger.info(
+                f"Exported {len(doc_ids)} problematic documents to {output_path}"
+            )
         return output_path
 
     def identify_with_zero_counts_export(self, output_path=None):
@@ -381,7 +394,7 @@ class Docs:
             default_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
                 "results",
-                f'problematic_documents_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+                f'problematic_documents_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json',
             )
             user_input = input(f"Enter output path (default: {default_path}): ")
             output_path = user_input.strip() or default_path
@@ -391,11 +404,13 @@ class Docs:
                 "null_word_count": stats[1],
                 "null_token_count": stats[2],
                 "zero_word_count": stats[3],
-                "zero_token_count": stats[4]
+                "zero_token_count": stats[4],
             }
         }
 
         result = self.export_documents_to_json(doc_ids, output_path, metadata)
         if result:
-            self.logger.info(f"Exported {len(doc_ids)} problematic documents to {output_path}")
+            self.logger.info(
+                f"Exported {len(doc_ids)} problematic documents to {output_path}"
+            )
         return output_path

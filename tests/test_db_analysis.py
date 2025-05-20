@@ -1,4 +1,3 @@
-
 import unittest
 import os
 import sys
@@ -23,10 +22,12 @@ class TestDBAnalysis(unittest.TestCase):
     def tests_calc_article_lengths(self):
         self.db.calc_all_article_lengths()
 
+
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(TestDBAnalysis('tests_calc_article_lengths'))
+    suite.addTest(TestDBAnalysis("tests_calc_article_lengths"))
     return suite
+
 
 if __name__ == "__main__":
     runner = unittest.TextTestRunner()

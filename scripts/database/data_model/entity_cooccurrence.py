@@ -22,8 +22,7 @@ logger = logging.getLogger("EasyNer")
 
 @dataclass
 class NormallizedNamedEntity:
-    """Statistics for an entity in a co-occurrence relationship.
-    """
+    """Statistics for an entity in a co-occurrence relationship."""
 
     txt: str
     norm_id: Optional[int] = None
@@ -41,6 +40,7 @@ class NormallizedNamedEntity:
             UNIQ_DOCS: self.uniq_docs,
         }
 
+
 @dataclass
 class Cooccurrence:
     """Represents a disease-phenomenon co-occurrence relationship.
@@ -54,9 +54,9 @@ class Cooccurrence:
 
     __row_factory_source__: View = VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY
     __columns__ = __row_factory_source__.columns
-    __table__: str = TABLE_CO_AGGR  # TODO Should clarify usage between aggregated and raw since cooccurrence is ambigous
-
-
+    __table__: str = (
+        TABLE_CO_AGGR  # TODO Should clarify usage between aggregated and raw since cooccurrence is ambigous
+    )
 
     # Optional parameters
     co_aggr_id: Optional[int] = None
@@ -71,13 +71,12 @@ class Cooccurrence:
     npmi: Optional[float] = None
 
     # Distance metrics
-    avg_sent_dist: Optional[float] = None # TODO Currently inccorect types in table
+    avg_sent_dist: Optional[float] = None  # TODO Currently inccorect types in table
     min_sent_dist: Optional[int] = None
     max_sent_dist: Optional[int] = None
 
     @classmethod
-    def row_factory(cls, cursor: sqlite3.Cursor, row: sqlite3.Row
-    ) -> "Cooccurrence":
+    def row_factory(cls, cursor: sqlite3.Cursor, row: sqlite3.Row) -> "Cooccurrence":
         """SQLite row factory to create Cooccurrence objects from query results.
         Args:
             cursor: SQLite cursor that executed the query
@@ -96,18 +95,22 @@ class Cooccurrence:
         try:
             entity1 = NormallizedNamedEntity(
                 norm_id=field_dict.get("e1_norm_id"),
-                txt=field_dict.get("e1_txt_norm"),  # Match the actual column name from view
+                txt=field_dict.get(
+                    "e1_txt_norm"
+                ),  # Match the actual column name from view
                 fq=field_dict.get("e1_fq"),
                 uniq_docs=field_dict.get("e1_uniq_docs"),
-                ne_class="DIS"  # Disease entities are always class DIS
+                ne_class="DIS",  # Disease entities are always class DIS
             )
 
             entity2 = NormallizedNamedEntity(
                 norm_id=field_dict.get("e2_norm_id"),
-                txt=field_dict.get("e2_txt_norm"),  # Match the actual column name from view
+                txt=field_dict.get(
+                    "e2_txt_norm"
+                ),  # Match the actual column name from view
                 fq=field_dict.get("e2_fq"),
                 uniq_docs=field_dict.get("e2_uniq_docs"),
-                ne_class="PNM"  # Phenomenon entities are always class PNM
+                ne_class="PNM",  # Phenomenon entities are always class PNM
             )
         except AttributeError as e:
             logger.error(f"Error creating entities of cooccurrence: {e}", exc_info=True)
@@ -156,8 +159,9 @@ class Cooccurrence:
             "npmi": self.npmi,
             "avg_sent_dist": self.avg_sent_dist,
             "min_sent_dist": self.min_sent_dist,
-            "max_sent_dist": self.max_sent_dist
+            "max_sent_dist": self.max_sent_dist,
         }
+
 
 class SchemaManager(BaseComponent):
 
@@ -448,7 +452,7 @@ class Analysis(BaseComponent):
 
         any_index_created = False
         for idx in [idx_ne_disease, idx_ne_pnm, idx_ne_doc_id]:
-            if (idx.create_if_not_exists(self.cursor)):
+            if idx.create_if_not_exists(self.cursor):
                 any_index_created = True
 
         if any_index_created:
@@ -1249,7 +1253,6 @@ class Statistics(BaseComponent):
 
         return stats
 
-
     def calculate_dis_pnm_pmi(self, method: str = "normalized") -> bool:
         """
         Calculate Pointwise Mutual Information (PMI) for entity co-occurrences.
@@ -1670,6 +1673,8 @@ class Statistics(BaseComponent):
         self.logger.info("Calculating DIS-PNM PMI...")
 
         return True
+
+
 class Tests(BaseComponent):
     def __init__(self, db_handler: EasyNerDBHandler, statistics: Statistics):
         """
@@ -1759,8 +1764,6 @@ class EntityCooccurrence:
         Delegate to analysis component
         """
         return self.analysis.update_unique_document_counts()
-
-
 
     def get_cooccurrences(
         self,
@@ -1883,12 +1886,14 @@ class EntityCooccurrence:
         query += f" LIMIT {limit} OFFSET {offset}"
 
         self._db.logger.debug(
-            f"Query: {query.splitlines()[0]}... "
-            f"\nParams: {params}")
+            f"Query: {query.splitlines()[0]}... " f"\nParams: {params}"
+        )
 
         query_with_param_replace = query
         for param in params:
-            query_with_param_replace = query_with_param_replace.replace("?", str(param), 1)
+            query_with_param_replace = query_with_param_replace.replace(
+                "?", str(param), 1
+            )
         self._db.logger.debug(
             f"Query with replaced params:\n"
             f"{query_with_param_replace.splitlines()[0]}"

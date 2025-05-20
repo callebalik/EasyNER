@@ -7,6 +7,7 @@ import os
 from .db_manager import DatabaseManager
 from .logger import BaseLogger
 
+
 class BaseExecutor:
     """Base class for executing database operations with enhanced features."""
 
@@ -19,7 +20,7 @@ class BaseExecutor:
         start_time = time.time()
         conn = self.db_manager.get_connection()
         try:
-            with conn: # Use context manager for transaction management
+            with conn:  # Use context manager for transaction management
                 result = operation_func(conn, *args, **kwargs)
                 return result
         except sqlite3.Error as e:
@@ -28,4 +29,6 @@ class BaseExecutor:
         finally:
             end_time = time.time()
             duration = end_time - start_time
-            self.logger.debug(f"Operation '{operation_func.__name__}' executed in {duration:.4f} seconds.")
+            self.logger.debug(
+                f"Operation '{operation_func.__name__}' executed in {duration:.4f} seconds."
+            )

@@ -7,6 +7,7 @@ from typing import Optional, Generator
 
 from ..db_main import EasyNerDBHandler
 
+
 class ConnectionPool:
     """Thread-safe connection pool for EasyNerDBHandler connections."""
 
@@ -25,14 +26,16 @@ class ConnectionPool:
         self._monitor_thread = threading.Thread(
             target=self._cleanup_idle_connections,
             daemon=True,
-            name="ConnectionPoolMonitor"
+            name="ConnectionPoolMonitor",
         )
         self._monitor_thread.start()
 
         self.logger.info(f"Connection pool initialized with max_size={max_connections}")
 
     @contextmanager
-    def get_connection(self, wait_timeout: float = 5.0) -> Generator[EasyNerDBHandler, None, None]:
+    def get_connection(
+        self, wait_timeout: float = 5.0
+    ) -> Generator[EasyNerDBHandler, None, None]:
         """Get a connection from the pool or create a new one."""
         connection = None
         connection_id = None
@@ -57,18 +60,26 @@ class ConnectionPool:
                     created = True
                     self._active_connections += 1
                     self._connection_timestamps[connection_id] = time.time()
-                    self.logger.debug(f"Created new connection {connection_id}, total: {self._active_connections}")
+                    self.logger.debug(
+                        f"Created new connection {connection_id}, total: {self._active_connections}"
+                    )
                 else:
                     # Wait for a connection to become available
                     try:
-                        self.logger.warning(f"Pool exhausted ({self._active_connections} connections), waiting...")
+                        self.logger.warning(
+                            f"Pool exhausted ({self._active_connections} connections), waiting..."
+                        )
                         connection = self._pool.get(block=True, timeout=wait_timeout)
                         connection_id = id(connection)
                         self._connection_timestamps[connection_id] = time.time()
-                        self.logger.debug(f"Retrieved connection {connection_id} after waiting")
+                        self.logger.debug(
+                            f"Retrieved connection {connection_id} after waiting"
+                        )
                     except queue.Empty:
                         self.logger.error("Timed out waiting for a connection")
-                        raise TimeoutError("Connection pool exhausted and timed out waiting for a connection")
+                        raise TimeoutError(
+                            "Connection pool exhausted and timed out waiting for a connection"
+                        )
 
         try:
             # Hand the connection to the caller
@@ -80,7 +91,9 @@ class ConnectionPool:
                         # Return connection to the pool
                         self._pool.put(connection, block=False)
                         self._connection_timestamps[connection_id] = time.time()
-                        self.logger.debug(f"Returned connection {connection_id} to pool")
+                        self.logger.debug(
+                            f"Returned connection {connection_id} to pool"
+                        )
                     except queue.Full:
                         # Pool is full (should be rare with proper lock usage)
                         if created:
@@ -88,7 +101,9 @@ class ConnectionPool:
                             self._active_connections -= 1
                             if connection_id in self._connection_timestamps:
                                 del self._connection_timestamps[connection_id]
-                            self.logger.debug(f"Closed excess connection {connection_id}")
+                            self.logger.debug(
+                                f"Closed excess connection {connection_id}"
+                            )
 
     def _cleanup_idle_connections(self):
         """Background thread that closes idle connections."""
@@ -127,7 +142,9 @@ class ConnectionPool:
                                 self._active_connections -= 1
                                 if conn_id in self._connection_timestamps:
                                     del self._connection_timestamps[conn_id]
-                                self.logger.debug(f"Closed idle connection {conn_id} (idle for {idle_time:.1f}s)")
+                                self.logger.debug(
+                                    f"Closed idle connection {conn_id} (idle for {idle_time:.1f}s)"
+                                )
                             except Exception as e:
                                 self.logger.error(f"Error closing idle connection: {e}")
                         else:
@@ -140,7 +157,9 @@ class ConnectionPool:
                                 self._active_connections -= 1
                                 if conn_id in self._connection_timestamps:
                                     del self._connection_timestamps[conn_id]
-                                self.logger.warning(f"Closed connection due to pool full condition")
+                                self.logger.warning(
+                                    f"Closed connection due to pool full condition"
+                                )
         except Exception as e:
             self.logger.error(f"Error in connection pool monitor: {e}")
 

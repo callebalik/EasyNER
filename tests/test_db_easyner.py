@@ -122,7 +122,6 @@ class TestDBAnalysis(unittest.TestCase):
         )
         TestDBAnalysis.successful_tests.append("test_sum_cooccurences")
 
-
     def test_export_cooccurrences(self):
         # Assuming the test database already has the necessary data
         output_file = "test_export_cooccurrences.csv"
@@ -144,7 +143,9 @@ class TestDBAnalysis(unittest.TestCase):
         self.cursor.execute("SELECT entity FROM entities WHERE entity = ?", (new_name,))
         updated_entity = self.cursor.fetchone()
         self.assertIsNotNone(updated_entity, f"Entity {new_name} not found.")
-        self.assertEqual(updated_entity[0], new_name, f"Entity name not updated correctly.")
+        self.assertEqual(
+            updated_entity[0], new_name, f"Entity name not updated correctly."
+        )
         TestDBAnalysis.successful_tests.append("test_update_entity_name")
 
         # Revert the changes
@@ -154,13 +155,14 @@ class TestDBAnalysis(unittest.TestCase):
         self.cursor.execute("SELECT entity FROM entities WHERE entity = ?", (old_name,))
         reverted_entity = self.cursor.fetchone()
         self.assertIsNotNone(reverted_entity, f"Entity {old_name} not found.")
-        self.assertEqual(reverted_entity[0], old_name, f"Entity name not reverted correctly.")
+        self.assertEqual(
+            reverted_entity[0], old_name, f"Entity name not reverted correctly."
+        )
 
     def test_get_named_entity_id(self, entity="disease"):
         entity_id = self.db.get_named_entity_id(entity)
         self.assertEqual(entity_id, 1, "Named entity ID does not match expected value.")
         TestDBAnalysis.successful_tests.append("test_get_named_entity_id")
-
 
     def test_count_entity_fq(self):
         # Destroy the entity_fq table to ensure it is created from scratch
@@ -181,8 +183,8 @@ class TestDBAnalysis(unittest.TestCase):
             ("disease4", 1, 1),
             ("phenomenon3", 2, 1),
             ("phenomenon4", 2, 1),
-            ('typical_disease_text', 1, 1),
-            ('typical_disease_text', 2, 1)
+            ("typical_disease_text", 1, 1),
+            ("typical_disease_text", 2, 1),
         ]
 
         self.assertEqual(
@@ -196,18 +198,19 @@ class TestDBAnalysis(unittest.TestCase):
 
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(TestDBAnalysis('test_get_named_entity_fqs'))
-    suite.addTest(TestDBAnalysis('test_get_title'))
-    suite.addTest(TestDBAnalysis('test_get_title_not_found'))
-    suite.addTest(TestDBAnalysis('test_get_sentences'))
-    suite.addTest(TestDBAnalysis('test_find_entity_cooccurrences'))
-    suite.addTest(TestDBAnalysis('test_count_cooccurence'))
-    suite.addTest(TestDBAnalysis('test_sum_cooccurences'))
-    suite.addTest(TestDBAnalysis('test_export_cooccurrences'))
-    suite.addTest(TestDBAnalysis('test_update_entity_name'))
-    suite.addTest(TestDBAnalysis('test_count_entity_fq'))
-    suite.addTest(TestDBAnalysis('test_get_named_entity_id'))
+    suite.addTest(TestDBAnalysis("test_get_named_entity_fqs"))
+    suite.addTest(TestDBAnalysis("test_get_title"))
+    suite.addTest(TestDBAnalysis("test_get_title_not_found"))
+    suite.addTest(TestDBAnalysis("test_get_sentences"))
+    suite.addTest(TestDBAnalysis("test_find_entity_cooccurrences"))
+    suite.addTest(TestDBAnalysis("test_count_cooccurence"))
+    suite.addTest(TestDBAnalysis("test_sum_cooccurences"))
+    suite.addTest(TestDBAnalysis("test_export_cooccurrences"))
+    suite.addTest(TestDBAnalysis("test_update_entity_name"))
+    suite.addTest(TestDBAnalysis("test_count_entity_fq"))
+    suite.addTest(TestDBAnalysis("test_get_named_entity_id"))
     return suite
+
 
 if __name__ == "__main__":
     runner = unittest.TextTestRunner()
@@ -223,5 +226,3 @@ if __name__ == "__main__":
         print("\nSuccessful Tests:")
         for test_name in TestDBAnalysis.successful_tests:
             print(f" - {test_name}")
-
-

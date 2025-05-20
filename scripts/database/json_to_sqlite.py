@@ -13,10 +13,12 @@ from typing import List, Tuple, Dict
 
 from db_main import EasyNerDBHandler
 
+
 def get_memory_usage():
     """Get current memory usage in MB"""
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / 1024 / 1024
+
 
 def process_chunk(chunk):
     documents = []
@@ -173,9 +175,7 @@ def batch_insert(
         gc.collect()
 
 
-def insert_data(
-    db_path: str, data: Tuple, batch_size: int = 200000, logger=None
-):
+def insert_data(db_path: str, data: Tuple, batch_size: int = 200000, logger=None):
     # Enable URI connection string but without exclusive locking
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -214,7 +214,9 @@ def insert_data(
 
             # Then named entities
             named_entities_rows = [(v, k, None) for k, v in named_entities.items()]
-            batch_insert(cursor, "named_entities", named_entities_rows, batch_size, logger)
+            batch_insert(
+                cursor, "named_entities", named_entities_rows, batch_size, logger
+            )
             named_entities.clear()
 
             # Finally entity occurrences
@@ -275,7 +277,6 @@ def json_to_sqlite(
             else glob(os.path.join(json_path, "*.json"))
         )
 
-
         # Check for already processed files
         processed_files = db.execute("SELECT file_name FROM source_files")
         processed_files = [file[0] for file in processed_files]
@@ -286,7 +287,9 @@ def json_to_sqlite(
             f"Found {len(json_files)} JSON files to process of which {len(json_files_new)} are not already processed"
         )
     else:
-        raise ValueError("Invalid path. Please provide a valid directory path to JSON files.")
+        raise ValueError(
+            "Invalid path. Please provide a valid directory path to JSON files."
+        )
 
     start_time = time.time()
     start_memory = get_memory_usage()
@@ -308,7 +311,12 @@ def json_to_sqlite(
                 for i in range(0, total_items, chunk_size):
                     chunk = dict(list(data.items())[i : i + chunk_size])
                     processed_data = process_chunk(chunk)
-                    insert_data(db.db_path, data=processed_data, batch_size=batch_size, logger=logger)
+                    insert_data(
+                        db.db_path,
+                        data=processed_data,
+                        batch_size=batch_size,
+                        logger=logger,
+                    )
                     del chunk
                     del processed_data
                     gc.collect()

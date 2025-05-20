@@ -4,6 +4,7 @@ Custom log formatter with table formatting capabilities.
 This module provides a custom logging formatter that can detect certain patterns
 in log messages and convert them to pretty-printed tables.
 """
+
 import logging
 import re
 from typing import Dict, Optional, Pattern
@@ -19,8 +20,14 @@ class TableLogFormatter(logging.Formatter):
     them to pretty-printed tables using the TableFormatter.
     """
 
-    def __init__(self, fmt: str = None, datefmt: str = None, style: str = '%',
-                 validate: bool = True, table_patterns: Dict[Pattern, str] = None):
+    def __init__(
+        self,
+        fmt: str = None,
+        datefmt: str = None,
+        style: str = "%",
+        validate: bool = True,
+        table_patterns: Dict[Pattern, str] = None,
+    ):
         """
         Initialize the formatter.
 
@@ -35,8 +42,10 @@ class TableLogFormatter(logging.Formatter):
 
         # Default patterns to detect and format as tables
         self.table_patterns = table_patterns or {
-            re.compile(r'ReaderWriterPair.*rows'): "ReaderWriterPair Processing Configuration",
-            re.compile(r'Batch size:.*Writer.*thread'): "Processing Configuration",
+            re.compile(
+                r"ReaderWriterPair.*rows"
+            ): "ReaderWriterPair Processing Configuration",
+            re.compile(r"Batch size:.*Writer.*thread"): "Processing Configuration",
             # Add more patterns as needed
         }
 
@@ -59,9 +68,13 @@ class TableLogFormatter(logging.Formatter):
                 try:
                     # For ReaderWriterPair logs, use the specialized formatter
                     if "ReaderWriterPair" in record.getMessage():
-                        return TableFormatter.from_reader_writer_log(record.getMessage())
+                        return TableFormatter.from_reader_writer_log(
+                            record.getMessage()
+                        )
                     # For other messages, use the general parser
-                    return TableFormatter.parse_and_format(record.getMessage(), title=title)
+                    return TableFormatter.parse_and_format(
+                        record.getMessage(), title=title
+                    )
                 except Exception as e:
                     # If table formatting fails, fall back to original message
                     return f"{original_message}\n(Table formatting failed: {e})"
@@ -70,10 +83,12 @@ class TableLogFormatter(logging.Formatter):
         return original_message
 
 
-def setup_table_logging(logger: logging.Logger,
-                       fmt: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                       datefmt: str = '%Y-%m-%d %H:%M:%S',
-                       level: int = logging.INFO) -> None:
+def setup_table_logging(
+    logger: logging.Logger,
+    fmt: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt: str = "%Y-%m-%d %H:%M:%S",
+    level: int = logging.INFO,
+) -> None:
     """
     Set up a logger to use table formatting.
 
@@ -102,7 +117,8 @@ if __name__ == "__main__":
     setup_table_logging(logger)
 
     # Test with a ReaderWriterPair log message
-    logger.info("""
+    logger.info(
+        """
     ReaderWriterPair: Processing 16683210 rows
     Batch size: 1000.
     Number of batches: 16684.
@@ -110,4 +126,5 @@ if __name__ == "__main__":
     Max queue size: 1000.
     Profiling enabled: Reader=False, Writer=False. Reader threads: Started 32/32.
     Writing thread: True
-    """)
+    """
+    )

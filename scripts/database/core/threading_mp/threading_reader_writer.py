@@ -76,10 +76,14 @@ class Reader:
         self.batch_size = batch_size
         self.process_function = process_function
         self.data_queue = data_queue
-        self.logger = logger or self._setup_logger()  # Use provided logger or setup default
+        self.logger = (
+            logger or self._setup_logger()
+        )  # Use provided logger or setup default
         self.qsize_backbpressure_threshold = queue_size_backpressure_threshold
         self.progress_queue = progress_queue  # Store progress_queue
-        self.shared_processed_count: shared_processed_count  # Initialize shared processed count
+        self.shared_processed_count: (
+            shared_processed_count  # Initialize shared processed count
+        )
         self.lock = lock
         self.total_count = total_count  # Store total_count
         self.profiling_enabled = profiling_enabled  # Store profiling flag
@@ -89,14 +93,20 @@ class Reader:
         if self.logger:  # Use external logger if provided
             return self.logger
 
-        logger = BaseLogger(logger_name=__name__ + "Reader", log_level=logging.DEBUG, enable_console_log=True)
+        logger = BaseLogger(
+            logger_name=__name__ + "Reader",
+            log_level=logging.DEBUG,
+            enable_console_log=True,
+        )
         return logger.logger  # Return the logger object from BaseLogger
 
     def _read_and_process(self):
         """Reads data from the database, processes it in batches, and puts it into the data queue."""
         conn = None
         try:
-            conn = self.database_manager.get_connection()  # Get connection from DatabaseManager
+            conn = (
+                self.database_manager.get_connection()
+            )  # Get connection from DatabaseManager
             cursor = conn.cursor()
             cursor.execute(self.query)
             total_processed = 0
@@ -112,12 +122,16 @@ class Reader:
                     self.logger.debug("Reader thread: no more data from cursor")
                     break  # No more data
 
-                processed_batch = self.process_function(batch, self.database_manager.get_connection_params()) # Pass connection params via manager
+                processed_batch = self.process_function(
+                    batch, self.database_manager.get_connection_params()
+                )  # Pass connection params via manager
 
                 if processed_batch:  # Only put into queue if there is processed data
                     # Removed backpressure logic - let Queue handle blocking
                     self.data_queue.put(processed_batch)  # Put batch into queue
-                    total_processed += len(processed_batch)  # Count processed items, not fetched
+                    total_processed += len(
+                        processed_batch
+                    )  # Count processed items, not fetched
 
                     if (
                         self.progress_queue
@@ -135,7 +149,11 @@ class Reader:
                             f"Reader thread processed batch of {len(processed_batch)} items (total: {total_processed})"
                         )
 
-                if self.total_count is not None and self.shared_processed_count is not None and self.lock is not None:
+                if (
+                    self.total_count is not None
+                    and self.shared_processed_count is not None
+                    and self.lock is not None
+                ):
                     with self.lock:
                         if self.shared_processed_count.value >= self.total_count:
                             self.logger.info(
@@ -151,9 +169,13 @@ class Reader:
             self.logger.error(f"Error in Reader thread process: {e}")
         finally:
             if conn:
-                self.database_manager.release_connection(conn) # Release connection via DatabaseManager
+                self.database_manager.release_connection(
+                    conn
+                )  # Release connection via DatabaseManager
             self.logger.debug("Reader thread finished.")
-            self.data_queue.put(None)  # Ensure sentinel value is ALWAYS added to queue at the end
+            self.data_queue.put(
+                None
+            )  # Ensure sentinel value is ALWAYS added to queue at the end
             self.logger.debug("Reader thread: added sentinel value to queue.")
 
     def run(self, num_threads=1):  # `num_threads` is now OPTIONAL with default 1
@@ -258,10 +280,14 @@ class Writer:
         self.database_manager = database_manager  # Store DatabaseManager
         self.write_function = write_function
         self.data_queue = data_queue
-        self.logger = logger or self._setup_logger()  # Use provided logger or setup default
+        self.logger = (
+            logger or self._setup_logger()
+        )  # Use provided logger or setup default
         self.written_count = 0  # Initialize processed_count for Writer
         self.profiling_enabled = profiling_enabled  # Store profiling flag
-        self.batch_chunking = batch_chunking  # Accumulte multiple batches before writing
+        self.batch_chunking = (
+            batch_chunking  # Accumulte multiple batches before writing
+        )
         self.num_reader_threads = num_reader_threads  # Store number of reader threads
 
     def _setup_logger(self):
@@ -269,21 +295,31 @@ class Writer:
         if self.logger:  # Use external logger if provided
             return self.logger
 
-        logger = BaseLogger(logger_name=__name__ + "Writer", log_level=logging.DEBUG, enable_console_log=True)
+        logger = BaseLogger(
+            logger_name=__name__ + "Writer",
+            log_level=logging.DEBUG,
+            enable_console_log=True,
+        )
         return logger.logger  # Return the logger object from BaseLogger
 
     def writer_process(self):
         """Processes data from the queue and writes it to the database."""
         conn: sqlite3.Connection = None
         try:
-            conn = self.database_manager.get_connection()  # Get connection from DatabaseManager
+            conn = (
+                self.database_manager.get_connection()
+            )  # Get connection from DatabaseManager
             cursor = conn.cursor()
 
             sentinel_count = 0  # Count of sentinels received
-            num_readers = self.num_reader_threads  # Get number of readers from the queue
+            num_readers = (
+                self.num_reader_threads
+            )  # Get number of readers from the queue
 
             while True:
-                batch = self.data_queue.get()  # Get batch from queue (same queue as Reader's)
+                batch = (
+                    self.data_queue.get()
+                )  # Get batch from queue (same queue as Reader's)
                 if batch is None:  # Sentinel value received
                     self.data_queue.task_done()  # Signal task completion for sentinel
 
@@ -329,7 +365,9 @@ class Writer:
             self.logger.error(f"Error in Writer thread: {e}")
         finally:
             if conn:
-                self.database_manager.release_connection(conn) # Release connection via DatabaseManager
+                self.database_manager.release_connection(
+                    conn
+                )  # Release connection via DatabaseManager
             self.logger.debug("Writer thread finished.")
 
     def run(self):
@@ -344,7 +382,9 @@ class Writer:
         prof_filename = "Writer_run_profile.prof"  # Filename for profiling data
 
         if self.profiling_enabled:
-            self.logger.info(f"Writer thread starting with profiling enabled. Results will be in '{prof_filename}'")
+            self.logger.info(
+                f"Writer thread starting with profiling enabled. Results will be in '{prof_filename}'"
+            )
             run_with_profiling(self._run_internal, prof_filename)
         else:
             self._run_internal()
@@ -365,7 +405,7 @@ class ReaderWriterPair:
 
     def __init__(
         self,
-        database_manager: DatabaseManager, # Use DatabaseManager instead of conn_params
+        database_manager: DatabaseManager,  # Use DatabaseManager instead of conn_params
         reader_query,
         batch_size,
         process_function,
@@ -401,15 +441,27 @@ class ReaderWriterPair:
         self.process_function = process_function
         self.write_function = write_function
         self.num_reader_threads = num_reader_threads
-        self.logger = logger or self._setup_logger()  # Use provided logger or setup default
-        self.data_queue = queue.Queue(maxsize=max_queue_size)  # Pair class creates the queue
-        self.progress_queue = queue.Queue()  # Create progress queue for aggregated progress
-        self.aggregation_thread_stop_event = threading.Event()  # Event to stop aggregation thread
+        self.logger = (
+            logger or self._setup_logger()
+        )  # Use provided logger or setup default
+        self.data_queue = queue.Queue(
+            maxsize=max_queue_size
+        )  # Pair class creates the queue
+        self.progress_queue = (
+            queue.Queue()
+        )  # Create progress queue for aggregated progress
+        self.aggregation_thread_stop_event = (
+            threading.Event()
+        )  # Event to stop aggregation thread
 
         self.total_count = total_count  # Store total_count
         if total_count is not None:
-            self.shared_processed_count = multiprocessing.Value('i', 0)  # use multiprocessing.Value
-            self.shared_processed_lock = multiprocessing.Lock()  # use multiprocessing.Lock
+            self.shared_processed_count = multiprocessing.Value(
+                "i", 0
+            )  # use multiprocessing.Value
+            self.shared_processed_lock = (
+                multiprocessing.Lock()
+            )  # use multiprocessing.Lock
         else:
             self.shared_processed_count = None
             self.shared_processed_lock = None
@@ -417,20 +469,26 @@ class ReaderWriterPair:
         self.process_title = process_title  # Store process title if provided
 
         self.pbar_aggregated = tqdm(
-            total=total_count, desc=f"Total Progress {'for ' + process_title if process_title else ''}"
+            total=total_count,
+            desc=f"Total Progress {'for ' + process_title if process_title else ''}",
         )  # Initialize tqdm for aggregated progress
 
-        self.profiling_reader_enabled = os.getenv('PROFILING_READER_ENABLED', profiling_reader_enabled)  # Added profiling_reader_enabled
-        self.profiling_writer_enabled = os.getenv('PROFILING_WRITER_ENABLED', profiling_writer_enabled)  # Added profiling_writer_enabled
-        self.writer_batch_chunking = writer_batch_chunking  # Added writer_batch_chunking
+        self.profiling_reader_enabled = os.getenv(
+            "PROFILING_READER_ENABLED", profiling_reader_enabled
+        )  # Added profiling_reader_enabled
+        self.profiling_writer_enabled = os.getenv(
+            "PROFILING_WRITER_ENABLED", profiling_writer_enabled
+        )  # Added profiling_writer_enabled
+        self.writer_batch_chunking = (
+            writer_batch_chunking  # Added writer_batch_chunking
+        )
         # Instantiate Reader and Writer, passing the *same* data_queue to both
         self.reader = Reader(
             self.data_queue,
-            database_manager=database_manager, # Pass DatabaseManager instance
+            database_manager=database_manager,  # Pass DatabaseManager instance
             reader_query=reader_query,
             batch_size=batch_size,
             process_function=process_function,
-
             logger=self.logger,
             queue_size_backpressure_threshold=max_queue_size
             - 5,  # Adjusted backpressure threshold for when readers start to pause to avoid maxing out queue
@@ -438,16 +496,16 @@ class ReaderWriterPair:
             profiling_enabled=self.profiling_reader_enabled,  # Profiling reader/writer individually if needed, by default False here, controlled at ReaderWritersPair level
             total_count=self.total_count,
             shared_processed_count=self.shared_processed_count,  # Pass shared value
-            lock=self.shared_processed_lock  # Pass lock
+            lock=self.shared_processed_lock,  # Pass lock
         )
         self.writer = Writer(
             self.data_queue,
-            database_manager=database_manager, # Pass DatabaseManager instance
+            database_manager=database_manager,  # Pass DatabaseManager instance
             write_function=write_function,
             logger=self.logger,
             profiling_enabled=self.profiling_writer_enabled,  # Profiling reader/writer individually if needed, by default False here, controlled at ReaderWriterPair level
             batch_chunking=self.writer_batch_chunking,
-            num_reader_threads=self.num_reader_threads
+            num_reader_threads=self.num_reader_threads,
         )
 
     def _progress_aggregation_process(self):  # Aggregation thread function
@@ -496,7 +554,11 @@ class ReaderWriterPair:
         """Sets up a basic logger for the ReaderWriterPair if none is provided."""
         if self.logger:  # Use external logger if provided
             return self.logger
-        logger = BaseLogger(logger_name=__name__ + "ReaderWriterPair", log_level=logging.DEBUG, enable_console_log=True)
+        logger = BaseLogger(
+            logger_name=__name__ + "ReaderWriterPair",
+            log_level=logging.DEBUG,
+            enable_console_log=True,
+        )
         return logger.logger  # Return the logger object from BaseLogger
 
     def _log_query_plan(self, sql, params=None):
@@ -519,7 +581,9 @@ class ReaderWriterPair:
             print(f"SQLite error: {e}")
             return None
 
-    def _log_configuration_as_table(self, num_of_batches, started_reader_threads, writer_thread_started):
+    def _log_configuration_as_table(
+        self, num_of_batches, started_reader_threads, writer_thread_started
+    ):
         """
         Log configuration information as a formatted table.
 
@@ -529,21 +593,20 @@ class ReaderWriterPair:
             writer_thread_started: Whether writer thread was started successfully
         """
         config_data = {
-            'Total rows': self.total_count,
-            'Batch size': self.batch_size,
-            'Number of batches': num_of_batches,
-            'Writer batch chunking': self.writer_batch_chunking,
-            'Max queue size': self.data_queue.maxsize,
-            'Reader profiling': self.profiling_reader_enabled,
-            'Writer profiling': self.profiling_writer_enabled,
-            'Reader threads': f"{started_reader_threads}/{self.num_reader_threads}",
-            'Writer thread': writer_thread_started
+            "Total rows": self.total_count,
+            "Batch size": self.batch_size,
+            "Number of batches": num_of_batches,
+            "Writer batch chunking": self.writer_batch_chunking,
+            "Max queue size": self.data_queue.maxsize,
+            "Reader profiling": self.profiling_reader_enabled,
+            "Writer profiling": self.profiling_writer_enabled,
+            "Reader threads": f"{started_reader_threads}/{self.num_reader_threads}",
+            "Writer thread": writer_thread_started,
         }
 
         try:
             table_str = TableFormatter.format_table(
-                config_data,
-                title="ReaderWriterPair Processing Configuration"
+                config_data, title="ReaderWriterPair Processing Configuration"
             )
             self.logger.info(f"\n{table_str}")
         except ImportError:
@@ -580,7 +643,10 @@ class ReaderWriterPair:
         )
         for _ in range(self.num_reader_threads):
             thread = threading.Thread(
-                target=self.reader.run, args=(1,)  # force reader to run in single thread mode, controlled by ReaderWriterPair
+                target=self.reader.run,
+                args=(
+                    1,
+                ),  # force reader to run in single thread mode, controlled by ReaderWriterPair
             )  # Corrected reader.run call - no args (single-threaded Reader.run will be used)
             reader_threads.append(thread)
             thread.start()
@@ -593,9 +659,13 @@ class ReaderWriterPair:
             "ReaderWriterPair: Waiting for queue to be empty before joining writer."
         )  # Corrected placement of queue.join()
 
-        self.logger.info(f"ReaderWriterPair: Queue size before join: {self.data_queue.qsize()}, pending tasks: {self.data_queue.unfinished_tasks}")
+        self.logger.info(
+            f"ReaderWriterPair: Queue size before join: {self.data_queue.qsize()}, pending tasks: {self.data_queue.unfinished_tasks}"
+        )
         self.data_queue.join()
-        self.logger.info(f"ReaderWriterPair: Queue join completed. Queue size: {self.data_queue.qsize()}, pending tasks: {self.data_queue.unfinished_tasks}")
+        self.logger.info(
+            f"ReaderWriterPair: Queue join completed. Queue size: {self.data_queue.qsize()}, pending tasks: {self.data_queue.unfinished_tasks}"
+        )
 
         self.logger.info("ReaderWriterPair: Waiting for reader threads to complete.")
         for thread in reader_threads:
@@ -608,6 +678,8 @@ class ReaderWriterPair:
             "ReaderWriterPair: Signaling progress aggregation thread to stop."
         )
         self.aggregation_thread_stop_event.set()  # Signal aggregation thread to stop
-        aggregation_thread.join(timeout=2)  # Wait for aggregation thread to finish, with a timeout
+        aggregation_thread.join(
+            timeout=2
+        )  # Wait for aggregation thread to finish, with a timeout
 
         self.logger.info("ReaderWriterPair process completed.")

@@ -1,7 +1,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from scripts.database.data_model.entity_cooccurrence import (
-    Cooccurrence, NormallizedNamedEntity
+    Cooccurrence,
+    NormallizedNamedEntity,
 )
 from scripts.database.data_model.schema import *
 
@@ -11,26 +12,22 @@ from scripts.database.data_model.schema import *
 def mock_entity1():
     """Create a sample normalized entity"""
     return NormallizedNamedEntity(
-        txt="Diabetes",
-        norm_id=1,
-        fq=50,
-        uniq_docs=20,
-        ne_class="DISEASE"
+        txt="Diabetes", norm_id=1, fq=50, uniq_docs=20, ne_class="DISEASE"
     )
+
 
 @pytest.fixture
 def mock_entity2():
     """Create a sample normalized entity"""
     return NormallizedNamedEntity(
-        txt="Fatigue",
-        norm_id=2,
-        fq=30,
-        uniq_docs=15,
-        ne_class="PHENOMENON"
+        txt="Fatigue", norm_id=2, fq=30, uniq_docs=15, ne_class="PHENOMENON"
     )
 
+
 @pytest.fixture
-def sample_cooccurrence(mock_entity1: NormallizedNamedEntity, mock_entity2: NormallizedNamedEntity):
+def sample_cooccurrence(
+    mock_entity1: NormallizedNamedEntity, mock_entity2: NormallizedNamedEntity
+):
     """Create a sample cooccurrence object"""
     return Cooccurrence(
         e1=mock_entity1,
@@ -43,31 +40,26 @@ def sample_cooccurrence(mock_entity1: NormallizedNamedEntity, mock_entity2: Norm
         npmi=0.25,
         avg_sent_dist=1.5,
         min_sent_dist=0,
-        max_sent_dist=3
+        max_sent_dist=3,
     )
+
 
 # Fixtures for mock objects
 @pytest.fixture
 def mock_entity1():
     """Create a sample normalized entity"""
     return NormallizedNamedEntity(
-        txt="Diabetes",
-        norm_id=1,
-        fq=50,
-        uniq_docs=20,
-        ne_class="DISEASE"
+        txt="Diabetes", norm_id=1, fq=50, uniq_docs=20, ne_class="DISEASE"
     )
+
 
 @pytest.fixture
 def mock_entity2():
     """Create a sample normalized entity"""
     return NormallizedNamedEntity(
-        txt="Fatigue",
-        norm_id=2,
-        fq=30,
-        uniq_docs=15,
-        ne_class="PHENOMENON"
+        txt="Fatigue", norm_id=2, fq=30, uniq_docs=15, ne_class="PHENOMENON"
     )
+
 
 @pytest.fixture
 def sample_cooccurrence(mock_entity1, mock_entity2):
@@ -83,8 +75,9 @@ def sample_cooccurrence(mock_entity1, mock_entity2):
         npmi=0.25,
         avg_sent_dist=1.5,
         min_sent_dist=0,
-        max_sent_dist=3
+        max_sent_dist=3,
     )
+
 
 @pytest.fixture
 def mock_cursor():
@@ -111,51 +104,54 @@ def mock_cursor():
     ]
     return cursor
 
+
 @pytest.fixture
 def mock_row():
     """Create a mock row with sample data matching the cursor description"""
     return [
-        1,                  # E1_NORM_ID
-        2,                  # E2_NORM_ID
-        "Diabetes",         # E1_TXT
-        "Fatigue",          # E2_TXT
-        50,                 # E1_FQ
-        30,                 # E2_FQ
-        20,                 # E1_UNIQ_DOCS
-        15,                 # E2_UNIQ_DOCS
-        1,                  # CO_AGGR_ID
-        10,                 # FQ_DOCUMENT_LEVEL
-        8,                  # FQ_SENTENCE_LEVEL
-        5,                  # UNIQ_DOCS
-        0.75,               # PMI
-        0.25,               # NPMI
-        1.5,                # AVG_SENT_DIST
-        0,                  # MIN_SENT_DIST
-        3                   # MAX_SENT_DIST
+        1,  # E1_NORM_ID
+        2,  # E2_NORM_ID
+        "Diabetes",  # E1_TXT
+        "Fatigue",  # E2_TXT
+        50,  # E1_FQ
+        30,  # E2_FQ
+        20,  # E1_UNIQ_DOCS
+        15,  # E2_UNIQ_DOCS
+        1,  # CO_AGGR_ID
+        10,  # FQ_DOCUMENT_LEVEL
+        8,  # FQ_SENTENCE_LEVEL
+        5,  # UNIQ_DOCS
+        0.75,  # PMI
+        0.25,  # NPMI
+        1.5,  # AVG_SENT_DIST
+        0,  # MIN_SENT_DIST
+        3,  # MAX_SENT_DIST
     ]
+
 
 @pytest.fixture
 def mock_row_missing_data():
     """Create a mock row with some missing data to test error handling"""
     return [
-        1,                  # E1_NORM_ID
-        2,                  # E2_NORM_ID
-        "Diabetes",         # E1_TXT
-        None,               # E2_TXT - Missing
-        50,                 # E1_FQ
-        30,                 # E2_FQ
-        20,                 # E1_UNIQ_DOCS
-        15,                 # E2_UNIQ_DOCS
-        None,               # CO_AGGR_ID - Missing
-        10,                 # FQ_DOCUMENT_LEVEL
-        8,                  # FQ_SENTENCE_LEVEL
-        5,                  # UNIQ_DOCS
-        None,               # PMI - Missing
-        None,               # NPMI - Missing
-        1.5,                # AVG_SENT_DIST
-        0,                  # MIN_SENT_DIST
-        3                   # MAX_SENT_DIST
+        1,  # E1_NORM_ID
+        2,  # E2_NORM_ID
+        "Diabetes",  # E1_TXT
+        None,  # E2_TXT - Missing
+        50,  # E1_FQ
+        30,  # E2_FQ
+        20,  # E1_UNIQ_DOCS
+        15,  # E2_UNIQ_DOCS
+        None,  # CO_AGGR_ID - Missing
+        10,  # FQ_DOCUMENT_LEVEL
+        8,  # FQ_SENTENCE_LEVEL
+        5,  # UNIQ_DOCS
+        None,  # PMI - Missing
+        None,  # NPMI - Missing
+        1.5,  # AVG_SENT_DIST
+        0,  # MIN_SENT_DIST
+        3,  # MAX_SENT_DIST
     ]
+
 
 class TestNormallizedNamedEntity:
     def test_initialization(self, mock_entity1):
@@ -175,6 +171,7 @@ class TestNormallizedNamedEntity:
         assert result[FQ] == 50
         assert result[UNIQ_DOCS] == 20
         assert result[NE_CLASS] == "DISEASE"
+
 
 class TestCooccurrence:
     def test_initialization(self, sample_cooccurrence):

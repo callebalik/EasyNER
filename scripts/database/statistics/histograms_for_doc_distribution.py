@@ -27,19 +27,23 @@ class DocumentMetricsVisualizer:
     def _validate_data(self) -> None:
         """Validate data and print basic information."""
         print(f"Total documents: {len(self.metric_values)}")
-        print(f"Value range: {np.min(self.metric_values)} - {np.max(self.metric_values)}")
+        print(
+            f"Value range: {np.min(self.metric_values)} - {np.max(self.metric_values)}"
+        )
         print(f"Unique values: {len(np.unique(self.metric_values))}")
 
-    def plot_histogram(self,
-                      color: Tuple[float, float, float] = (197/255, 191/255, 191/255),
-                      figsize: Tuple[int, int] = (7, 6),
-                      bins: Union[int, List[float], str] = 100,
-                      show_stats: bool = True,
-                      show_std_dev: bool = True,
-                      show_quartiles: bool = False,  # New parameter for quartiles
-                      show_percentiles: Optional[List[int]] = None,  # New parameter for percentiles
-                      x_min: Optional[float] = None,
-                      x_max: Optional[float] = None) -> None:
+    def plot_histogram(
+        self,
+        color: Tuple[float, float, float] = (197 / 255, 191 / 255, 191 / 255),
+        figsize: Tuple[int, int] = (7, 6),
+        bins: Union[int, List[float], str] = 100,
+        show_stats: bool = True,
+        show_std_dev: bool = True,
+        show_quartiles: bool = False,  # New parameter for quartiles
+        show_percentiles: Optional[List[int]] = None,  # New parameter for percentiles
+        x_min: Optional[float] = None,
+        x_max: Optional[float] = None,
+    ) -> None:
         """
         Create a histogram plot for the metric distribution.
 
@@ -63,13 +67,14 @@ class DocumentMetricsVisualizer:
         plt.figure(figsize=figsize)
 
         # Plot histogram
-        plt.hist(self.metric_values, bins=bins, color=color,
-                alpha=0.8, edgecolor='black')
+        plt.hist(
+            self.metric_values, bins=bins, color=color, alpha=0.8, edgecolor="black"
+        )
 
         # Configure axes
-        plt.xlabel(f'Number of {self.metric_name.title()}s')
-        plt.ylabel('Frequency (Number of Documents)')
-        plt.grid(alpha=0.3, axis='y')
+        plt.xlabel(f"Number of {self.metric_name.title()}s")
+        plt.ylabel("Frequency (Number of Documents)")
+        plt.grid(alpha=0.3, axis="y")
 
         # Set x-axis limits if provided
         if x_min is not None or x_max is not None:
@@ -86,33 +91,68 @@ class DocumentMetricsVisualizer:
 
         # Add statistics reference lines
         if show_stats:
-            plt.axvline(mean_val, color='red', linestyle='dashed', linewidth=1,
-                        label=f"Mean: {mean_val:.2f}")
-            plt.axvline(median_val, color='green', linestyle='dashed', linewidth=1,
-                        label=f"Median: {median_val:.2f}")
+            plt.axvline(
+                mean_val,
+                color="red",
+                linestyle="dashed",
+                linewidth=1,
+                label=f"Mean: {mean_val:.2f}",
+            )
+            plt.axvline(
+                median_val,
+                color="green",
+                linestyle="dashed",
+                linewidth=1,
+                label=f"Median: {median_val:.2f}",
+            )
 
             # Add standard deviation lines
             if show_std_dev:
-                plt.axvline(mean_val + std_dev_val, color='blue', linestyle='dashed', linewidth=1,
-                          label=f"Mean + StdDev: {(mean_val + std_dev_val):.2f}")
-                plt.axvline(mean_val - std_dev_val, color='blue', linestyle='dashed', linewidth=1,
-                          label=f"Mean - StdDev: {(mean_val - std_dev_val):.2f}")
+                plt.axvline(
+                    mean_val + std_dev_val,
+                    color="blue",
+                    linestyle="dashed",
+                    linewidth=1,
+                    label=f"Mean + StdDev: {(mean_val + std_dev_val):.2f}",
+                )
+                plt.axvline(
+                    mean_val - std_dev_val,
+                    color="blue",
+                    linestyle="dashed",
+                    linewidth=1,
+                    label=f"Mean - StdDev: {(mean_val - std_dev_val):.2f}",
+                )
 
             # Add quartile lines
             if show_quartiles:
                 q1 = np.percentile(self.metric_values, 25)
                 q3 = np.percentile(self.metric_values, 75)
-                plt.axvline(q1, color='purple', linestyle='dashed', linewidth=1,
-                          label=f"Q1 (25th): {q1:.2f}")
-                plt.axvline(q3, color='orange', linestyle='dashed', linewidth=1,
-                          label=f"Q3 (75th): {q3:.2f}")
+                plt.axvline(
+                    q1,
+                    color="purple",
+                    linestyle="dashed",
+                    linewidth=1,
+                    label=f"Q1 (25th): {q1:.2f}",
+                )
+                plt.axvline(
+                    q3,
+                    color="orange",
+                    linestyle="dashed",
+                    linewidth=1,
+                    label=f"Q3 (75th): {q3:.2f}",
+                )
 
             # Add custom percentile lines
             if show_percentiles:
                 for p in show_percentiles:
                     p_val = np.percentile(self.metric_values, p)
-                    plt.axvline(p_val, color='gray', linestyle='dotted', linewidth=1,
-                              label=f"P{p}: {p_val:.2f}")
+                    plt.axvline(
+                        p_val,
+                        color="gray",
+                        linestyle="dotted",
+                        linewidth=1,
+                        label=f"P{p}: {p_val:.2f}",
+                    )
 
             plt.legend()
 

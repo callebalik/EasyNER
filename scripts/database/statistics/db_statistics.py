@@ -13,6 +13,7 @@ from ..data_model.schema import *
 # So we need to create a cache_manager instance to use its cached decorator
 from ..core.cache_singleton import cached
 
+
 class DBStatistics:
 
     def __init__(
@@ -30,8 +31,7 @@ class DBStatistics:
         )
         self.data_exchanger = data_exchanger
 
-
-    def _export_df_(self, results: DataFrame, filename, overwrite: bool=True):
+    def _export_df_(self, results: DataFrame, filename, overwrite: bool = True):
         """
         Export results to a CSV file.
 
@@ -40,7 +40,9 @@ class DBStatistics:
         """
         filename = os.path.join(self._results_dir, filename)
         if os.path.exists(filename) and not overwrite:
-            self.logger.error(f"File {filename} already exists. Set overwrite=True to overwrite.")
+            self.logger.error(
+                f"File {filename} already exists. Set overwrite=True to overwrite."
+            )
             return
 
         results.to_csv(filename, index=False)
@@ -186,7 +188,13 @@ class DBStatistics:
                     print(f"  Sample: {sample}")
 
     @cached(ttl_seconds=2150, prefix="stats.named_entities_count")
-    def named_entities_count(self, ne_class: str = None, include_errors: bool = False, include_ambiguous: bool = False, include_overlaps: bool = False):
+    def named_entities_count(
+        self,
+        ne_class: str = None,
+        include_errors: bool = False,
+        include_ambiguous: bool = False,
+        include_overlaps: bool = False,
+    ):
         """Get the total number of entity occurrences in the database."""
         try:
             # Basic query without conditions first
@@ -243,7 +251,14 @@ class DBStatistics:
         return self.cursor.fetchone()[0]
 
     # -------- Data for data flow analysis --------
-    def documents_with_entities(self, included_ne_classes: list[str] = None, excluded_ne_classes: list[str] = None, include_errors: bool = False, include_ambiguous: bool = False, include_overlaps: bool = False):
+    def documents_with_entities(
+        self,
+        included_ne_classes: list[str] = None,
+        excluded_ne_classes: list[str] = None,
+        include_errors: bool = False,
+        include_ambiguous: bool = False,
+        include_overlaps: bool = False,
+    ):
         """
         Get counts of documents with named entities meeting specified criteria.
 
@@ -261,8 +276,14 @@ class DBStatistics:
         included_ne_classes = included_ne_classes or []
         excluded_ne_classes = excluded_ne_classes or []
 
-        included_ne_ids = [self.data_exchanger.get_named_entity_class_id(ne_class) for ne_class in included_ne_classes]
-        excluded_ne_ids = [self.data_exchanger.get_named_entity_class_id(ne_class) for ne_class in excluded_ne_classes]
+        included_ne_ids = [
+            self.data_exchanger.get_named_entity_class_id(ne_class)
+            for ne_class in included_ne_classes
+        ]
+        excluded_ne_ids = [
+            self.data_exchanger.get_named_entity_class_id(ne_class)
+            for ne_class in excluded_ne_classes
+        ]
 
         # Basic case: all documents with any entity
         if not included_ne_classes and not excluded_ne_classes:
@@ -332,7 +353,7 @@ class DBStatistics:
                 self.logger.warning(
                     f"No documents with entities found."
                     f"\n- Total documents: {self.document_count:,}"
-                    f"\n- Total entities in database: {self.named_entities_count}" # Removed :, formatter
+                    f"\n- Total entities in database: {self.named_entities_count}"  # Removed :, formatter
                     f"\n- Query: {query}"
                     f"\n- Parameters: {params}"
                 )
@@ -365,7 +386,8 @@ class DBStatistics:
         Returns:
             DataFrame: Distribution with columns [class_name, document_count, percentage]
         """
-        self.cursor.execute(f"""--sql
+        self.cursor.execute(
+            f"""--sql
             SELECT
                 nec.{NE_CLASS},
                 COUNT(DISTINCT ne.{DOC_ID}) as document_count
@@ -374,16 +396,17 @@ class DBStatistics:
             JOIN sentences s ON ne.{SENT_IDX} = s.{SENT_IDX}
             GROUP BY nec.{NE_CLASS}
             ORDER BY document_count DESC
-        """)
+        """
+        )
 
         results = self.cursor.fetchall()
         df = pd.DataFrame(results, columns=[NE_CLASS, "document_count"])
 
-                # Add total documents row with class_name None
+        # Add total documents row with class_name None
 
         # Calculate percentage of total documents
         total_docs = self.document_count
-        df['percentage'] = (df['document_count'] / total_docs * 100).round(2)
+        df["percentage"] = (df["document_count"] / total_docs * 100).round(2)
 
         return df
 
@@ -403,7 +426,8 @@ class DBStatistics:
         classes = [row[0] for row in self.cursor.fetchall()]
 
         # Get document-class pairs
-        self.cursor.execute(f"""
+        self.cursor.execute(
+            f"""
             SELECT
                 s.{DOC_ID},
                 nec.{NE_CLASS}
@@ -411,7 +435,8 @@ class DBStatistics:
             JOIN {TABLE_NE_CLASS} nec ON ne.{CLASS_ID} = nec.{CLASS_ID}
             JOIN {TABLE_SENTENCES} s ON ne.{SENT_IDX} = s.{SENT_IDX}
             GROUP BY s.{DOC_ID}, nec.{NE_CLASS}
-        """)
+        """
+        )
 
         # Process results to get combinations
         doc_classes = {}
@@ -430,7 +455,7 @@ class DBStatistics:
         rows = []
         for classes_tuple, count in sorted(combinations.items(), key=lambda x: -x[1]):
             row = {cls: cls in classes_tuple for cls in classes}
-            row['document_count'] = count
+            row["document_count"] = count
             rows.append(row)
 
         df = pd.DataFrame(rows)
@@ -441,15 +466,14 @@ class DBStatistics:
 
         return df
 
-
-
     def count_named_entity_errors(self) -> DataFrame:
         """
         Counts the frequency of each error type (error_id) for each named entity from the entity_occurrences table.
         Also collects the fq of the named entity from the named_entities table.
         """
         self.logger.info("Counting named entity error frequencies...")
-        self.cursor.execute(f"""--sql
+        self.cursor.execute(
+            f"""--sql
             SELECT
                 {NE_CLASS} as {NE_CLASS.lower()},
                 {ERROR_ID} as {ERROR_ID.lower()},
@@ -465,10 +489,8 @@ class DBStatistics:
             error_counts, columns=["named_entity_class", "error_id", "error_count"]
         )
 
-
         self.logger.info(f"Counted named entity errors: {len(error_df)} records found.")
         return error_df
-
 
     @cached(ttl_seconds=3600)
     def results_entity_occurrence_errors(self) -> DataFrame:
@@ -481,10 +503,18 @@ class DBStatistics:
         error_df = self.count_named_entity_errors()
 
         # Fetch fq data from named_entities table
-        total_fq_dis = self.named_entities_count("DIS", include_errors=False, include_overlaps=False)
-        total_fq_pnm = self.named_entities_count("PNM", include_errors=False, include_overlaps=False)
-        dis_fq = self.named_entities_count("DIS", include_errors=True, include_overlaps=True)
-        pnm_fq = self.named_entities_count("PNM", include_errors=True, include_overlaps=True)
+        total_fq_dis = self.named_entities_count(
+            "DIS", include_errors=False, include_overlaps=False
+        )
+        total_fq_pnm = self.named_entities_count(
+            "PNM", include_errors=False, include_overlaps=False
+        )
+        dis_fq = self.named_entities_count(
+            "DIS", include_errors=True, include_overlaps=True
+        )
+        pnm_fq = self.named_entities_count(
+            "PNM", include_errors=True, include_overlaps=True
+        )
 
         fq_data = [
             ("DIS", dis_fq),
@@ -496,30 +526,44 @@ class DBStatistics:
             ("PNM", total_fq_pnm),
         ]
         fq_df = DataFrame(fq_data, columns=["named_entity_class", "fq"])
-        fq_with_errors_df = DataFrame(fq_with_errors, columns=["named_entity_class", "fq"])
+        fq_with_errors_df = DataFrame(
+            fq_with_errors, columns=["named_entity_class", "fq"]
+        )
 
         # Create DataFrame for fq data including total fq counts with include_errors=True, include_overlaps=True
         fq_combined_df = pd.concat([fq_df, fq_with_errors_df], ignore_index=True)
 
-
         # Pivot the error DataFrame to have error_ids as columns
-        pivot_df = error_df.pivot(
-            index="named_entity_class", columns="error_id", values="error_count"
-        ).fillna(0).astype(int)
+        pivot_df = (
+            error_df.pivot(
+                index="named_entity_class", columns="error_id", values="error_count"
+            )
+            .fillna(0)
+            .astype(int)
+        )
         pivot_df.reset_index(inplace=True)
 
         # Merge with fq data
         result_df = pivot_df.merge(fq_df, on="named_entity_class", how="left")
-        result_df = pivot_df.merge(fq_with_errors_df, on="named_entity_class", how="left", suffixes=("", "_total"))
+        result_df = pivot_df.merge(
+            fq_with_errors_df,
+            on="named_entity_class",
+            how="left",
+            suffixes=("", "_total"),
+        )
 
         # Get overlap counts
         with_overlap_counts = self.named_entities_count(include_overlaps=True)
         result_df["overlap_count"] = with_overlap_counts - result_df["fq"]
         result_df["overlap_count"] = result_df["overlap_count"].clip(lower=0)
-        result_df["overlap_percentage"] = (result_df["overlap_count"] / result_df["fq"] * 100).round(2)
+        result_df["overlap_percentage"] = (
+            result_df["overlap_count"] / result_df["fq"] * 100
+        ).round(2)
 
         # Reorder columns to place 'fq' right after 'named_entity'
-        error_id_columns = [col for col in pivot_df.columns if col != "named_entity_class"]
+        error_id_columns = [
+            col for col in pivot_df.columns if col != "named_entity_class"
+        ]
         columns_order = ["named_entity_class", "fq"] + error_id_columns
         result_df = result_df[columns_order]
 
@@ -537,7 +581,7 @@ class DBStatistics:
             rows: Optional number of rows to limit the result
         """
         valid_sort_columns = ["pmi", "fq_document_level", "fq_sentence_level"]
-        if (sort_by not in valid_sort_columns):
+        if sort_by not in valid_sort_columns:
             raise ValueError(f"sort_by must be one of {valid_sort_columns}")
 
         order_dir = "ASC" if ascending else "DESC"
@@ -599,7 +643,6 @@ class DBStatistics:
         self.cursor.execute("SELECT COUNT(*) FROM processed_files;")
         return self.cursor.fetchone()[0]
 
-
     def get_raw_cooccurrence_counts(self):
         """
         Get the total number of raw cooccurrences in the database.
@@ -628,21 +671,31 @@ class DBStatistics:
     def plot_document_sentence_count_distribution(self):
         all_counts = []
 
-        for chunk in pd.read_sql_query("SELECT document_id, COUNT(*) AS sentence_count FROM sentences GROUP BY document_id", self.conn, chunksize=100000):
-            all_counts.extend(chunk['sentence_count'].tolist())
+        for chunk in pd.read_sql_query(
+            "SELECT document_id, COUNT(*) AS sentence_count FROM sentences GROUP BY document_id",
+            self.conn,
+            chunksize=100000,
+        ):
+            all_counts.extend(chunk["sentence_count"].tolist())
 
         # Plotting with seaborn (using the accumulated list)
-        sns.histplot(all_counts, bins=20, kde=True) # or sns.countplot(x=all_counts) if you have a smaller number of distinct sentence counts
+        sns.histplot(
+            all_counts, bins=20, kde=True
+        )  # or sns.countplot(x=all_counts) if you have a smaller number of distinct sentence counts
 
         plt.xlabel("Sentence Count")
         plt.ylabel("Frequency")
         plt.title("Distribution of Document Sentence Counts")
         plt.tight_layout()
 
-        plot_file = os.path.join(self._results_dir, "document_sentence_count_distribution.png")
+        plot_file = os.path.join(
+            self._results_dir, "document_sentence_count_distribution.png"
+        )
         plt.savefig(plot_file)
         plt.close()
-        self.logger.info(f"Document sentence count distribution plot saved to {plot_file}")
+        self.logger.info(
+            f"Document sentence count distribution plot saved to {plot_file}"
+        )
 
     def plot_document_word_count_distribution(self):
         """
@@ -657,11 +710,12 @@ class DBStatistics:
         plt.tight_layout()
 
         # Save plot
-        plot_file = os.path.join(self._results_dir, "document_word_count_distribution.png")
+        plot_file = os.path.join(
+            self._results_dir, "document_word_count_distribution.png"
+        )
         plt.savefig(plot_file)
         plt.close()
         self.logger.info(f"Document word count distribution plot saved to {plot_file}")
-
 
     def plot_document_distributions(self):
         """
@@ -675,9 +729,9 @@ class DBStatistics:
         for chunk in pd.read_sql_query(
             "SELECT document_id, COUNT(*) AS sentence_count FROM sentences GROUP BY document_id",
             self.conn,
-            chunksize=100000
+            chunksize=100000,
         ):
-            all_counts.extend(chunk['sentence_count'].tolist())
+            all_counts.extend(chunk["sentence_count"].tolist())
 
         sns.histplot(all_counts, bins=20, kde=True, ax=ax1)
         ax1.set_xlabel("Sentences per Document")
@@ -705,12 +759,17 @@ class DBStatistics:
         """
         df = pd.DataFrame(
             {
-                "Table": ["documents", "sentences", "entity_occurrences", "entity_cooccurrences"],
+                "Table": [
+                    "documents",
+                    "sentences",
+                    "entity_occurrences",
+                    "entity_cooccurrences",
+                ],
                 "Count": [
                     self.document_count,
                     self.sentence_count,
                     self.named_entities_count,
-                    self.get_entity_cooccurrence_count
+                    self.get_entity_cooccurrence_count,
                 ],
             }
         )
@@ -739,5 +798,9 @@ class DBStatistics:
             f"\nCo-occurrence identification complete:"
             f"\n- Total unique pairs: {total_stats[0]:,}"
             f"\n- Unique entities involved: {total_stats[1]:,}"
-            + (f"\n- Average sentence distance: {total_stats[2]:.2f}" if level == "sentence" else "")
+            + (
+                f"\n- Average sentence distance: {total_stats[2]:.2f}"
+                if level == "sentence"
+                else ""
+            )
         )

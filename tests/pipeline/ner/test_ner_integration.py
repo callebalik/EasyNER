@@ -74,9 +74,7 @@ class TestNERIntegration:
     def mock_ner_components(self):
         """Mock the NER components for testing without requiring actual model loading."""
         with (
-            patch(
-                "transformers.AutoModelForTokenClassification"
-            ) as mock_model_class,
+            patch("transformers.AutoModelForTokenClassification") as mock_model_class,
             patch("transformers.AutoTokenizer") as mock_tokenizer_class,
             patch("transformers.pipeline") as mock_pipeline_fn,
         ):
@@ -160,13 +158,9 @@ class TestNERIntegration:
 
         # Test with an invalid processor type
         with pytest.raises(ValueError):
-            NERProcessorFactory.create_processor(
-                {"model_type": "invalid_model_type"}
-            )
+            NERProcessorFactory.create_processor({"model_type": "invalid_model_type"})
 
-    def test_full_pipeline_execution(
-        self, setup_test_environment, mock_ner_components
-    ):
+    def test_full_pipeline_execution(self, setup_test_environment, mock_ner_components):
         """Test that the complete pipeline executes from start to finish."""
         input_dir = setup_test_environment["input_dir"]
         output_dir = setup_test_environment["output_dir"]
@@ -187,9 +181,7 @@ class TestNERIntegration:
         # Create and run pipeline with proper mocks
         with (
             patch("easyner.util.append_to_json_file") as mock_append_json,
-            patch.object(
-                BioBertNERProcessor, "_initialize_model"
-            ) as mock_init,
+            patch.object(BioBertNERProcessor, "_initialize_model") as mock_init,
             patch.object(
                 BioBertNERProcessor, "_process_single_file", return_value=0
             ) as mock_process,
@@ -202,9 +194,7 @@ class TestNERIntegration:
             mock_init.assert_called_once()
 
             # Verify output was saved for each file
-            assert mock_process.call_count == len(
-                setup_test_environment["files"]
-            )
+            assert mock_process.call_count == len(setup_test_environment["files"])
 
     def test_biobert_dataset_processing(self, mock_ner_components):
         """Test that the BioBertNERProcessor correctly processes datasets."""
@@ -261,9 +251,7 @@ class TestNERIntegration:
 
             # Verify the structure of the processed dataset
             assert "prediction" in processed_dataset.column_names
-            assert len(processed_dataset["prediction"]) == len(
-                test_data["text"]
-            )
+            assert len(processed_dataset["prediction"]) == len(test_data["text"])
 
             # Check that predictions contain the expected entity structure
             for prediction in processed_dataset["prediction"]:
@@ -325,9 +313,7 @@ class TestNERIntegration:
                 mock_processor.multiprocessing_called
             ), "Multiprocessing path was not called"
 
-    def test_article_range_filtering(
-        self, setup_test_environment, mock_ner_components
-    ):
+    def test_article_range_filtering(self, setup_test_environment, mock_ner_components):
         """Test processing with article range filtering."""
         input_dir = setup_test_environment["input_dir"]
         output_dir = setup_test_environment["output_dir"]
@@ -362,9 +348,7 @@ class TestNERIntegration:
 
             # Verify only the specified batch was processed
             expected_file = next(
-                f
-                for f in setup_test_environment["files"]
-                if "batch-1.json" in f
+                f for f in setup_test_environment["files"] if "batch-1.json" in f
             )
             assert hasattr(
                 pipeline.processor, "processed_files"

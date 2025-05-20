@@ -8,9 +8,7 @@ from easyner.pipeline.ner.ner_main import NERPipeline, run_ner_module
 @pytest.fixture
 def mock_processor_factory():
     """Mock the NERProcessorFactory"""
-    with patch(
-        "easyner.pipeline.ner.ner_main.NERProcessorFactory"
-    ) as factory_mock:
+    with patch("easyner.pipeline.ner.ner_main.NERProcessorFactory") as factory_mock:
         processor_mock = MagicMock()
         factory_mock.create_processor.return_value = processor_mock
         yield {"factory": factory_mock, "processor": processor_mock}
@@ -45,9 +43,9 @@ class TestNERPipeline:
         assert pipeline.cpu_limit == 4
 
         # Verify processor factory was called with config
-        mock_processor_factory[
-            "factory"
-        ].create_processor.assert_called_once_with(sample_config)
+        mock_processor_factory["factory"].create_processor.assert_called_once_with(
+            sample_config
+        )
 
     def test_input_file_sorting(self, sample_config, monkeypatch):
         """Test that input files are properly sorted by numeric indices"""
@@ -70,9 +68,7 @@ class TestNERPipeline:
                 "batch-10.json",
             ]
 
-    def test_input_file_sorting_error_handling(
-        self, sample_config, monkeypatch
-    ):
+    def test_input_file_sorting_error_handling(self, sample_config, monkeypatch):
         """Test that sorting handles files without the expected numeric format"""
 
         # Mock the glob function to return files without numeric indices
@@ -139,12 +135,8 @@ class TestNERPipeline:
             pipeline.run()
 
             # Verify processor was called correctly
-            mock_processor_factory[
-                "processor"
-            ].process_dataset.assert_called_once()
-            args, kwargs = mock_processor_factory[
-                "processor"
-            ].process_dataset.call_args
+            mock_processor_factory["processor"].process_dataset.assert_called_once()
+            args, kwargs = mock_processor_factory["processor"].process_dataset.call_args
             assert len(args[0]) == 2  # Should have 2 files
             assert kwargs.get("device") == "mocked_device"
 

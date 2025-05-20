@@ -7,44 +7,38 @@ import numpy as np
 import plotly.graph_objects as go
 
 from scripts.database.statistics.sankey_diagram import CooccurenceSankey
-from scripts.database.data_model.entity_cooccurrence import Cooccurrence, NormallizedNamedEntity
-from scripts.database.data_model.schema import (
-    FQ_DOCUMENT_LEVEL, UNIQ_DOCS, PMI, NPMI, TXT, FQ
+from scripts.database.data_model.entity_cooccurrence import (
+    Cooccurrence,
+    NormallizedNamedEntity,
 )
+from scripts.database.data_model.schema import (
+    FQ_DOCUMENT_LEVEL,
+    UNIQ_DOCS,
+    PMI,
+    NPMI,
+    TXT,
+    FQ,
+)
+
 
 @pytest.fixture
 def mock_entities():
     """Create mock NormallizedNamedEntity objects for testing"""
     return {
         "covid": NormallizedNamedEntity(
-            norm_id=1,
-            txt="COVID-19",
-            fq=100,
-            uniq_docs=50,
-            ne_class="DISEASE"
+            norm_id=1, txt="COVID-19", fq=100, uniq_docs=50, ne_class="DISEASE"
         ),
         "influenza": NormallizedNamedEntity(
-            norm_id=2,
-            txt="Influenza",
-            fq=80,
-            uniq_docs=40,
-            ne_class="DISEASE"
+            norm_id=2, txt="Influenza", fq=80, uniq_docs=40, ne_class="DISEASE"
         ),
         "fever": NormallizedNamedEntity(
-            norm_id=101,
-            txt="Fever",
-            fq=90,
-            uniq_docs=45,
-            ne_class="PHENOMENON"
+            norm_id=101, txt="Fever", fq=90, uniq_docs=45, ne_class="PHENOMENON"
         ),
         "cough": NormallizedNamedEntity(
-            norm_id=102,
-            txt="Cough",
-            fq=85,
-            uniq_docs=42,
-            ne_class="PHENOMENON"
-        )
+            norm_id=102, txt="Cough", fq=85, uniq_docs=42, ne_class="PHENOMENON"
+        ),
     }
+
 
 @pytest.fixture
 def mock_cooccurrences(mock_entities):
@@ -57,7 +51,7 @@ def mock_cooccurrences(mock_entities):
             fq_sent_level=20,
             uniq_docs=25,
             npmi=0.6,
-            pmi=2.5
+            pmi=2.5,
         ),
         Cooccurrence(
             e1=mock_entities["covid"],
@@ -66,7 +60,7 @@ def mock_cooccurrences(mock_entities):
             fq_sent_level=18,
             uniq_docs=20,
             npmi=0.55,
-            pmi=2.2
+            pmi=2.2,
         ),
         Cooccurrence(
             e1=mock_entities["influenza"],
@@ -75,9 +69,10 @@ def mock_cooccurrences(mock_entities):
             fq_sent_level=15,
             uniq_docs=18,
             npmi=0.5,
-            pmi=2.0
-        )
+            pmi=2.0,
+        ),
     ]
+
 
 @pytest.fixture
 def mock_cooccurrences_with_none(mock_entities):
@@ -88,16 +83,18 @@ def mock_cooccurrences_with_none(mock_entities):
             e2=mock_entities["fever"],
             fq_doc_level=None,  # None value to test handling
             fq_sent_level=20,
-            uniq_docs=None,     # None value to test handling
-            npmi=None,          # None value to test handling
-            pmi=None            # None value to test handling
+            uniq_docs=None,  # None value to test handling
+            npmi=None,  # None value to test handling
+            pmi=None,  # None value to test handling
         )
     ]
+
 
 @pytest.fixture
 def sankey_diagram():
     """Create a sankey diagram instance for testing."""
     return CooccurenceSankey(logger=MagicMock())
+
 
 class TestCooccurenceSankey:
     def test_process_data(self, sankey_diagram, mock_cooccurrences):
@@ -105,19 +102,19 @@ class TestCooccurenceSankey:
         result = sankey_diagram._process_data(mock_cooccurrences)
 
         # Verify data structure
-        assert 'diseases' in result
-        assert 'phenomena' in result
-        assert 'labels' in result
-        assert len(result['diseases']) == 2
-        assert len(result['phenomena']) == 2
+        assert "diseases" in result
+        assert "phenomena" in result
+        assert "labels" in result
+        assert len(result["diseases"]) == 2
+        assert len(result["phenomena"]) == 2
 
         # Verify entity data was extracted correctly
-        assert "COVID-19" in result['diseases']
-        assert "Fever" in result['phenomena']
+        assert "COVID-19" in result["diseases"]
+        assert "Fever" in result["phenomena"]
 
         # Verify frequency data was processed correctly
-        assert result['disease_data']["COVID-19"][FQ_DOCUMENT_LEVEL] == 100
-        assert result['phenomenon_data']["Fever"][UNIQ_DOCS] == 45
+        assert result["disease_data"]["COVID-19"][FQ_DOCUMENT_LEVEL] == 100
+        assert result["phenomenon_data"]["Fever"][UNIQ_DOCS] == 45
 
     def test_create_link_data(self, sankey_diagram, mock_cooccurrences):
         """Test that _create_link_data correctly generates link data"""
@@ -125,15 +122,15 @@ class TestCooccurenceSankey:
         result = sankey_diagram._create_link_data(processed_data)
 
         # Verify all required data is present
-        assert 'source' in result
-        assert 'target' in result
-        assert 'value' in result
-        assert 'link_colors' in result
-        assert len(result['source']) == 3
-        assert len(result['target']) == 3
+        assert "source" in result
+        assert "target" in result
+        assert "value" in result
+        assert "link_colors" in result
+        assert len(result["source"]) == 3
+        assert len(result["target"]) == 3
 
         # Verify link values use NPMI
-        assert abs(result['value'][0] - 0.6) < 0.01
+        assert abs(result["value"][0] - 0.6) < 0.01
 
     def test_handle_none_values(self, sankey_diagram, mock_cooccurrences_with_none):
         """Test that the class handles None values gracefully"""
@@ -142,10 +139,10 @@ class TestCooccurenceSankey:
         node_colors = sankey_diagram._create_node_colors(processed_data)
 
         # Check that default values were used appropriately
-        assert len(link_data['source']) == 1
-        assert len(link_data['target']) == 1
-        assert len(link_data['value']) == 1
-        assert len(node_colors['node_colors']) == 2  # 1 diseases + 1 phenomena
+        assert len(link_data["source"]) == 1
+        assert len(link_data["target"]) == 1
+        assert len(link_data["value"]) == 1
+        assert len(node_colors["node_colors"]) == 2  # 1 diseases + 1 phenomena
 
     def test_create_sankey_diagram(self, sankey_diagram, mock_cooccurrences):
         """Test that create_sankey_diagram returns a valid Figure object"""
@@ -156,7 +153,7 @@ class TestCooccurenceSankey:
         assert isinstance(fig, go.Figure)
 
         # Check basic figure properties
-        assert hasattr(fig, 'data')
+        assert hasattr(fig, "data")
         assert len(fig.data) > 0
         assert isinstance(fig.data[0], go.Sankey)
 
@@ -175,7 +172,7 @@ class TestCooccurenceSankey:
     def test_export_as_html_mock(self, sankey_diagram, mock_cooccurrences):
         """Test HTML export using mocks."""
         # Setup mock for write_html
-        with patch.object(go.Figure, 'write_html') as mock_write_html:
+        with patch.object(go.Figure, "write_html") as mock_write_html:
             # Call export method
             sankey_diagram.export_as_html(mock_cooccurrences, "test_output.html")
 
@@ -185,7 +182,7 @@ class TestCooccurenceSankey:
     def test_export_as_image_mock(self, sankey_diagram, mock_cooccurrences):
         """Test image export using mocks."""
         # Setup mock for write_image
-        with patch.object(go.Figure, 'write_image') as mock_write_image:
+        with patch.object(go.Figure, "write_image") as mock_write_image:
             # Call export method
             sankey_diagram.export_as_image(mock_cooccurrences, "test_output.png")
 
@@ -195,7 +192,7 @@ class TestCooccurenceSankey:
     def test_export_as_html_file(self, sankey_diagram, mock_cooccurrences):
         """Test actual HTML file generation."""
         # Create a temporary file for the test
-        with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp_file:
             filename = tmp_file.name
 
         try:
@@ -208,7 +205,7 @@ class TestCooccurenceSankey:
             assert file_size > 0
 
             # Verify it contains expected HTML content
-            with open(filename, 'r') as f:
+            with open(filename, "r") as f:
                 content = f.read()
                 assert "Plotly" in content
                 assert "Sankey" in content
@@ -224,6 +221,7 @@ class TestCooccurenceSankey:
         """
         try:
             import kaleido
+
             kaleido_available = True
         except ImportError:
             kaleido_available = False
@@ -231,7 +229,7 @@ class TestCooccurenceSankey:
 
         if kaleido_available:
             # Create a temporary file for the test
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
                 filename = tmp_file.name
 
             try:

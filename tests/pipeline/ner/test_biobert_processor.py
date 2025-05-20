@@ -152,9 +152,7 @@ def mock_utils():
 def mock_io():
     """Mock I/O functions used by the BioBERT processor."""
     with (
-        patch(
-            "easyner.util.append_to_json_file", create=True
-        ) as mock_append_json,
+        patch("easyner.util.append_to_json_file", create=True) as mock_append_json,
         patch(
             "easyner.io.converters.articles_to_datasets.convert_articles_to_dataset",
             create=True,
@@ -163,9 +161,7 @@ def mock_io():
             "easyner.io.converters.articles_to_datasets.convert_dataset_to_dict",
             create=True,
         ) as mock_convert_to_dict,
-        patch(
-            "easyner.io.handlers.JsonHandler", create=True
-        ) as mock_json_handler,
+        patch("easyner.io.handlers.JsonHandler", create=True) as mock_json_handler,
     ):
 
         # Configure the JSON handler
@@ -237,12 +233,8 @@ class TestBioBertProcessor:
         def mock_initialize(dev):
             from pathlib import Path, PurePosixPath
 
-            biobert_processor.model_path = PurePosixPath(
-                Path("dummy/model/path")
-            )
-            biobert_processor.tokenizer = mock_transformers[
-                "tokenizer_instance"
-            ]
+            biobert_processor.model_path = PurePosixPath(Path("dummy/model/path"))
+            biobert_processor.tokenizer = mock_transformers["tokenizer_instance"]
             biobert_processor.model = mock_transformers["model_instance"]
             biobert_processor.nlp = mock_transformers["pipeline_instance"]
 
@@ -254,15 +246,10 @@ class TestBioBertProcessor:
 
             # Verify the processor is correctly initialized with our mocks
             assert (
-                biobert_processor.tokenizer
-                == mock_transformers["tokenizer_instance"]
+                biobert_processor.tokenizer == mock_transformers["tokenizer_instance"]
             )
-            assert (
-                biobert_processor.model == mock_transformers["model_instance"]
-            )
-            assert (
-                biobert_processor.nlp == mock_transformers["pipeline_instance"]
-            )
+            assert biobert_processor.model == mock_transformers["model_instance"]
+            assert biobert_processor.nlp == mock_transformers["pipeline_instance"]
 
     def test_process_single_file(
         self,
@@ -280,12 +267,8 @@ class TestBioBertProcessor:
         def mock_initialize_model(dev):
             from pathlib import Path, PurePosixPath
 
-            biobert_processor.model_path = PurePosixPath(
-                Path("dummy/model/path")
-            )
-            biobert_processor.tokenizer = mock_transformers[
-                "tokenizer_instance"
-            ]
+            biobert_processor.model_path = PurePosixPath(Path("dummy/model/path"))
+            biobert_processor.tokenizer = mock_transformers["tokenizer_instance"]
             biobert_processor.model = mock_transformers["model_instance"]
             biobert_processor.nlp = mock_transformers["pipeline_instance"]
 
@@ -295,12 +278,8 @@ class TestBioBertProcessor:
         biobert_processor._initialize_model(device)
 
         # Create a temporary file for testing
-        with tempfile.NamedTemporaryFile(
-            suffix=".json", delete=False
-        ) as tmp_file:
-            tmp_file.write(
-                b'{"article1": {"sentences": [{"text": "Test sentence"}]}}'
-            )
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp_file:
+            tmp_file.write(b'{"article1": {"sentences": [{"text": "Test sentence"}]}}')
             tmp_path = tmp_file.name
 
         # Mock the _read_batch_file method to return proper data
@@ -324,12 +303,8 @@ class TestBioBertProcessor:
                 ],
             )
 
-        monkeypatch.setattr(
-            biobert_processor, "_read_batch_file", mock_read_batch_file
-        )
-        monkeypatch.setattr(
-            biobert_processor, "_predict_dataset", mock_predict_dataset
-        )
+        monkeypatch.setattr(biobert_processor, "_read_batch_file", mock_read_batch_file)
+        monkeypatch.setattr(biobert_processor, "_predict_dataset", mock_predict_dataset)
         # Mock the _save_processed_articles method
         monkeypatch.setattr(
             biobert_processor,
@@ -362,12 +337,8 @@ class TestBioBertProcessor:
         def mock_initialize_model(dev):
             from pathlib import Path, PurePosixPath
 
-            biobert_processor.model_path = PurePosixPath(
-                Path("dummy/model/path")
-            )
-            biobert_processor.tokenizer = mock_transformers[
-                "tokenizer_instance"
-            ]
+            biobert_processor.model_path = PurePosixPath(Path("dummy/model/path"))
+            biobert_processor.tokenizer = mock_transformers["tokenizer_instance"]
             biobert_processor.model = mock_transformers["model_instance"]
             biobert_processor.nlp = mock_transformers["pipeline_instance"]
 
@@ -388,9 +359,7 @@ class TestBioBertProcessor:
         # Mock torch.no_grad to avoid actual tensor operations
         with patch("torch.no_grad"):
             # Process the dataset
-            result = biobert_processor._predict_dataset(
-                sample_dataset, "text", 16
-            )
+            result = biobert_processor._predict_dataset(sample_dataset, "text", 16)
 
         # Verify the pipeline is called correctly
         mock_transformers["pipeline_instance"].assert_called_once_with(
@@ -411,12 +380,8 @@ class TestBioBertProcessor:
         def mock_initialize_model(dev):
             from pathlib import Path, PurePosixPath
 
-            biobert_processor.model_path = PurePosixPath(
-                Path("dummy/model/path")
-            )
-            biobert_processor.tokenizer = mock_transformers[
-                "tokenizer_instance"
-            ]
+            biobert_processor.model_path = PurePosixPath(Path("dummy/model/path"))
+            biobert_processor.tokenizer = mock_transformers["tokenizer_instance"]
             biobert_processor.model = mock_transformers["model_instance"]
             biobert_processor.nlp = mock_transformers["pipeline_instance"]
 
@@ -435,9 +400,7 @@ class TestBioBertProcessor:
         )
 
         # Get optimal batch size
-        batch_size = biobert_processor._get_optimal_batch_size(
-            sample_dataset, "text"
-        )
+        batch_size = biobert_processor._get_optimal_batch_size(sample_dataset, "text")
 
         # Verify the calculation function is called
         mock_utils["calculate_optimal_batch_size"].assert_called_once_with(
@@ -464,12 +427,8 @@ class TestBioBertProcessor:
         def mock_initialize_model(dev):
             from pathlib import Path, PurePosixPath
 
-            biobert_processor.model_path = PurePosixPath(
-                Path("dummy/model/path")
-            )
-            biobert_processor.tokenizer = mock_transformers[
-                "tokenizer_instance"
-            ]
+            biobert_processor.model_path = PurePosixPath(Path("dummy/model/path"))
+            biobert_processor.tokenizer = mock_transformers["tokenizer_instance"]
             biobert_processor.model = mock_transformers["model_instance"]
             biobert_processor.nlp = mock_transformers["pipeline_instance"]
 
@@ -494,9 +453,7 @@ class TestBioBertProcessor:
         biobert_processor.process_dataset(sample_files["file_paths"], device)
 
         # Verify each file was processed
-        assert process_single_file_mock.call_count == len(
-            sample_files["file_paths"]
-        )
+        assert process_single_file_mock.call_count == len(sample_files["file_paths"])
 
     def test_parallel_processing(
         self,
@@ -522,12 +479,8 @@ class TestBioBertProcessor:
         def mock_initialize_model(dev):
             from pathlib import Path, PurePosixPath
 
-            biobert_processor.model_path = PurePosixPath(
-                Path("dummy/model/path")
-            )
-            biobert_processor.tokenizer = mock_transformers[
-                "tokenizer_instance"
-            ]
+            biobert_processor.model_path = PurePosixPath(Path("dummy/model/path"))
+            biobert_processor.tokenizer = mock_transformers["tokenizer_instance"]
             biobert_processor.model = mock_transformers["model_instance"]
             biobert_processor.nlp = mock_transformers["pipeline_instance"]
 
@@ -539,6 +492,4 @@ class TestBioBertProcessor:
         biobert_processor.process_dataset(sample_files["file_paths"], device)
 
         # Verify _process_files_in_parallel was called with the correct files
-        mock_process_parallel.assert_called_once_with(
-            sample_files["file_paths"]
-        )
+        mock_process_parallel.assert_called_once_with(sample_files["file_paths"])

@@ -55,7 +55,8 @@ class Sentence:
         if problem_samples:
             self.logger.info("\nSample problematic sentences:")
             for sample in problem_samples:
-                self.logger.info(f"Document ID: {sample[0]}, Sentence Index: {sample[1]}, Text: {sample[2]}, Word Count: {sample[3]}, Token Count: {sample[4]}, Alpha Count: {sample[5]}")
+                self.logger.info(
+                    f"Document ID: {sample[0]}, Sentence Index: {sample[1]}, Text: {sample[2]}, Word Count: {sample[3]}, Token Count: {sample[4]}, Alpha Count: {sample[5]}"
+                )
 
         return stats
-

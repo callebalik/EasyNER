@@ -246,9 +246,7 @@ def test_filter_batch_files_with_empty_list_exclude_batches(caplog):
         ),
     ],
 )
-def test_filter_batch_files_parametrized(
-    files, start, end, exclude_batches, expected
-):
+def test_filter_batch_files_parametrized(files, start, end, exclude_batches, expected):
     """Test filter_batch_files with various input combinations."""
     # If expected is a context manager (like pytest.raises), use it directly
     if not isinstance(expected, list):

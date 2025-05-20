@@ -29,9 +29,7 @@ def test_insert_on_conflict_returning_generic():
         )
         # -------------------
 
-        initial_count = con.execute(
-            f"SELECT COUNT(*) FROM {table_name}"
-        ).fetchone()[0]
+        initial_count = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
         assert initial_count == len(initial_data)
 
         # 3. Define Source Data (using VALUES for simplicity in the test)
@@ -69,19 +67,13 @@ def test_insert_on_conflict_returning_generic():
 
         # 5. Assertions
         # Assert that the IDs returned are correct
-        assert (
-            returned_ids == expected_inserted_ids
-        ), "Mismatch in returned IDs"
+        assert returned_ids == expected_inserted_ids, "Mismatch in returned IDs"
 
         # Assert the final count in the target table is correct
         # Initial count + count of successfully inserted unique IDs
-        final_count = con.execute(
-            f"SELECT COUNT(*) FROM {table_name}"
-        ).fetchone()[0]
+        final_count = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
         expected_final_count = initial_count + len(expected_inserted_ids)
-        assert (
-            final_count == expected_final_count
-        ), "Mismatch in final table row count"
+        assert final_count == expected_final_count, "Mismatch in final table row count"
 
         # Assert that the values of initial rows were not updated
         initial_rows_final_state = con.execute(

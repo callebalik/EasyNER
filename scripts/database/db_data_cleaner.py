@@ -8,6 +8,7 @@ import json
 from tqdm import tqdm
 from .data_model.schema import *
 
+
 class DBDataCleaner:
     """Data cleaning utilities for the EasyNer database."""
 
@@ -118,7 +119,6 @@ class DBDataCleaner:
             entity_id = self.data_exchanger.get_named_entity_class_id(entity_type)
         try:
 
-
             # Get all spans for entities of the specified type
             query = """
             SELECT
@@ -130,7 +130,6 @@ class DBDataCleaner:
             """
             self.cursor.execute(query, (entity_id,))
             entities = self.cursor.fetchall()
-
 
             update_data = []
             for entity in entities:
@@ -212,7 +211,9 @@ class DBDataCleaner:
                         """
                     )
                 else:
-                    self.logger.info("Column error_id already exists in entity_occurrences, clearing")
+                    self.logger.info(
+                        "Column error_id already exists in entity_occurrences, clearing"
+                    )
                     self.cursor.execute("UPDATE entity_occurrences SET error_id = NULL")
                     self.conn.commit()
 
@@ -240,41 +241,60 @@ class DBDataCleaner:
 
                     # Type checking and validation
                     if not isinstance(entity_text, str):
-                        self.logger.warning(f"Invalid entity_text type: {type(entity_text)}. Skipping.")
+                        self.logger.warning(
+                            f"Invalid entity_text type: {type(entity_text)}. Skipping."
+                        )
                         continue
 
                     if not isinstance(entity_type, str) or len(entity_type) > 20:
-                        self.logger.warning(f"Invalid entity_type: {entity_type}. Must be string <= 20 chars. Skipping.")
+                        self.logger.warning(
+                            f"Invalid entity_type: {entity_type}. Must be string <= 20 chars. Skipping."
+                        )
                         continue
 
                     if not isinstance(error_id, str) or len(error_id) > 10:
-                        self.logger.warning(f"Invalid error_id: {error_id}. Must be string <= 10 chars. Skipping.")
+                        self.logger.warning(
+                            f"Invalid error_id: {error_id}. Must be string <= 10 chars. Skipping."
+                        )
                         continue
 
                     # Directly convert entity_type to ID
-                    entity_id = self.data_exchanger.get_named_entity_class_id(entity_type)
+                    entity_id = self.data_exchanger.get_named_entity_class_id(
+                        entity_type
+                    )
                     if not entity_id:
-                        self.logger.warning(f"Misslabeled NER: No entity ID found for type: {entity_type} and text: {entity_text}")
+                        self.logger.warning(
+                            f"Misslabeled NER: No entity ID found for type: {entity_type} and text: {entity_text}"
+                        )
                         continue
 
-                    entity_updates.append(
-                        (error_id, entity_text, entity_id)
-                    )
+                    entity_updates.append((error_id, entity_text, entity_id))
 
             # Proceed if we have any updates
             if entity_updates:
                 try:
                     # Add error_id for WHERE clause
-                    entity_updates = [(error_id, entity_text, entity_id, error_id) for error_id, entity_text, entity_id in entity_updates]
-                    self.logger.info(f"processing {len(entity_updates)} entity errors code updates...")
-                    self.logger.info(f"First 5 entity updates: {entity_updates[:5]}") # Print the first 5 updates
+                    entity_updates = [
+                        (error_id, entity_text, entity_id, error_id)
+                        for error_id, entity_text, entity_id in entity_updates
+                    ]
+                    self.logger.info(
+                        f"processing {len(entity_updates)} entity errors code updates..."
+                    )
+                    self.logger.info(
+                        f"First 5 entity updates: {entity_updates[:5]}"
+                    )  # Print the first 5 updates
 
                     # Create index for lower(entity_text) and entity_id for faster updates
-                    self.cursor.execute("""--sql
+                    self.cursor.execute(
+                        """--sql
                     CREATE INDEX IF NOT EXISTS idx_entity_occurrences_entity_id_text_error
                     ON entity_occurrences (entity_id, LOWER(entity_text), error_id)
-                    """)
-                    self.logger.info("Ensured index idx_entity_occurrences_entity_id_text_error exists")
+                    """
+                    )
+                    self.logger.info(
+                        "Ensured index idx_entity_occurrences_entity_id_text_error exists"
+                    )
 
                     update_query = f"""--sql
                     UPDATE entity_occurrences
@@ -286,23 +306,28 @@ class DBDataCleaner:
 
                     batch_size = 200000
                     total_updates = len(entity_updates)
-                    with tqdm(total=total_updates, desc="Updating entity occurrences") as pbar:
+                    with tqdm(
+                        total=total_updates, desc="Updating entity occurrences"
+                    ) as pbar:
                         for i in range(0, total_updates, batch_size):
-                            batch = entity_updates[i:i + batch_size]
+                            batch = entity_updates[i : i + batch_size]
                             self.cursor.executemany(update_query, batch)
                             self.conn.commit()
                             pbar.update(len(batch))
 
                     # Create index if not exists - Provides significant speedup for error_id queries where it's used to filter out NULL values
-                    self.cursor.execute("""
+                    self.cursor.execute(
+                        """
                     CREATE INDEX IF NOT EXISTS idx_entity_occurrences_entity_id_error_null
                     ON entity_occurrences(entity_text, summary_id, error_id)
                     WHERE error_id IS NULL
-                    """)
-
+                    """
+                    )
 
                     self.conn.commit()
-                    self.logger.info(f"Updated {len(entity_updates)} entity occurrences")
+                    self.logger.info(
+                        f"Updated {len(entity_updates)} entity occurrences"
+                    )
 
                 except KeyboardInterrupt:
                     self.logger.warning("User interrupted. Rolling back changes.")
@@ -316,4 +341,3 @@ class DBDataCleaner:
             self.logger.error(f"Error attaching error information: {e}")
             self.conn.rollback()
             raise
-

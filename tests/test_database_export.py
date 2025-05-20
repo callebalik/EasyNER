@@ -11,6 +11,7 @@ from scripts.db_easyner import EasyNerDB
 from test_db_convert_json_to_sqlite import TestConvertJsonToSqlite
 from test_db_easyner import suite as easyner_suite
 
+
 class TestDatabaseExport(unittest.TestCase):
     successful_tests = []
 
@@ -18,7 +19,9 @@ class TestDatabaseExport(unittest.TestCase):
         self.test_db_path = "test_database.db"
         print(f"Checking for {self.test_db_path}")
         if not os.path.exists(self.test_db_path):
-            print(f"{self.test_db_path} not found. Running TestConvertJsonToSqlite to create it.")
+            print(
+                f"{self.test_db_path} not found. Running TestConvertJsonToSqlite to create it."
+            )
             test_convert = TestConvertJsonToSqlite()
             test_convert.setUp()
             test_convert.test_load_json_to_db()
@@ -67,12 +70,14 @@ class TestDatabaseExport(unittest.TestCase):
 
         TestDatabaseExport.successful_tests.append("test_export_cooccurrences")
 
+
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(TestDatabaseExport('test_export_entity_fq'))
-    suite.addTest(TestDatabaseExport('test_export_entity_fq_with_filter'))
-    suite.addTest(TestDatabaseExport('test_export_cooccurrences'))
+    suite.addTest(TestDatabaseExport("test_export_entity_fq"))
+    suite.addTest(TestDatabaseExport("test_export_entity_fq_with_filter"))
+    suite.addTest(TestDatabaseExport("test_export_cooccurrences"))
     return suite
+
 
 if __name__ == "__main__":
     # Run the test suite from test_db_easyner.py first

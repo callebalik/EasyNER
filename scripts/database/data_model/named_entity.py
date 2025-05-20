@@ -3,6 +3,7 @@ import sqlite3
 
 from scripts.database.core.core_classes import BaseExecutor
 
+
 class NamedEntity:
     def __init__(self, conn, cursor, logger):
         self.conn = conn
@@ -45,7 +46,3 @@ class NamedEntity:
             )
         except sqlite3.Error as e:
             self.logger.error(f"Error counting named entity frequencies: {e}")
-
-
-
-

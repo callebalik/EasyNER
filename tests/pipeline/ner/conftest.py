@@ -63,9 +63,7 @@ def mock_utils():
             create=True,
         ) as mock_calc,
         patch("easyner.io.utils.extract_batch_index") as mock_extract_index,
-        patch(
-            "easyner.io.utils._remove_all_files_from_dir"
-        ) as mock_remove_files,
+        patch("easyner.io.utils._remove_all_files_from_dir") as mock_remove_files,
     ):
         mock_get_device.return_value = 0
         mock_calc.return_value = 32
@@ -108,9 +106,7 @@ def mock_io():
         )
         mock_convert_to_dataset.return_value = sample_dataset
         mock_convert_to_dict.return_value = {
-            "article1": {
-                "sentences": [{"text": "Test sentence", "entities": []}]
-            }
+            "article1": {"sentences": [{"text": "Test sentence", "entities": []}]}
         }
 
         yield {

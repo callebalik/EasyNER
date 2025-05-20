@@ -1,6 +1,7 @@
 import os
 import re
 
+
 def rename_merged_files(directory):
     """
     Rename up to `limit` merged files in the specified directory to include a hyphen between the prefix and the numeric part.
@@ -8,7 +9,7 @@ def rename_merged_files(directory):
     for filename in os.listdir(directory):
         if filename.startswith("merged") and filename.endswith(".json"):
             # Extract the numeric part from the filename
-            match = re.search(r'(\d+)(?!.*\d)', filename)
+            match = re.search(r"(\d+)(?!.*\d)", filename)
             if match:
                 numeric_part = match.group(0)
                 # Construct the new filename with a hyphen
@@ -20,6 +21,7 @@ def rename_merged_files(directory):
                 print(f"Renamed: {filename} -> {new_filename}")
             else:
                 print(f"No numeric part found in filename: {filename}")
+
 
 # Specify the directory containing the merged files
 directory = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/ner_merged"

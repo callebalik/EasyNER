@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import sqlite3
 from scripts.database.data_model.entity_cooccurrence import DataExchanger
 
+
 @pytest.fixture
 def mock_db_handler():
     db_handler = MagicMock()
@@ -10,12 +11,16 @@ def mock_db_handler():
     db_handler.logger = MagicMock()
     return db_handler
 
+
 @pytest.fixture
 def data_exchanger(mock_db_handler):
-    with patch('scripts.database.data_model.entity_cooccurrence.VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY') as mock_view:
+    with patch(
+        "scripts.database.data_model.entity_cooccurrence.VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY"
+    ) as mock_view:
         mock_view.refresh = MagicMock()
         exchanger = DataExchanger(mock_db_handler)
         return exchanger
+
 
 class TestDataExchangerFilters:
     def test_empty_filters(self, data_exchanger):
@@ -34,7 +39,7 @@ class TestDataExchangerFilters:
 
     def test_equality_filter(self, data_exchanger):
         """Test get_cooccurrences with simple equality filter."""
-        data_exchanger.get_cooccurrences({'e1_norm_id': 5})
+        data_exchanger.get_cooccurrences({"e1_norm_id": 5})
 
         # Should have called execute with WHERE clause
         data_exchanger.cursor.execute.assert_called_once()
@@ -47,7 +52,7 @@ class TestDataExchangerFilters:
 
     def test_like_filter(self, data_exchanger):
         """Test get_cooccurrences with LIKE filter."""
-        data_exchanger.get_cooccurrences({'e1_txt_like': 'diabetes%'})
+        data_exchanger.get_cooccurrences({"e1_txt_like": "diabetes%"})
 
         # Should have called execute with LIKE clause
         data_exchanger.cursor.execute.assert_called_once()
@@ -56,11 +61,11 @@ class TestDataExchangerFilters:
         params = args[1] if len(args) > 1 else []
 
         assert "WHERE e1_txt LIKE ?" in query
-        assert params[0] == 'diabetes%'
+        assert params[0] == "diabetes%"
 
     def test_min_max_filters(self, data_exchanger):
         """Test get_cooccurrences with min and max filters resulting in BETWEEN."""
-        data_exchanger.get_cooccurrences({'min_npmi': 0.3, 'max_npmi': 0.8})
+        data_exchanger.get_cooccurrences({"min_npmi": 0.3, "max_npmi": 0.8})
 
         # Should have called execute with BETWEEN clause
         data_exchanger.cursor.execute.assert_called_once()
@@ -75,11 +80,11 @@ class TestDataExchangerFilters:
     def test_combined_filters(self, data_exchanger):
         """Test get_cooccurrences with combination of different filter types."""
         filters = {
-            'e1_txt_like': 'covid%',
-            'min_npmi': 0.3,
-            'max_npmi': 0.8,
-            'min_fq_doc_level': 5,
-            'e2_norm_id': 42
+            "e1_txt_like": "covid%",
+            "min_npmi": 0.3,
+            "max_npmi": 0.8,
+            "min_fq_doc_level": 5,
+            "e2_norm_id": 42,
         }
         data_exchanger.get_cooccurrences(filters)
 
@@ -99,11 +104,7 @@ class TestDataExchangerFilters:
 
     def test_handle_empty_filter_values(self, data_exchanger):
         """Test that empty filter values are properly handled."""
-        filters = {
-            'e1_txt_like': '',
-            'min_npmi': None,
-            'e2_norm_id': 42
-        }
+        filters = {"e1_txt_like": "", "min_npmi": None, "e2_norm_id": 42}
         data_exchanger.get_cooccurrences(filters)
 
         # Should only include non-empty filters

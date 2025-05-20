@@ -174,7 +174,9 @@ class TestDBAnalysis(unittest.TestCase):
         )
         count_after = self.cursor.fetchone()[0]
         self.assertEqual(count_after, 0, "The cooccurrence was not dropped correctly.")
-        self.db.drop_entity_cooccurrence(entity1_text="disease1", entity1_type="disease", entity2_type="phenomenon")
+        self.db.drop_entity_cooccurrence(
+            entity1_text="disease1", entity1_type="disease", entity2_type="phenomenon"
+        )
         TestDBAnalysis.successful_tests.append("test_drop_entity_cooccurrence")
 
     def test_drop_entities_from_occurrences(self):
@@ -186,9 +188,7 @@ class TestDBAnalysis(unittest.TestCase):
         self.cursor.execute(
             f"DELETE FROM entity_occurrences WHERE entity_text IN ('{occurrence1}', '{occurrence2}')"
         )
-        self.cursor.execute(
-            f"DELETE FROM entities WHERE entity = '{ne_text}'"
-        )
+        self.cursor.execute(f"DELETE FROM entities WHERE entity = '{ne_text}'")
         self.db.conn.commit()
 
         # Insert test data into entities and entity_occurrences tables
@@ -224,8 +224,12 @@ class TestDBAnalysis(unittest.TestCase):
         )
 
         # Test drop the occurrences
-        self.db.drop_entities_from_occurrences(entity_text=occurrence1, entity_type=ne_text)
-        self.db.drop_entities_from_occurrences(entity_text=occurrence2, entity_type=ne_text)
+        self.db.drop_entities_from_occurrences(
+            entity_text=occurrence1, entity_type=ne_text
+        )
+        self.db.drop_entities_from_occurrences(
+            entity_text=occurrence2, entity_type=ne_text
+        )
 
         self.db.drop_entity_cooccurrence(entity1_text=occurrence1, entity1_type=ne_text)
 

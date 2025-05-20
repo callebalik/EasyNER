@@ -10,6 +10,7 @@ from ..core.db_engine import ReaderWriterPair
 import pandas as pd
 from .schema import *
 
+
 class EntityOccurrence:
     def __init__(self, conn, cursor, logger, log_query_plan, conn_params_dict):
         self.conn = conn
@@ -63,7 +64,6 @@ class EntityOccurrence:
         """
         self.cursor.execute(self.stmt_table_ne)
 
-
     def migrate_old_entity_occurences_table(self):
         """
         Migrate old entity_occurrences table to new table structure.
@@ -75,6 +75,7 @@ class EntityOccurrence:
             FROM eo_old
             """
         )
+
     def identify_overlap(self, overwrite: bool = False) -> None:
         """
         Find entities in the same sentence where span_start and span_end overlap between the two entities.
@@ -214,7 +215,9 @@ class EntityOccurrence:
         self, eo_table=TABLE_NE, target_table=TABLE_NE_LOOKUP
     ):
         # Use reader writer pair to validate normalized entities, i.e. all entity_ids in entiry_occurrences, filtered for error_id, and overlap, should be present in the lookup table
-        self.logger.info(f"Validating normalized entities in {eo_table} against {target_table}")
+        self.logger.info(
+            f"Validating normalized entities in {eo_table} against {target_table}"
+        )
 
         reader_query_fn = f"""
                 SELECT id
@@ -235,7 +238,9 @@ class EntityOccurrence:
                 )
                 return batch
             else:
-                self.logger.info("Batch Validation successful: All entities are normalized.")
+                self.logger.info(
+                    "Batch Validation successful: All entities are normalized."
+                )
                 return True  # Validation passed
 
         def validate_write_function(batch):
@@ -255,13 +260,18 @@ class EntityOccurrence:
             reader_query=reader_query_fn,
             process_function=validate_process_function,
             write_function=validate_write_function,
-
         )
 
         reader_writer.run()
 
-
-    def _process_text_column(self, column_name : str, table_name : str, process_query : str, process_function = None, write_function = None):
+    def _process_text_column(
+        self,
+        column_name: str,
+        table_name: str,
+        process_query: str,
+        process_function=None,
+        write_function=None,
+    ):
 
         def validate_table_column(table_name, column_name):
             """
@@ -277,9 +287,10 @@ class EntityOccurrence:
             return self.cursor.fetchone()[0] == 1
 
         if not validate_table_column(table_name, column_name):
-            self.logger.error(f"Column {column_name} does not exist in table {table_name}")
+            self.logger.error(
+                f"Column {column_name} does not exist in table {table_name}"
+            )
             return
-
 
         ReaderWriterPair(
             batch_size=20000,
@@ -524,6 +535,7 @@ class EntityOccurrence:
         )
         rw_pair_norm_agg.run()
         self.logger.info(f"--- Finished Aggregation: {TABLE_NE_AGGR} table ---")
+
     def backreference_norm_id(
         self,
         overwrite: bool = False,
@@ -554,13 +566,13 @@ class EntityOccurrence:
 
         # Create index for faster processing of entity_occurrences
         index = f"idx_{target_table}_{NE_NORM_ID}"
-        self.cursor.execute(f"""CREATE INDEX IF NOT EXISTS {index} ON {target_table} ({NE_NORM_ID})""")
+        self.cursor.execute(
+            f"""CREATE INDEX IF NOT EXISTS {index} ON {target_table} ({NE_NORM_ID})"""
+        )
         self.cursor.execute(f"ANALYZE {target_table}")
 
         # Check if index with the same name exists on the table
-        self.logger.info(
-            f"--- Starting Backreference: {target_table} table ---"
-        )
+        self.logger.info(f"--- Starting Backreference: {target_table} table ---")
         try:
             # Define Reader query for eo_lookup backreference with both txt_norm and entity_class_id matching
             reader_query_eo_lookup_backref = f"""--sql
@@ -587,7 +599,9 @@ class EntityOccurrence:
                 LIMIT :limit OFFSET :offset;
             """
 
-            self.log_query_plan(reader_query_eo_lookup_backref, params={"limit": 100, "offset": 0})
+            self.log_query_plan(
+                reader_query_eo_lookup_backref, params={"limit": 100, "offset": 0}
+            )
 
             total_records = self.cursor.execute(
                 f"""--sql
@@ -600,7 +614,9 @@ class EntityOccurrence:
                 """
             ).fetchone()[0]
 
-            self.logger.info(f"Updating {NE_NORM_ID} references for {total_records} records in {target_table}")
+            self.logger.info(
+                f"Updating {NE_NORM_ID} references for {total_records} records in {target_table}"
+            )
 
             # Process function to get the entity ID pairs
             def process_function_eo_lookup_backref(batch, conn_params):
@@ -755,7 +771,6 @@ class EntityOccurrence:
             self.logger.info("Creating view_ne_compiled view...")
             self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_NE_COMP}")
 
-
             view_sql = f"""--sql
                     CREATE VIEW IF NOT EXISTS {VIEW_NE_COMP}  AS
                     SELECT
@@ -793,7 +808,6 @@ class EntityOccurrence:
         try:
             self.logger.info("Creating view_ne_compiled view...")
             self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_NE_STATS}")
-
 
             view_sql = f"""--sql
                     CREATE VIEW IF NOT EXISTS {VIEW_NE_STATS}  AS
@@ -846,7 +860,9 @@ class EntityOccurrence:
 
             self.cursor.execute(view_sql)
             self.conn.commit()
-            self.logger.info(f"{VIEW_ERROR_LOOKUP_INSPECTION} view created successfully.")
+            self.logger.info(
+                f"{VIEW_ERROR_LOOKUP_INSPECTION} view created successfully."
+            )
 
         except sqlite3.Error as e:
             self.logger.error(f"Error creating view_error_lookup_inspection view: {e}")
@@ -882,7 +898,6 @@ class EntityOccurrence:
             self.logger.error(f"Error creating view_error_lookup_inspection view: {e}")
             raise
 
-
     def stats_aggregated(self):
         """
         Calculates statistics based on the aggregated entities in the compiled view.
@@ -896,24 +911,32 @@ class EntityOccurrence:
                 self.logger.info("Creating indexes for optimized queries...")
 
                 # Index on eo.document_id
-                self.cursor.execute(f"""
+                self.cursor.execute(
+                    f"""
                     CREATE INDEX IF NOT EXISTS idx_eo_doc_id ON {TABLE_NE}({DOC_ID});
-                """)
+                """
+                )
 
                 # Covering index for doc_id and aggrgated_id
-                self.cursor.execute(f"""
+                self.cursor.execute(
+                    f"""
                     CREATE INDEX IF NOT EXISTS idx_eo_doc_id_aggr_id ON {TABLE_NE}({DOC_ID}, {NE_NORM_ID});
-                """)
+                """
+                )
 
                 # Covering index on TABLE_NE_AGGR
-                self.cursor.execute(f"""
+                self.cursor.execute(
+                    f"""
                     CREATE INDEX IF NOT EXISTS idx_nea_norm_id_doc_id ON {TABLE_NE_AGGR}({NE_NORM_ID});
-                """)
+                """
+                )
 
                 # Covering index on TABLE_NE_AGGR for doc_count
-                self.cursor.execute(f"""
+                self.cursor.execute(
+                    f"""
                     CREATE INDEX IF NOT EXISTS idx_nea_doc_count ON {TABLE_NE_AGGR}(doc_count);
-                """)
+                """
+                )
 
                 self.conn.commit()
                 self.logger.info("Indexes created successfully.")
@@ -961,47 +984,56 @@ class EntityOccurrence:
             self.logger.error(f"Error calculating aggregated entity statistics: {e}")
             raise
 
-
     def stats_aggregated_threaded(self):
         """
         Calculates statistics based on the aggregated entities in the compiled view using ReaderWriterPair.
         """
         try:
-                self.logger.info("Creating indexes for optimized queries...")
+            self.logger.info("Creating indexes for optimized queries...")
 
-                # Index on eo.document_id
-                self.cursor.execute(f"""
+            # Index on eo.document_id
+            self.cursor.execute(
+                f"""
                     CREATE INDEX IF NOT EXISTS idx_eo_doc_id ON {TABLE_NE}({DOC_ID});
-                """)
+                """
+            )
 
-                # Covering index for doc_id and aggrgated_id
-                self.cursor.execute(f"""
+            # Covering index for doc_id and aggrgated_id
+            self.cursor.execute(
+                f"""
                     CREATE INDEX IF NOT EXISTS idx_eo_doc_id_aggr_id ON {TABLE_NE}({DOC_ID}, {NE_NORM_ID});
-                """)
+                """
+            )
 
-                # Covering index on TABLE_NE_AGGR
-                self.cursor.execute(f"""
+            # Covering index on TABLE_NE_AGGR
+            self.cursor.execute(
+                f"""
                     CREATE INDEX IF NOT EXISTS idx_nea_norm_id_doc_id ON {TABLE_NE_AGGR}({NE_NORM_ID});
-                """)
+                """
+            )
 
-                # Covering index on TABLE_NE_AGGR for doc_count
-                self.cursor.execute(f"""
+            # Covering index on TABLE_NE_AGGR for doc_count
+            self.cursor.execute(
+                f"""
                     CREATE INDEX IF NOT EXISTS idx_nea_doc_count ON {TABLE_NE_AGGR}(doc_count);
-                """)
+                """
+            )
 
-                self.cursor.execute(f"""-- Create a covering index for the most used columns
+            self.cursor.execute(
+                f"""-- Create a covering index for the most used columns
                 CREATE INDEX IF NOT EXISTS idx_eo_stats_covering ON {TABLE_NE} (
                     norm_id,  -- For the WHERE clause and GROUP BY
                     document_id,  -- For COUNT(DISTINCT)
                     id  -- For ORDER BY
                 );
-                """)
+                """
+            )
 
-                self.conn.commit()
+            self.conn.commit()
 
-                self.cursor.execute(f"""--sql ANALYZE {TABLE_NE}""")
-                self.cursor.execute(f"""--sql ANALYZE {TABLE_NE_AGGR}""")
-                self.logger.info("Indexes created successfully.")
+            self.cursor.execute(f"""--sql ANALYZE {TABLE_NE}""")
+            self.cursor.execute(f"""--sql ANALYZE {TABLE_NE_AGGR}""")
+            self.logger.info("Indexes created successfully.")
 
         except sqlite3.Error as e:
             self.logger.error(f"Error creating indexes: {e}")
@@ -1015,7 +1047,9 @@ class EntityOccurrence:
             """
         ).fetchone()[0]
 
-        self.logger.info(f"Calculating aggregated entity statistics for {total_rows:,} entities...")
+        self.logger.info(
+            f"Calculating aggregated entity statistics for {total_rows:,} entities..."
+        )
         self.logger.info("This may take a while.")
 
         # Define Reader query for aggregated entity statistics
@@ -1170,14 +1204,22 @@ class EntityOccurrence:
             normalization_issues = self.cursor.fetchall()
 
             if normalization_issues:
-                self.logger.error(f"Found {len(normalization_issues)} normalization issues:")
-                self.logger.error("Same normalized text mapping to different norm_ids within same class:")
+                self.logger.error(
+                    f"Found {len(normalization_issues)} normalization issues:"
+                )
+                self.logger.error(
+                    "Same normalized text mapping to different norm_ids within same class:"
+                )
                 current_norm = None
                 for row in normalization_issues:
                     if current_norm != row[2]:  # New normalized text group
                         current_norm = row[2]
-                        self.logger.error(f"\nNormalized text: {row[2]}, Class: {row[3]}")
-                    self.logger.error(f"  ID: {row[0]}, Original: {row[1]}, norm_id: {row[4]}, Doc: {row[5]}")
+                        self.logger.error(
+                            f"\nNormalized text: {row[2]}, Class: {row[3]}"
+                        )
+                    self.logger.error(
+                        f"  ID: {row[0]}, Original: {row[1]}, norm_id: {row[4]}, Doc: {row[5]}"
+                    )
                 return False
 
             # Second check: Find cases where the references don't match the normalization
@@ -1206,7 +1248,9 @@ class EntityOccurrence:
             reference_mismatches = self.cursor.fetchall()
 
             if reference_mismatches:
-                self.logger.error(f"\nFound {len(reference_mismatches)} reference mismatches:")
+                self.logger.error(
+                    f"\nFound {len(reference_mismatches)} reference mismatches:"
+                )
                 for row in reference_mismatches:
                     self.logger.error(
                         f"ID: {row[0]}, Text: {row[1]}, "
@@ -1231,8 +1275,6 @@ class EntityCooccurence:
         self.logger = logger
         self.log_query_plan = log_query_plan
         self.conn_params_dict = conn_params_dict
-
-
 
     def record_entity_cooccurrences(
         self, level: str = "document", ignore_error_occurrencess: bool = True
@@ -1368,8 +1410,6 @@ class EntityCooccurence:
                 else ""
             )
         )
-
-
 
     def co_aggregate_old(
         self, batch_size=50000, ignore_entities_with_error_codes: bool = True
@@ -1509,7 +1549,6 @@ class EntityCooccurence:
 
         self.logger.info("Cooccurrence aggregation using ReaderWriterPair completed")
 
-
     def calc_fqs_uniq_doc_count(self):
         """
         Calculate frequency and unique document count for each entity co-occurrence pair.
@@ -1519,7 +1558,9 @@ class EntityCooccurence:
         counting the frequencies and unique document count.
         """
 
-        self.logger.info("Starting calculation of frequency and unique document count...")
+        self.logger.info(
+            "Starting calculation of frequency and unique document count..."
+        )
 
         def reader_query():
             """Reader query to fetch aggregated co-occurrence data with normalized pair batching - INLINED normalized_pairs CTE."""
@@ -1592,7 +1633,9 @@ class EntityCooccurence:
     def calc_fqs_uniq_doc_count_single_function(self):
         pass
 
-    def co_aggregate_single_function(self, ignore_entities_with_error_codes: bool = True):
+    def co_aggregate_single_function(
+        self, ignore_entities_with_error_codes: bool = True
+    ):
         """
         Aggregate entity cooccurrences in a single function call (no batching).
         """
@@ -1644,12 +1687,14 @@ class EntityCooccurence:
         conn = self.connect()
         cursor = conn.cursor()
 
-        cursor.execute(query) # Execute the query
+        cursor.execute(query)  # Execute the query
 
-        aggregated_data = cursor.fetchall() # Fetch all results into memory!
+        aggregated_data = cursor.fetchall()  # Fetch all results into memory!
 
         # --- Write function (similar to batched version) ---
-        def aggregation_write_function(batch, cursor_param, conn_param): # Simplified write function
+        def aggregation_write_function(
+            batch, cursor_param, conn_param
+        ):  # Simplified write function
             """Writes aggregated co-occurrence data to entity_cooccurrences_summary."""
             sql = f"""--sql
                 INSERT OR REPLACE INTO {TABLE_CO_AGGR}
@@ -1659,8 +1704,9 @@ class EntityCooccurence:
             """
             cursor_param.executemany(sql, batch)
 
-
-        aggregation_write_function(aggregated_data, cursor, conn) # Write all aggregated data
+        aggregation_write_function(
+            aggregated_data, cursor, conn
+        )  # Write all aggregated data
 
         conn.commit()
         conn.close()

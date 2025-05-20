@@ -82,9 +82,7 @@ class TestNERErrorHandling:
     def test_empty_input_directory(self, base_config, create_pipeline):
         """Test handling of an empty input directory."""
         # Create pipeline with mocked components
-        pipeline, mock_processor = create_pipeline(
-            base_config, mock_device="cuda:0"
-        )
+        pipeline, mock_processor = create_pipeline(base_config, mock_device="cuda:0")
 
         # Mock glob.glob to return empty list (no files)
         with patch("easyner.pipeline.ner.ner_main.glob") as mock_glob:
@@ -143,14 +141,10 @@ class TestNERErrorHandling:
 
         # Mock the NLP pipeline
         processor.nlp = MagicMock()
-        processor.nlp.side_effect = torch.cuda.OutOfMemoryError(
-            "CUDA out of memory"
-        )
+        processor.nlp.side_effect = torch.cuda.OutOfMemoryError("CUDA out of memory")
 
         # Create test dataset
-        dataset = Dataset.from_dict(
-            {"text": ["Test sentence" for _ in range(10)]}
-        )
+        dataset = Dataset.from_dict({"text": ["Test sentence" for _ in range(10)]})
 
         # Process dataset (should handle OOM)
         with patch("torch.cuda.empty_cache") as mock_empty_cache:
@@ -174,9 +168,7 @@ class TestNERErrorHandling:
         processor.nlp.side_effect = RuntimeError("Some random error")
 
         # Create test dataset
-        dataset = Dataset.from_dict(
-            {"text": ["Test sentence" for _ in range(10)]}
-        )
+        dataset = Dataset.from_dict({"text": ["Test sentence" for _ in range(10)]})
 
         # Process dataset (should handle the error)
         with patch("easyner.pipeline.ner.transformer_based.ner_biobert.print"):
@@ -200,9 +192,7 @@ class TestNERErrorHandling:
 
         # Process empty dataset with print suppressed
         with patch("easyner.pipeline.ner.transformer_based.ner_biobert.print"):
-            result_dataset = processor._predict_dataset(
-                empty_dataset, "text", 32
-            )
+            result_dataset = processor._predict_dataset(empty_dataset, "text", 32)
 
             # For empty datasets, we should check that it's still empty
             # and doesn't throw an exception, rather than checking for columns

@@ -12,6 +12,7 @@ from ..db_main import EasyNerDBHandler, BaseComponent
 from pathlib import Path
 from ..core.db_engine import ReaderWriterPair
 
+
 class SchemaManager(BaseComponent):
     def setup_tables(self):
         """Create tables for entity occurrences if they don't exist"""
@@ -108,7 +109,6 @@ class SchemaManager(BaseComponent):
                     ELSE 'MISMATCH'
                 END as status
             """,
-
             # Check column mappings
             """
             SELECT
@@ -127,7 +127,6 @@ class SchemaManager(BaseComponent):
                 eo.span_start IS NOT ne.SPAN_START OR
                 eo.span_end IS NOT ne.SPAN_END
             """,
-
             # Check for orphaned records
             """
             SELECT
@@ -138,7 +137,6 @@ class SchemaManager(BaseComponent):
             LEFT JOIN entity_occurrences eo ON ne.NE_ID = eo.id
             WHERE eo.id IS NULL
             """,
-
             # Verify foreign key constraints
             """
             SELECT
@@ -167,7 +165,7 @@ class SchemaManager(BaseComponent):
                     THEN 'OK'
                     ELSE 'FAILED'
                 END as status
-            """
+            """,
         ]
 
         conn = self.conn
@@ -181,17 +179,21 @@ class SchemaManager(BaseComponent):
                 # Handle different result formats
                 if len(result) == 4:  # Total Records query
                     check_type, source_count, target_count, status = result
-                    self.logger.info(f"{check_type}: source={source_count}, target={target_count} - Status: {status}")
+                    self.logger.info(
+                        f"{check_type}: source={source_count}, target={target_count} - Status: {status}"
+                    )
                 else:  # Other queries with 3 columns
                     check_type, count, status = result
                     self.logger.info(f"{check_type}: count={count} - Status: {status}")
 
-                if status != 'OK':
+                if status != "OK":
                     self.logger.error(f"Verification failed for {check_type}")
-                    if check_type == 'Column Mapping':
+                    if check_type == "Column Mapping":
                         self._show_sample_mismatches(cursor)
-                    elif check_type == 'Total Records':
-                        self.logger.error(f"Count mismatch: source={source_count}, target={target_count}")
+                    elif check_type == "Total Records":
+                        self.logger.error(
+                            f"Count mismatch: source={source_count}, target={target_count}"
+                        )
 
         except Exception as e:
             self.logger.error(f"Verification failed with error: {e}")
@@ -211,13 +213,18 @@ class SchemaManager(BaseComponent):
         start_time = time.time()
 
         # Check if NE_AGGR exists
-        ne_aggr_exists = self.cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-            (TABLE_NE_AGGR,)
-        ).fetchone() is not None
+        ne_aggr_exists = (
+            self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (TABLE_NE_AGGR,),
+            ).fetchone()
+            is not None
+        )
 
         # Check for incorrect foreign key constraint
-        fk_constraints = self.cursor.execute(f"PRAGMA foreign_key_list({TABLE_NE})").fetchall()
+        fk_constraints = self.cursor.execute(
+            f"PRAGMA foreign_key_list({TABLE_NE})"
+        ).fetchall()
 
         has_incorrect_fk = False
         for fk in fk_constraints:
@@ -233,14 +240,22 @@ class SchemaManager(BaseComponent):
             self.logger.info("Recreating NE table to fix FK constraints...")
 
             # Check if we have any data in NE
-            ne_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE}").fetchone()[0]
+            ne_count = self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_NE}"
+            ).fetchone()[0]
 
             if ne_count > 0:
-                self.logger.info(f"NE table contains {ne_count:,} rows, creating backup...")
+                self.logger.info(
+                    f"NE table contains {ne_count:,} rows, creating backup..."
+                )
 
                 # Create backup of NE table with all columns using *
-                self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_NE}_backup AS SELECT * FROM {TABLE_NE}")
-                backup_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE}_backup").fetchone()[0]
+                self.cursor.execute(
+                    f"CREATE TABLE IF NOT EXISTS {TABLE_NE}_backup AS SELECT * FROM {TABLE_NE}"
+                )
+                backup_count = self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_NE}_backup"
+                ).fetchone()[0]
                 self.logger.info(f"Backed up {backup_count:,} rows from {TABLE_NE}")
 
                 try:
@@ -251,9 +266,13 @@ class SchemaManager(BaseComponent):
                     self.cursor.execute(schema_create_table_ne)
 
                     # Copy data back from backup using * for all columns
-                    self.cursor.execute(f"INSERT INTO {TABLE_NE} SELECT * FROM {TABLE_NE}_backup")
+                    self.cursor.execute(
+                        f"INSERT INTO {TABLE_NE} SELECT * FROM {TABLE_NE}_backup"
+                    )
 
-                    self.logger.info(f"Restored {self.cursor.rowcount:,} rows to {TABLE_NE} with correct schema")
+                    self.logger.info(
+                        f"Restored {self.cursor.rowcount:,} rows to {TABLE_NE} with correct schema"
+                    )
 
                     # Make sure we commit after this important operation
                     self.conn.commit()
@@ -267,11 +286,17 @@ class SchemaManager(BaseComponent):
         try:
             if ne_aggr_exists:
                 # Check if NE_AGGR has data
-                aggr_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}").fetchone()[0]
+                aggr_count = self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}"
+                ).fetchone()[0]
 
                 if aggr_count > 0:
-                    self.logger.info(f"NE_AGGR table contains {aggr_count:,} rows, creating backup...")
-                    self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_NE_AGGR}_backup AS SELECT * FROM {TABLE_NE_AGGR}")
+                    self.logger.info(
+                        f"NE_AGGR table contains {aggr_count:,} rows, creating backup..."
+                    )
+                    self.cursor.execute(
+                        f"CREATE TABLE IF NOT EXISTS {TABLE_NE_AGGR}_backup AS SELECT * FROM {TABLE_NE_AGGR}"
+                    )
 
                 # Drop the table to recreate it with correct schema
                 self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_NE_AGGR}")
@@ -285,16 +310,26 @@ class SchemaManager(BaseComponent):
                 self.logger.info(f"Restoring data to {TABLE_NE_AGGR}...")
                 try:
                     # Use * for column selection to preserve all original columns
-                    self.cursor.execute(f"INSERT INTO {TABLE_NE_AGGR} SELECT * FROM {TABLE_NE_AGGR}_backup")
-                    self.logger.info(f"Restored {self.cursor.rowcount:,} rows to {TABLE_NE_AGGR}")
+                    self.cursor.execute(
+                        f"INSERT INTO {TABLE_NE_AGGR} SELECT * FROM {TABLE_NE_AGGR}_backup"
+                    )
+                    self.logger.info(
+                        f"Restored {self.cursor.rowcount:,} rows to {TABLE_NE_AGGR}"
+                    )
                 except sqlite3.IntegrityError:
                     # Handle any uniqueness violations
-                    self.logger.warning("Integrity error during restore. Inserting only unique combinations...")
-                    self.cursor.execute(f"""
+                    self.logger.warning(
+                        "Integrity error during restore. Inserting only unique combinations..."
+                    )
+                    self.cursor.execute(
+                        f"""
                     INSERT INTO {TABLE_NE_AGGR} ({CLASS_ID}, {TXT_NORM})
                     SELECT DISTINCT {CLASS_ID}, {TXT_NORM} FROM {TABLE_NE_AGGR}_backup
-                    """)
-                    self.logger.info(f"Restored {self.cursor.rowcount:,} unique rows to {TABLE_NE_AGGR}")
+                    """
+                    )
+                    self.logger.info(
+                        f"Restored {self.cursor.rowcount:,} unique rows to {TABLE_NE_AGGR}"
+                    )
 
             # Final commit
             self.conn.commit()
@@ -310,8 +345,9 @@ class SchemaManager(BaseComponent):
             return False
 
     def _show_sample_mismatches(self, cursor):
-            """Show sample of mismatches between old and new tables"""
-            cursor.execute("""
+        """Show sample of mismatches between old and new tables"""
+        cursor.execute(
+            """
                 SELECT
                     eo.id,
                     eo.entity_text,
@@ -324,15 +360,16 @@ class SchemaManager(BaseComponent):
                     eo.entity_text != ne.TXT OR
                     eo.entity_id != ne.NE_CLASS_ID
                 LIMIT 5
-            """)
-            mismatches = cursor.fetchall()
-            self.logger.error("Sample mismatches:")
-            for mismatch in mismatches:
-                self.logger.error(
-                    f"ID: {mismatch[0]}, "
-                    f"Old: {mismatch[1]}/{mismatch[3]}, "
-                    f"New: {mismatch[2]}/{mismatch[4]}"
-                )
+            """
+        )
+        mismatches = cursor.fetchall()
+        self.logger.error("Sample mismatches:")
+        for mismatch in mismatches:
+            self.logger.error(
+                f"ID: {mismatch[0]}, "
+                f"Old: {mismatch[1]}/{mismatch[3]}, "
+                f"New: {mismatch[2]}/{mismatch[4]}"
+            )
 
     def migrate_docs_and_sentences_tables(self):
         """
@@ -352,15 +389,21 @@ class SchemaManager(BaseComponent):
         start_time = time.time()
 
         # Check if tables exist
-        docs_exists = self.cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-            (TABLE_DOCS,)
-        ).fetchone() is not None
+        docs_exists = (
+            self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (TABLE_DOCS,),
+            ).fetchone()
+            is not None
+        )
 
-        sentences_exists = self.cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-            (TABLE_SENTENCES,)
-        ).fetchone() is not None
+        sentences_exists = (
+            self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (TABLE_SENTENCES,),
+            ).fetchone()
+            is not None
+        )
 
         if not docs_exists and not sentences_exists:
             self.logger.info("Tables don't exist yet. Creating with new schema.")
@@ -373,7 +416,9 @@ class SchemaManager(BaseComponent):
         # First migrate documents since sentences depend on them
         docs_success = self._migrate_doc(docs_exists)
         if not docs_success:
-            self.logger.error("Document migration failed. Cannot proceed with sentences migration.")
+            self.logger.error(
+                "Document migration failed. Cannot proceed with sentences migration."
+            )
             return False
 
         # Then migrate sentences
@@ -384,10 +429,14 @@ class SchemaManager(BaseComponent):
 
         elapsed = time.time() - start_time
         if docs_success and sent_success:
-            self.logger.info(f"Documents and sentences migration completed successfully in {elapsed:.2f} seconds")
+            self.logger.info(
+                f"Documents and sentences migration completed successfully in {elapsed:.2f} seconds"
+            )
             return True
         else:
-            self.logger.error(f"Documents and sentences migration completed with errors in {elapsed:.2f} seconds")
+            self.logger.error(
+                f"Documents and sentences migration completed with errors in {elapsed:.2f} seconds"
+            )
             return False
 
     def _migrate_doc(self, docs_exists):
@@ -417,24 +466,36 @@ class SchemaManager(BaseComponent):
                 transaction_started = False
 
             # Get column info for old table
-            old_docs_info = self.cursor.execute(f"PRAGMA table_info({TABLE_DOCS})").fetchall()
+            old_docs_info = self.cursor.execute(
+                f"PRAGMA table_info({TABLE_DOCS})"
+            ).fetchall()
             old_docs_columns = [col[1] for col in old_docs_info]
             self.logger.debug(f"Old documents table columns: {old_docs_columns}")
 
             # Count existing documents
-            docs_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}").fetchone()[0]
+            docs_count = self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_DOCS}"
+            ).fetchone()[0]
 
             if docs_count > 0:
-                self.logger.info(f"{TABLE_DOCS} table contains {docs_count:,} rows, creating backup...")
+                self.logger.info(
+                    f"{TABLE_DOCS} table contains {docs_count:,} rows, creating backup..."
+                )
 
                 # Create backup
-                self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_DOCS}_backup AS SELECT * FROM {TABLE_DOCS}")
-                backup_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}_backup").fetchone()[0]
+                self.cursor.execute(
+                    f"CREATE TABLE IF NOT EXISTS {TABLE_DOCS}_backup AS SELECT * FROM {TABLE_DOCS}"
+                )
+                backup_count = self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_DOCS}_backup"
+                ).fetchone()[0]
                 self.logger.info(f"Backed up {backup_count:,} rows from {TABLE_DOCS}")
 
                 # Validate backup before proceeding
                 if backup_count != docs_count:
-                    self.logger.error(f"Backup validation failed: expected {docs_count} rows, got {backup_count}")
+                    self.logger.error(
+                        f"Backup validation failed: expected {docs_count} rows, got {backup_count}"
+                    )
                     raise ValueError("Backup validation failed - aborting migration")
 
                 # Create explicit mapping between old and new schema
@@ -443,7 +504,7 @@ class SchemaManager(BaseComponent):
                     "title": TITLE,
                     "word_count": WORD_COUNT,
                     "token_count": TOKEN_COUNT,  # Keep token_count as TOKEN_COUNT
-                    "alpha_count": ALPHA_COUNT
+                    "alpha_count": ALPHA_COUNT,
                     # SENT_COUNT will be computed later
                 }
 
@@ -453,8 +514,12 @@ class SchemaManager(BaseComponent):
                 self.logger.info(f"Recreated {TABLE_DOCS} table with new schema")
 
                 # Get column info for new table to validate
-                new_docs_columns = [col[1] for col in
-                                   self.cursor.execute(f"PRAGMA table_info({TABLE_DOCS})").fetchall()]
+                new_docs_columns = [
+                    col[1]
+                    for col in self.cursor.execute(
+                        f"PRAGMA table_info({TABLE_DOCS})"
+                    ).fetchall()
+                ]
                 self.logger.debug(f"New documents table columns: {new_docs_columns}")
 
                 # Build source and destination columns for INSERT
@@ -462,13 +527,18 @@ class SchemaManager(BaseComponent):
                 dest_cols = []
 
                 for old_col in old_docs_columns:
-                    if old_col in column_map and column_map[old_col] in new_docs_columns:
+                    if (
+                        old_col in column_map
+                        and column_map[old_col] in new_docs_columns
+                    ):
                         src_cols.append(old_col)
                         dest_cols.append(column_map[old_col])
 
                 # Validate that we have columns to map
                 if not src_cols or not dest_cols:
-                    self.logger.error("No common columns found between old and new schemas")
+                    self.logger.error(
+                        "No common columns found between old and new schemas"
+                    )
                     raise ValueError("Migration failed - no common columns to migrate")
 
                 # Log the mapping for debugging
@@ -476,21 +546,26 @@ class SchemaManager(BaseComponent):
                 self.logger.debug(f"Destination columns: {dest_cols}")
 
                 # Check if sentences table exists to compute SENT_COUNT
-                sentences_exists = self.cursor.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                    (TABLE_SENTENCES,)
-                ).fetchone() is not None
+                sentences_exists = (
+                    self.cursor.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                        (TABLE_SENTENCES,),
+                    ).fetchone()
+                    is not None
+                )
 
                 if sentences_exists:
                     self.logger.info("Computing sentence counts for documents...")
                     # Add SENT_COUNT from sentences table if possible
                     try:
-                        self.cursor.execute(f"""--sql
+                        self.cursor.execute(
+                            f"""--sql
                             CREATE TEMPORARY TABLE doc_sentence_counts AS
                             SELECT document_id, COUNT(*) as sentence_count
                             FROM sentences
                             GROUP BY document_id
-                        """)
+                        """
+                        )
 
                         # Format column lists for SQL
                         src_cols_str = ", ".join([f"b.{col}" for col in src_cols])
@@ -503,7 +578,9 @@ class SchemaManager(BaseComponent):
                             FROM {TABLE_DOCS}_backup b
                             LEFT JOIN doc_sentence_counts sc ON b.id = sc.document_id
                         """
-                        self.logger.debug(f"Executing SQL with sentence counts: {insert_stmt}")
+                        self.logger.debug(
+                            f"Executing SQL with sentence counts: {insert_stmt}"
+                        )
                         self.cursor.execute(insert_stmt)
                     except sqlite3.Error as e:
                         self.logger.warning(f"Error computing sentence counts: {e}")
@@ -513,7 +590,9 @@ class SchemaManager(BaseComponent):
                             SELECT {src_cols_str}, 0
                             FROM {TABLE_DOCS}_backup b
                         """
-                        self.logger.debug(f"Executing fallback SQL with default sentence counts: {insert_stmt}")
+                        self.logger.debug(
+                            f"Executing fallback SQL with default sentence counts: {insert_stmt}"
+                        )
                         self.cursor.execute(insert_stmt)
                 else:
                     # Format column lists for SQL
@@ -526,7 +605,9 @@ class SchemaManager(BaseComponent):
                         SELECT {src_cols_str}, 0
                         FROM {TABLE_DOCS}_backup b
                     """
-                    self.logger.debug(f"Executing SQL with default sentence counts: {insert_stmt}")
+                    self.logger.debug(
+                        f"Executing SQL with default sentence counts: {insert_stmt}"
+                    )
                     self.cursor.execute(insert_stmt)
 
                 restored_count = self.cursor.rowcount
@@ -538,7 +619,9 @@ class SchemaManager(BaseComponent):
 
                 # Verify restoration
                 if restored_count != backup_count:
-                    self.logger.warning(f"Row count mismatch: {backup_count} in backup, {restored_count} restored")
+                    self.logger.warning(
+                        f"Row count mismatch: {backup_count} in backup, {restored_count} restored"
+                    )
             else:
                 # Just recreate empty table with new schema
                 self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_DOCS}")
@@ -552,7 +635,7 @@ class SchemaManager(BaseComponent):
             return True
 
         except Exception as e:
-            if 'transaction_started' in locals() and transaction_started:
+            if "transaction_started" in locals() and transaction_started:
                 self.conn.rollback()
             self.logger.error(f"Error during documents table migration: {e}")
             return False
@@ -584,24 +667,38 @@ class SchemaManager(BaseComponent):
                 transaction_started = False
 
             # Get column info for old table
-            old_sent_info = self.cursor.execute(f"PRAGMA table_info({TABLE_SENTENCES})").fetchall()
+            old_sent_info = self.cursor.execute(
+                f"PRAGMA table_info({TABLE_SENTENCES})"
+            ).fetchall()
             old_sent_columns = [col[1] for col in old_sent_info]
             self.logger.debug(f"Old sentences table columns: {old_sent_columns}")
 
             # Count existing sentences
-            sent_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_SENTENCES}").fetchone()[0]
+            sent_count = self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_SENTENCES}"
+            ).fetchone()[0]
 
             if sent_count > 0:
-                self.logger.info(f"{TABLE_SENTENCES} table contains {sent_count:,} rows, creating backup...")
+                self.logger.info(
+                    f"{TABLE_SENTENCES} table contains {sent_count:,} rows, creating backup..."
+                )
 
                 # Create backup
-                self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {TABLE_SENTENCES}_backup AS SELECT * FROM {TABLE_SENTENCES}")
-                backup_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup").fetchone()[0]
-                self.logger.info(f"Backed up {backup_count:,} rows from {TABLE_SENTENCES}")
+                self.cursor.execute(
+                    f"CREATE TABLE IF NOT EXISTS {TABLE_SENTENCES}_backup AS SELECT * FROM {TABLE_SENTENCES}"
+                )
+                backup_count = self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup"
+                ).fetchone()[0]
+                self.logger.info(
+                    f"Backed up {backup_count:,} rows from {TABLE_SENTENCES}"
+                )
 
                 # Validate backup before proceeding
                 if backup_count != sent_count:
-                    self.logger.error(f"Backup validation failed: expected {sent_count} rows, got {backup_count}")
+                    self.logger.error(
+                        f"Backup validation failed: expected {sent_count} rows, got {backup_count}"
+                    )
                     raise ValueError("Backup validation failed - aborting migration")
 
                 # Create explicit mapping between old and new schema
@@ -611,7 +708,7 @@ class SchemaManager(BaseComponent):
                     "document_id": DOC_ID,
                     "word_count": WORD_COUNT,
                     "token_count": TOKEN_COUNT,  # Keep token_count as TOKEN_COUNT
-                    "alpha_count": ALPHA_COUNT
+                    "alpha_count": ALPHA_COUNT,
                 }
 
                 # Drop and recreate table with new schema
@@ -620,8 +717,12 @@ class SchemaManager(BaseComponent):
                 self.logger.info(f"Recreated {TABLE_SENTENCES} table with new schema")
 
                 # Get column info for new table to validate
-                new_sent_columns = [col[1] for col in
-                                   self.cursor.execute(f"PRAGMA table_info({TABLE_SENTENCES})").fetchall()]
+                new_sent_columns = [
+                    col[1]
+                    for col in self.cursor.execute(
+                        f"PRAGMA table_info({TABLE_SENTENCES})"
+                    ).fetchall()
+                ]
                 self.logger.debug(f"New sentences table columns: {new_sent_columns}")
 
                 # Build source and destination columns for INSERT
@@ -629,13 +730,18 @@ class SchemaManager(BaseComponent):
                 dest_cols = []
 
                 for old_col in old_sent_columns:
-                    if old_col in column_map and column_map[old_col] in new_sent_columns:
+                    if (
+                        old_col in column_map
+                        and column_map[old_col] in new_sent_columns
+                    ):
                         src_cols.append(old_col)
                         dest_cols.append(column_map[old_col])
 
                 # Validate that we have columns to map
                 if not src_cols or not dest_cols:
-                    self.logger.error("No common columns found between old and new sentence schemas")
+                    self.logger.error(
+                        "No common columns found between old and new sentence schemas"
+                    )
                     raise ValueError("Migration failed - no common columns to migrate")
 
                 # Log the mapping for debugging
@@ -643,19 +749,25 @@ class SchemaManager(BaseComponent):
                 self.logger.debug(f"Destination columns: {dest_cols}")
 
                 # Check for orphaned sentences before migration
-                orphaned_count = self.cursor.execute(f"""--sql
+                orphaned_count = self.cursor.execute(
+                    f"""--sql
                     SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup s
                     LEFT JOIN {TABLE_DOCS} d ON s.document_id = d.{DOC_ID}
                     WHERE d.{DOC_ID} IS NULL
-                """).fetchone()[0]
+                """
+                ).fetchone()[0]
 
                 # Format column lists for SQL
                 src_cols_str = ", ".join([f"s.{col}" for col in src_cols])
                 dest_cols_str = ", ".join(dest_cols)
 
                 if orphaned_count > 0:
-                    self.logger.warning(f"Found {orphaned_count} orphaned sentences with invalid document references")
-                    self.logger.info("Will restore only sentences with valid document references")
+                    self.logger.warning(
+                        f"Found {orphaned_count} orphaned sentences with invalid document references"
+                    )
+                    self.logger.info(
+                        "Will restore only sentences with valid document references"
+                    )
 
                     insert_sql = f"""--sql
                         INSERT INTO {TABLE_SENTENCES} ({dest_cols_str})
@@ -675,7 +787,9 @@ class SchemaManager(BaseComponent):
                 self.cursor.execute(insert_sql)
 
                 restored_count = self.cursor.rowcount
-                self.logger.info(f"Restored {restored_count:,} rows to {TABLE_SENTENCES}")
+                self.logger.info(
+                    f"Restored {restored_count:,} rows to {TABLE_SENTENCES}"
+                )
 
                 # # Create indexes
                 # self.logger.info("Creating supporting indexes for sentences...")
@@ -684,12 +798,16 @@ class SchemaManager(BaseComponent):
                 # Verify restoration
                 expected_count = backup_count - orphaned_count
                 if restored_count != expected_count:
-                    self.logger.warning(f"Row count mismatch: expected {expected_count}, got {restored_count} restored")
+                    self.logger.warning(
+                        f"Row count mismatch: expected {expected_count}, got {restored_count} restored"
+                    )
             else:
                 # Just recreate empty table with new schema
                 self.cursor.execute(f"DROP TABLE IF EXISTS {TABLE_SENTENCES}")
                 self.cursor.execute(schema_create_table_sentences)
-                self.logger.info(f"Recreated empty {TABLE_SENTENCES} table with new schema")
+                self.logger.info(
+                    f"Recreated empty {TABLE_SENTENCES} table with new schema"
+                )
 
             # Update document sentence counts if needed
             # try:
@@ -712,7 +830,7 @@ class SchemaManager(BaseComponent):
             return True
 
         except Exception as e:
-            if 'transaction_started' in locals() and transaction_started:
+            if "transaction_started" in locals() and transaction_started:
                 self.conn.rollback()
             self.logger.error(f"Error during sentences table migration: {e}")
             return False
@@ -742,61 +860,96 @@ class SchemaManager(BaseComponent):
                 "count_match": False,
                 "orphaned": 0,
             },
-            "integrity": {
-                "valid": True,
-                "invalid_references": 0
-            }
+            "integrity": {"valid": True, "invalid_references": 0},
         }
 
         try:
             # Check if backup tables exist
-            docs_backup_exists = self.cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                (f"{TABLE_DOCS}_backup",)
-            ).fetchone() is not None
+            docs_backup_exists = (
+                self.cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (f"{TABLE_DOCS}_backup",),
+                ).fetchone()
+                is not None
+            )
 
-            sent_backup_exists = self.cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                (f"{TABLE_SENTENCES}_backup",)
-            ).fetchone() is not None
+            sent_backup_exists = (
+                self.cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (f"{TABLE_SENTENCES}_backup",),
+                ).fetchone()
+                is not None
+            )
 
             validation["documents"]["backup_exists"] = docs_backup_exists
             validation["sentences"]["backup_exists"] = sent_backup_exists
 
             # Verify schema matches expected schema from schema.py
-            doc_columns = {col[1] for col in
-                          self.cursor.execute(f"PRAGMA table_info({TABLE_DOCS})").fetchall()}
-            sent_columns = {col[1] for col in
-                           self.cursor.execute(f"PRAGMA table_info({TABLE_SENTENCES})").fetchall()}
+            doc_columns = {
+                col[1]
+                for col in self.cursor.execute(
+                    f"PRAGMA table_info({TABLE_DOCS})"
+                ).fetchall()
+            }
+            sent_columns = {
+                col[1]
+                for col in self.cursor.execute(
+                    f"PRAGMA table_info({TABLE_SENTENCES})"
+                ).fetchall()
+            }
 
-            expected_doc_columns = {DOC_ID, TITLE, WORD_COUNT, TOKEN_COUNT, ALPHA_COUNT, SENT_COUNT}
-            expected_sent_columns = {DOC_ID, SENT_IDX, TXT, WORD_COUNT, TOKEN_COUNT, ALPHA_COUNT}
+            expected_doc_columns = {
+                DOC_ID,
+                TITLE,
+                WORD_COUNT,
+                TOKEN_COUNT,
+                ALPHA_COUNT,
+                SENT_COUNT,
+            }
+            expected_sent_columns = {
+                DOC_ID,
+                SENT_IDX,
+                TXT,
+                WORD_COUNT,
+                TOKEN_COUNT,
+                ALPHA_COUNT,
+            }
 
             missing_doc_cols = expected_doc_columns - doc_columns
             missing_sent_cols = expected_sent_columns - sent_columns
 
             if missing_doc_cols:
-                self.logger.error(f"Documents table missing expected columns: {missing_doc_cols}")
+                self.logger.error(
+                    f"Documents table missing expected columns: {missing_doc_cols}"
+                )
                 validation["documents"]["missing_columns"] = list(missing_doc_cols)
                 validation["success"] = False
 
             if missing_sent_cols:
-                self.logger.error(f"Sentences table missing expected columns: {missing_sent_cols}")
+                self.logger.error(
+                    f"Sentences table missing expected columns: {missing_sent_cols}"
+                )
                 validation["sentences"]["missing_columns"] = list(missing_sent_cols)
                 validation["success"] = False
 
             # Validate documents if backup exists
             if docs_backup_exists:
                 # Compare row counts
-                docs_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}").fetchone()[0]
-                backup_docs_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_DOCS}_backup").fetchone()[0]
+                docs_count = self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_DOCS}"
+                ).fetchone()[0]
+                backup_docs_count = self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_DOCS}_backup"
+                ).fetchone()[0]
 
                 validation["documents"]["count"] = docs_count
                 validation["documents"]["backup_count"] = backup_docs_count
                 validation["documents"]["count_match"] = docs_count == backup_docs_count
 
                 if docs_count != backup_docs_count:
-                    self.logger.warning(f"Document counts don't match: {backup_docs_count} in backup, {docs_count} in new table")
+                    self.logger.warning(
+                        f"Document counts don't match: {backup_docs_count} in backup, {docs_count} in new table"
+                    )
                     validation["success"] = False
                 else:
                     self.logger.info(f"Document counts match: {docs_count} records")
@@ -807,45 +960,63 @@ class SchemaManager(BaseComponent):
                     self.logger.info(f"Validating sample of {sample_size} documents...")
 
                     # Get random sample of IDs
-                    sample_ids = self.cursor.execute(f"""--sql
+                    sample_ids = self.cursor.execute(
+                        f"""--sql
                         SELECT id FROM {TABLE_DOCS}_backup
                         ORDER BY RANDOM() LIMIT {sample_size}
-                    """).fetchall()
+                    """
+                    ).fetchall()
 
                     sample_ids = [row[0] for row in sample_ids]
                     mismatches = []
 
                     for id in sample_ids:
                         # Get original document with key fields
-                        orig = self.cursor.execute(f"""--sql
+                        orig = self.cursor.execute(
+                            f"""--sql
                             SELECT id, title, token_count, word_count
                             FROM {TABLE_DOCS}_backup
                             WHERE id = ?
-                        """, (id,)).fetchone()
+                        """,
+                            (id,),
+                        ).fetchone()
 
                         if not orig:
                             continue
 
                         # Get migrated document
-                        migrated = self.cursor.execute(f"""--sql
+                        migrated = self.cursor.execute(
+                            f"""--sql
                             SELECT {DOC_ID}, {TITLE}, {TOKEN_COUNT}, {WORD_COUNT}
                             FROM {TABLE_DOCS}
                             WHERE {DOC_ID} = ?
-                        """, (id,)).fetchone()
+                        """,
+                            (id,),
+                        ).fetchone()
 
                         if not migrated:
-                            mismatches.append(f"Document ID {id} missing in migrated table")
+                            mismatches.append(
+                                f"Document ID {id} missing in migrated table"
+                            )
                         elif orig[1] != migrated[1]:  # Compare titles
-                            mismatches.append(f"Document ID {id} title mismatch: '{orig[1]}' vs '{migrated[1]}'")
+                            mismatches.append(
+                                f"Document ID {id} title mismatch: '{orig[1]}' vs '{migrated[1]}'"
+                            )
                         elif orig[2] != migrated[2]:  # Compare token_count
-                            mismatches.append(f"Document ID {id} token_count mismatch: {orig[2]} vs {migrated[2]}")
+                            mismatches.append(
+                                f"Document ID {id} token_count mismatch: {orig[2]} vs {migrated[2]}"
+                            )
                         elif orig[3] != migrated[3]:  # Compare word_count
-                            mismatches.append(f"Document ID {id} word_count mismatch: {orig[3]} vs {migrated[3]}")
+                            mismatches.append(
+                                f"Document ID {id} word_count mismatch: {orig[3]} vs {migrated[3]}"
+                            )
 
                     validation["documents"]["sample_mismatches"] = mismatches
 
                     if mismatches:
-                        self.logger.warning(f"Found {len(mismatches)} document mismatches in sample")
+                        self.logger.warning(
+                            f"Found {len(mismatches)} document mismatches in sample"
+                        )
                         validation["success"] = False
                     else:
                         self.logger.info("Document sample validation passed")
@@ -855,14 +1026,20 @@ class SchemaManager(BaseComponent):
                 # Compare row counts considering orphaned records
                 orphaned_count = 0
                 if docs_backup_exists:
-                    orphaned_count = self.cursor.execute(f"""--sql
+                    orphaned_count = self.cursor.execute(
+                        f"""--sql
                         SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup s
                         LEFT JOIN {TABLE_DOCS} d ON s.document_id = d.{DOC_ID}
                         WHERE d.{DOC_ID} IS NULL
-                    """).fetchone()[0]
+                    """
+                    ).fetchone()[0]
 
-                sent_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_SENTENCES}").fetchone()[0]
-                backup_sent_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup").fetchone()[0]
+                sent_count = self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_SENTENCES}"
+                ).fetchone()[0]
+                backup_sent_count = self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_SENTENCES}_backup"
+                ).fetchone()[0]
 
                 expected_count = backup_sent_count - orphaned_count
 
@@ -879,7 +1056,9 @@ class SchemaManager(BaseComponent):
                     )
                     validation["success"] = False
                 else:
-                    self.logger.info(f"Sentence counts match expected value: {sent_count} records")
+                    self.logger.info(
+                        f"Sentence counts match expected value: {sent_count} records"
+                    )
 
                 # Sample validation with emphasis on TOKEN_COUNT preservation
                 if sent_count > 0:
@@ -887,72 +1066,102 @@ class SchemaManager(BaseComponent):
                     self.logger.info(f"Validating sample of {sample_size} sentences...")
 
                     # Get random sample of sentence keys
-                    sample_keys = self.cursor.execute(f"""--sql
+                    sample_keys = self.cursor.execute(
+                        f"""--sql
                         SELECT {DOC_ID}, {SENT_IDX} FROM {TABLE_SENTENCES}
                         ORDER BY RANDOM() LIMIT {sample_size}
-                    """).fetchall()
+                    """
+                    ).fetchall()
 
                     mismatches = []
 
                     for doc_id, sent_idx in sample_keys:
                         # Get migrated sentence with key fields
-                        migrated = self.cursor.execute(f"""--sql
+                        migrated = self.cursor.execute(
+                            f"""--sql
                             SELECT {DOC_ID}, {SENT_IDX}, {TXT}, {TOKEN_COUNT}, {WORD_COUNT}
                             FROM {TABLE_SENTENCES}
                             WHERE {DOC_ID} = ? AND {SENT_IDX} = ?
-                        """, (doc_id, sent_idx)).fetchone()
+                        """,
+                            (doc_id, sent_idx),
+                        ).fetchone()
 
                         # Get original sentence
-                        orig = self.cursor.execute(f"""--sql
+                        orig = self.cursor.execute(
+                            f"""--sql
                             SELECT document_id, sentence_index, text, token_count, word_count
                             FROM {TABLE_SENTENCES}_backup
                             WHERE document_id = ? AND sentence_index = ?
-                        """, (doc_id, sent_idx)).fetchone()
+                        """,
+                            (doc_id, sent_idx),
+                        ).fetchone()
 
                         if not orig:
-                            mismatches.append(f"Sentence ({doc_id}, {sent_idx}) not found in original table")
+                            mismatches.append(
+                                f"Sentence ({doc_id}, {sent_idx}) not found in original table"
+                            )
                         elif migrated[2] != orig[2]:  # Compare text
                             # Truncate for log readability
-                            orig_text = orig[2][:30] + "..." if len(orig[2]) > 30 else orig[2]
-                            mig_text = migrated[2][:30] + "..." if len(migrated[2]) > 30 else migrated[2]
-                            mismatches.append(f"Sentence ({doc_id}, {sent_idx}) text mismatch: '{orig_text}' vs '{mig_text}'")
+                            orig_text = (
+                                orig[2][:30] + "..." if len(orig[2]) > 30 else orig[2]
+                            )
+                            mig_text = (
+                                migrated[2][:30] + "..."
+                                if len(migrated[2]) > 30
+                                else migrated[2]
+                            )
+                            mismatches.append(
+                                f"Sentence ({doc_id}, {sent_idx}) text mismatch: '{orig_text}' vs '{mig_text}'"
+                            )
                         elif orig[3] != migrated[3]:  # Compare token_count
-                            mismatches.append(f"Sentence ({doc_id}, {sent_idx}) token_count mismatch: {orig[3]} vs {migrated[3]}")
+                            mismatches.append(
+                                f"Sentence ({doc_id}, {sent_idx}) token_count mismatch: {orig[3]} vs {migrated[3]}"
+                            )
                         elif orig[4] != migrated[4]:  # Compare word_count
-                            mismatches.append(f"Sentence ({doc_id}, {sent_idx}) word_count mismatch: {orig[4]} vs {migrated[4]}")
+                            mismatches.append(
+                                f"Sentence ({doc_id}, {sent_idx}) word_count mismatch: {orig[4]} vs {migrated[4]}"
+                            )
 
                     validation["sentences"]["sample_mismatches"] = mismatches
 
                     if mismatches:
-                        self.logger.warning(f"Found {len(mismatches)} sentence mismatches in sample")
+                        self.logger.warning(
+                            f"Found {len(mismatches)} sentence mismatches in sample"
+                        )
                         validation["success"] = False
                     else:
                         self.logger.info("Sentence sample validation passed")
 
             # Check referential integrity
-            invalid_refs = self.cursor.execute(f"""--sql
+            invalid_refs = self.cursor.execute(
+                f"""--sql
                 SELECT COUNT(*) FROM {TABLE_SENTENCES} s
                 LEFT JOIN {TABLE_DOCS} d ON s.{DOC_ID} = d.{DOC_ID}
                 WHERE d.{DOC_ID} IS NULL
-            """).fetchone()[0]
+            """
+            ).fetchone()[0]
 
             validation["integrity"]["invalid_references"] = invalid_refs
             if invalid_refs > 0:
-                self.logger.error(f"Found {invalid_refs} sentences with invalid document references!")
+                self.logger.error(
+                    f"Found {invalid_refs} sentences with invalid document references!"
+                )
                 validation["integrity"]["valid"] = False
                 validation["success"] = False
             else:
-                self.logger.info("Referential integrity check passed: all sentences have valid document references")
+                self.logger.info(
+                    "Referential integrity check passed: all sentences have valid document references"
+                )
 
             # Check indexes
             doc_indexes = self.cursor.execute(
                 "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?",
-                (TABLE_DOCS,)
+                (TABLE_DOCS,),
             ).fetchall()
 
             sent_indexes = self.cursor.execute(
                 "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?",
-                (TABLE_SENTENCES,)
+                (TABLE_SENTENCES,),
             ).fetchall()
 
             doc_index_names = [idx[0].lower() for idx in doc_indexes]
@@ -960,7 +1169,7 @@ class SchemaManager(BaseComponent):
 
             validation["indexes"] = {
                 "documents": doc_index_names,
-                "sentences": sent_index_names
+                "sentences": sent_index_names,
             }
 
             # Check for required indexes using case-insensitive comparison
@@ -1000,6 +1209,7 @@ class SchemaManager(BaseComponent):
             validation["error"] = str(e)
             return validation
 
+
 class Preprocessor(BaseComponent):
     def _initialize_normalization_patterns(self):
         """Initialize regex patterns and translation tables for text normalization"""
@@ -1009,41 +1219,80 @@ class Preprocessor(BaseComponent):
         # Store these as instance variables so they're only created once
         self._leading_chars_pattern = re.compile(r'^[%"\'`-]+\s*')
         self._leading_space_chars_pattern = re.compile(r'^\s*[%"\'`-]+\s*')
-        self._possessive_s_pattern = re.compile(r'\'s\b')
-        self._plural_possessive_pattern = re.compile(r's\'\b')
-        self._whitespace_pattern = re.compile(r'\s+')
-        self._covid_pattern = re.compile(r'covid[-\s]?19')
-        self._non_alnum_pattern = re.compile(r'[^\w\s-]')
-        self._redundant_hyphen_pattern = re.compile(r'-+')
-        self._edge_hyphen_pattern = re.compile(r'(^-|-$)')
+        self._possessive_s_pattern = re.compile(r"\'s\b")
+        self._plural_possessive_pattern = re.compile(r"s\'\b")
+        self._whitespace_pattern = re.compile(r"\s+")
+        self._covid_pattern = re.compile(r"covid[-\s]?19")
+        self._non_alnum_pattern = re.compile(r"[^\w\s-]")
+        self._redundant_hyphen_pattern = re.compile(r"-+")
+        self._edge_hyphen_pattern = re.compile(r"(^-|-$)")
 
         # Create translation table once
-        self._punct_translator = str.maketrans('', '', string.punctuation.replace('-', ''))
+        self._punct_translator = str.maketrans(
+            "", "", string.punctuation.replace("-", "")
+        )
 
         # Define contractions dictionary once
         self._contractions = {
-            "ain't": "is not", "aren't": "are not", "can't": "cannot",
-            "couldn't": "could not", "didn't": "did not", "doesn't": "does not",
-            "don't": "do not", "hadn't": "had not", "hasn't": "has not",
-            "haven't": "have not", "he'd": "he would", "he'll": "he will",
-            "he's": "he is", "i'd": "i would", "i'll": "i will",
-            "i'm": "i am", "i've": "i have", "isn't": "is not",
-            "it's": "it is", "let's": "let us", "mustn't": "must not",
-            "shan't": "shall not", "she'd": "she would", "she'll": "she will",
-            "she's": "she is", "shouldn't": "should not", "that's": "that is",
-            "there's": "there is", "they'd": "they would", "they'll": "they will",
-            "they're": "they are", "they've": "they have", "we'd": "we would",
-            "we'll": "we will", "we're": "we are", "we've": "we have",
-            "weren't": "were not", "what'll": "what will", "what're": "what are",
-            "what's": "what is", "what've": "what have", "where's": "where is",
-            "who'd": "who would", "who'll": "who will", "who's": "who is",
-            "who've": "who have", "won't": "will not", "wouldn't": "would not",
-            "you'd": "you would", "you'll": "you will", "you're": "you are",
-            "you've": "you have"
+            "ain't": "is not",
+            "aren't": "are not",
+            "can't": "cannot",
+            "couldn't": "could not",
+            "didn't": "did not",
+            "doesn't": "does not",
+            "don't": "do not",
+            "hadn't": "had not",
+            "hasn't": "has not",
+            "haven't": "have not",
+            "he'd": "he would",
+            "he'll": "he will",
+            "he's": "he is",
+            "i'd": "i would",
+            "i'll": "i will",
+            "i'm": "i am",
+            "i've": "i have",
+            "isn't": "is not",
+            "it's": "it is",
+            "let's": "let us",
+            "mustn't": "must not",
+            "shan't": "shall not",
+            "she'd": "she would",
+            "she'll": "she will",
+            "she's": "she is",
+            "shouldn't": "should not",
+            "that's": "that is",
+            "there's": "there is",
+            "they'd": "they would",
+            "they'll": "they will",
+            "they're": "they are",
+            "they've": "they have",
+            "we'd": "we would",
+            "we'll": "we will",
+            "we're": "we are",
+            "we've": "we have",
+            "weren't": "were not",
+            "what'll": "what will",
+            "what're": "what are",
+            "what's": "what is",
+            "what've": "what have",
+            "where's": "where is",
+            "who'd": "who would",
+            "who'll": "who will",
+            "who's": "who is",
+            "who've": "who have",
+            "won't": "will not",
+            "wouldn't": "would not",
+            "you'd": "you would",
+            "you'll": "you will",
+            "you're": "you are",
+            "you've": "you have",
         }
 
         # Pre-compile contraction patterns
-        self._contraction_patterns = [(re.compile(r'\b' + re.escape(c) + r'\b'), e) for c, e in self._contractions.items()]
+        self._contraction_patterns = [
+            (re.compile(r"\b" + re.escape(c) + r"\b"), e)
+            for c, e in self._contractions.items()
+        ]
 
     def _normalize_entity_text(self, text):
         """
@@ -1074,33 +1323,33 @@ class Preprocessor(BaseComponent):
             normalized = input_text.lower().strip()
 
             # 2. Remove special leading character combinations
-            normalized = self._leading_chars_pattern.sub('', normalized)
-            normalized = self._leading_space_chars_pattern.sub('', normalized)
+            normalized = self._leading_chars_pattern.sub("", normalized)
+            normalized = self._leading_space_chars_pattern.sub("", normalized)
 
             # 3. Handle possessive forms
-            normalized = self._possessive_s_pattern.sub('', normalized)
-            normalized = self._plural_possessive_pattern.sub('s', normalized)
+            normalized = self._possessive_s_pattern.sub("", normalized)
+            normalized = self._plural_possessive_pattern.sub("s", normalized)
 
             # 4. Remove punctuation except hyphens
             normalized = normalized.translate(self._punct_translator)
 
             # 5. Normalize whitespace (initial pass)
-            normalized = self._whitespace_pattern.sub(' ', normalized)
+            normalized = self._whitespace_pattern.sub(" ", normalized)
 
             # 6. Expand contractions
             for pattern, replacement in self._contraction_patterns:
                 normalized = pattern.sub(replacement, normalized)
 
             # 7. Domain-specific normalizations
-            normalized = self._covid_pattern.sub('covid19', normalized)
+            normalized = self._covid_pattern.sub("covid19", normalized)
 
             # 8. Final cleanup
-            normalized = self._non_alnum_pattern.sub('', normalized)
-            normalized = self._redundant_hyphen_pattern.sub('-', normalized)
-            normalized = self._edge_hyphen_pattern.sub('', normalized)
+            normalized = self._non_alnum_pattern.sub("", normalized)
+            normalized = self._redundant_hyphen_pattern.sub("-", normalized)
+            normalized = self._edge_hyphen_pattern.sub("", normalized)
 
             # 9. Final whitespace normalization
-            normalized = self._whitespace_pattern.sub(' ', normalized).strip()
+            normalized = self._whitespace_pattern.sub(" ", normalized).strip()
 
             return normalized
 
@@ -1153,13 +1402,14 @@ class Preprocessor(BaseComponent):
         """
 
         # Get total rows to process
-        total_rows = self.cursor.execute(f"""
+        total_rows = self.cursor.execute(
+            f"""
             SELECT COUNT(*) FROM {TABLE_NE}
             WHERE {TXT_NORM} IS NULL
             AND {ERROR_ID} IS NULL
             AND {NE_OVERLAP} = 0
-        """).fetchone()[0]
-
+        """
+        ).fetchone()[0]
 
         # Log query plan
         self.log_query_plan(reader_query, {"limit": 1000, "offset": 0})
@@ -1185,10 +1435,8 @@ class Preprocessor(BaseComponent):
             # Update database with normalized text values
             cursor.executemany(
                 f"UPDATE {TABLE_NE} SET {TXT_NORM} = ? WHERE {NE_PRIMARY_ID} = ?",
-                results
+                results,
             )
-
-
 
         self.logger.info(f"Found {total_rows} entities that need normalization")
 
@@ -1199,22 +1447,24 @@ class Preprocessor(BaseComponent):
         # Create reader-writer pair for parallel processing with optimized parameters
         rw_pair = ReaderWriterPair(
             conn_params=self.conn_params_dict,
-            batch_size=50000,           # 50K entities per batch
-            max_queue_size=100,          # Allow up to 30 batches in queue (1 500 000 entities)
-            num_reader_threads=2,       # 8 parallel reader threads for text processing
-            writer_batch_chunking=15,   # Write 10 batches (500K entities) in one transaction
+            batch_size=50000,  # 50K entities per batch
+            max_queue_size=100,  # Allow up to 30 batches in queue (1 500 000 entities)
+            num_reader_threads=2,  # 8 parallel reader threads for text processing
+            writer_batch_chunking=15,  # Write 10 batches (500K entities) in one transaction
             reader_query=reader_query,
             process_function=process_function,
             write_function=writer_function,
             total_rows=total_rows,
-            process_title="Normalizing entity text"
+            process_title="Normalizing entity text",
         )
 
         # Execute the normalizationcha   process
         self.logger.info("Starting multi-threaded text normalization...")
         rw_pair.run()
 
-        self.logger.info(f"Text normalization complete. Processed {total_rows} entities.")
+        self.logger.info(
+            f"Text normalization complete. Processed {total_rows} entities."
+        )
 
         # # Create final index on normalized text for faster lookups
         # self.logger.info("Creating index on normalized text column...")
@@ -1316,11 +1566,15 @@ class Preprocessor(BaseComponent):
             columns = [column[1] for column in self.cursor.fetchall()]
             if f"{ERROR_ID}" not in columns:
                 # Add error_id column if it doesn't exist
-                self.logger.info(f"Please review database schema. Column {ERROR_ID} should be presen't on {TABLE_NE} and reference {TABLE_NE_ERROR}")
-                return # We can't proceed without the error_id column as the foreign key will fail
+                self.logger.info(
+                    f"Please review database schema. Column {ERROR_ID} should be presen't on {TABLE_NE} and reference {TABLE_NE_ERROR}"
+                )
+                return  # We can't proceed without the error_id column as the foreign key will fail
 
             # 2. Check if entity_error_codes table exists
-            self.cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{TABLE_NE_ERROR}'")
+            self.cursor.execute(
+                f"SELECT name FROM sqlite_master WHERE type='table' AND name='{TABLE_NE_ERROR}'"
+            )
             if not self.cursor.fetchone():
                 self.logger.info(f"Creating {TABLE_NE_ERROR} table...")
                 self.cursor.execute(ne_error_schema)
@@ -1349,29 +1603,35 @@ class Preprocessor(BaseComponent):
 
                     # Type checking and validation
                     if not isinstance(entity_text, str):
-                        self.logger.warning(f"Invalid entity_text type: {type(entity_text)}. Skipping.")
+                        self.logger.warning(
+                            f"Invalid entity_text type: {type(entity_text)}. Skipping."
+                        )
                         continue
 
                     # Transform to lowercase early
                     entity_text = entity_text.lower()
 
                     if not isinstance(entity_type, str) or len(entity_type) > 20:
-                        self.logger.warning(f"Invalid entity_type: {entity_type}. Must be string <= 20 chars. Skipping.")
+                        self.logger.warning(
+                            f"Invalid entity_type: {entity_type}. Must be string <= 20 chars. Skipping."
+                        )
                         continue
 
                     if not isinstance(error_id, str) or len(error_id) > 10:
-                        self.logger.warning(f"Invalid error_id: {error_id}. Must be string <= 10 chars. Skipping.")
+                        self.logger.warning(
+                            f"Invalid error_id: {error_id}. Must be string <= 10 chars. Skipping."
+                        )
                         continue
 
                     # Directly convert entity_type to ID
                     entity_id = self.data.get_named_entity_class_id(entity_type)
                     if not entity_id:
-                        self.logger.warning(f"Misslabeled NER: No entity ID found for type: {entity_type} (text for debug: {entity_text}")
+                        self.logger.warning(
+                            f"Misslabeled NER: No entity ID found for type: {entity_type} (text for debug: {entity_text}"
+                        )
                         continue
 
-                    errors.append(
-                        (error_id, entity_text, entity_id)
-                    )
+                    errors.append((error_id, entity_text, entity_id))
 
             # Proceed if we have any updates
             if errors:
@@ -1379,15 +1639,19 @@ class Preprocessor(BaseComponent):
                     # Transform data to match SQL parameter order
                     update_params = [
                         (
-                            error_id,        # SET ERROR_ID = ?
-                            class_id,        # WHERE CLASS_ID = ?
-                            error_id,        # AND ERROR_ID != ?
-                            entity_text      # AND LOWER(TXT) = ?
+                            error_id,  # SET ERROR_ID = ?
+                            class_id,  # WHERE CLASS_ID = ?
+                            error_id,  # AND ERROR_ID != ?
+                            entity_text,  # AND LOWER(TXT) = ?
                         )
                         for error_id, entity_text, class_id in errors
                     ]
-                    self.logger.info(f"processing {len(errors)} entity errors code updates...")
-                    self.logger.info(f"First 5 entity updates: {errors[:5]}") # Print the first 5 updates
+                    self.logger.info(
+                        f"processing {len(errors)} entity errors code updates..."
+                    )
+                    self.logger.info(
+                        f"First 5 entity updates: {errors[:5]}"
+                    )  # Print the first 5 updates
 
                     # Create index for lower(entity_text) and entity_id for faster updates
                     ind = Index(TABLE_NE, [CLASS_ID, ERROR_ID, TXT], logger=self.logger)
@@ -1405,9 +1669,15 @@ class Preprocessor(BaseComponent):
                     AND LOWER({TXT}) = ? -- Case-insensitive match
                     """
 
-                    self.log_query_plan(stmt_set_error_ids, update_params)  # Log query plan for first 5 updates
-                    total_affected = self._batch_update_error_codes(stmt_set_error_ids, update_params, batch_size)
-                    self.logger.info(f"Updated {total_affected} entity occurrences (from {len(errors)} input records)")
+                    self.log_query_plan(
+                        stmt_set_error_ids, update_params
+                    )  # Log query plan for first 5 updates
+                    total_affected = self._batch_update_error_codes(
+                        stmt_set_error_ids, update_params, batch_size
+                    )
+                    self.logger.info(
+                        f"Updated {total_affected} entity occurrences (from {len(errors)} input records)"
+                    )
 
                     # Create index if not exists - Provides speedup for error_id queries where it's used to filter out NULL values
                     # Create index for error_id filtering
@@ -1430,7 +1700,9 @@ class Preprocessor(BaseComponent):
             self.conn.rollback()
             raise
 
-    def _batch_update_error_codes(self, stmt: str, errors: list, batch_size: int) -> int:
+    def _batch_update_error_codes(
+        self, stmt: str, errors: list, batch_size: int
+    ) -> int:
         """
         Helper method to handle batched updates with proper progress tracking
 
@@ -1441,10 +1713,12 @@ class Preprocessor(BaseComponent):
         try:
             self.cursor.execute("BEGIN TRANSACTION")
 
-            with tqdm(total=total_batches, desc=f"Updating {ERROR_ID} for {TABLE_NE}") as pbar:
+            with tqdm(
+                total=total_batches, desc=f"Updating {ERROR_ID} for {TABLE_NE}"
+            ) as pbar:
                 for i in range(0, total_batches, batch_size):
                     try:
-                        batch = errors[i:i + batch_size]
+                        batch = errors[i : i + batch_size]
 
                         # Execute batch
                         self.cursor.executemany(stmt, batch)
@@ -1453,7 +1727,7 @@ class Preprocessor(BaseComponent):
 
                         # Update progress with actual affected rows
                         pbar.update(len(batch))
-                        pbar.set_postfix({'affected': total_affected}, refresh=True)
+                        pbar.set_postfix({"affected": total_affected}, refresh=True)
 
                         # Periodic commit to avoid memory issues
                         if i > 0 and i % (batch_size * 10) == 0:
@@ -1462,7 +1736,7 @@ class Preprocessor(BaseComponent):
                     except KeyboardInterrupt:
                         self.conn.rollback()
                         self.logger.warning("User interrupted. Rolling back changes.")
-                        raise   # Re-raise the exception to be handled by the caller
+                        raise  # Re-raise the exception to be handled by the caller
 
             self.conn.commit()
             return total_affected
@@ -1496,14 +1770,20 @@ class Preprocessor(BaseComponent):
         ind.create_if_not_exists(self.cursor)
 
         # Create index for faster span checks
-        ind = Index(TABLE_NE, [DOC_ID, SENT_IDX, SPAN_START, SPAN_END], logger=self.logger)
+        ind = Index(
+            TABLE_NE, [DOC_ID, SENT_IDX, SPAN_START, SPAN_END], logger=self.logger
+        )
         ind.create_if_not_exists(self.cursor)
 
         # Create index for faster overlap checks
         ind = Index(TABLE_NE, [DOC_ID, SENT_IDX, NE_OVERLAP], logger=self.logger)
 
         # Create index for faster overlap checks
-        ind = Index(TABLE_NE, [DOC_ID, SENT_IDX, SPAN_START, SPAN_END, NE_OVERLAP], logger=self.logger)
+        ind = Index(
+            TABLE_NE,
+            [DOC_ID, SENT_IDX, SPAN_START, SPAN_END, NE_OVERLAP],
+            logger=self.logger,
+        )
         ind.create_if_not_exists(self.cursor)
         # ind.analyze(self.cursor)
 
@@ -1521,8 +1801,9 @@ class Preprocessor(BaseComponent):
         # Support the ORDER BY n1.DOC_ID, n1.SENT_IDX, n1.SPAN_START clause
         # Provide efficient access for JOIN conditions
 
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_NE_overlap_doc_sent_span ON NE (OVERLAP, DOC_ID, SENT_IDX, SPAN_START)") # O(n) ->  O(log(n))
-
+        self.cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_NE_overlap_doc_sent_span ON NE (OVERLAP, DOC_ID, SENT_IDX, SPAN_START)"
+        )  # O(n) ->  O(log(n))
 
         # Create reader query
 
@@ -1591,7 +1872,14 @@ class Preprocessor(BaseComponent):
             """Process a batch of records to detect overlaps"""
             results = []
             print(f"Processing batch of {len(batch)} records")
-            for doc_id, sent_idx, ne_id, current_start, current_end, other_spans in batch:
+            for (
+                doc_id,
+                sent_idx,
+                ne_id,
+                current_start,
+                current_end,
+                other_spans,
+            ) in batch:
                 if not other_spans:
                     continue
 
@@ -1602,7 +1890,7 @@ class Preprocessor(BaseComponent):
                 # other_spans = "2,3,8;3,12,15;8,15,20"
 
                 # # First split by semicolon:
-                spans = other_spans.split(';')
+                spans = other_spans.split(";")
                 # entities = ["2,3,8", "3,12,15", "8,15,20"]
 
                 # # For each entity, split by comma:
@@ -1611,7 +1899,7 @@ class Preprocessor(BaseComponent):
                 # entity3 = [8, 15, 20]  # id=8, start=15, end=20
 
                 for span in spans:
-                    other_id, other_start, other_end = map(int, span.split(','))
+                    other_id, other_start, other_end = map(int, span.split(","))
 
                     # Single condition for all overlap cases:
                     # If one span starts before the other ends, they overlap
@@ -1623,7 +1911,7 @@ class Preprocessor(BaseComponent):
                     # Complete containment in either direction
                     # Partial overlaps at either end
                     # Equal spans
-                    if (current_start <= other_end and other_start <= current_end):
+                    if current_start <= other_end and other_start <= current_end:
                         results.append((1, ne_id))
                         # self.logger.debug(
                         #     f"Overlap found in doc {doc_id}, sentence {sent_idx}: "
@@ -1641,13 +1929,16 @@ class Preprocessor(BaseComponent):
             # Each row now has just ne_id and has_overlap flag (1 or 0)
             return batch
 
-
         def writer_function(results, cursor, conn):
             """Write results back to the database"""
-            cursor.executemany(f"UPDATE {TABLE_NE} SET {NE_OVERLAP} = ? WHERE {NE_PRIMARY_ID} = ?", results)
+            cursor.executemany(
+                f"UPDATE {TABLE_NE} SET {NE_OVERLAP} = ? WHERE {NE_PRIMARY_ID} = ?",
+                results,
+            )
 
-
-        total_rows = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE} WHERE {NE_OVERLAP} IS 0").fetchone()[0]
+        total_rows = self.cursor.execute(
+            f"SELECT COUNT(*) FROM {TABLE_NE} WHERE {NE_OVERLAP} IS 0"
+        ).fetchone()[0]
 
         self.logger.info(f"Processing {total_rows} entities for overlaps...")
         # Create reader-writer pair
@@ -1659,7 +1950,7 @@ class Preprocessor(BaseComponent):
             reader_query=reader_query,
             process_function=process_function,
             write_function=writer_function,
-            total_rows=total_rows
+            total_rows=total_rows,
         )
 
         rw_pair.run()
@@ -1710,16 +2001,18 @@ class Preprocessor(BaseComponent):
                 # Update database with normalized text values
                 cursor.executemany(
                     f"UPDATE {TABLE_NE} SET {TXT_NORM} = ? WHERE {NE_PRIMARY_ID} = ?",
-                    results
+                    results,
                 )
 
             # Get total rows to process
-            total_rows = self.cursor.execute(f"""
+            total_rows = self.cursor.execute(
+                f"""
                 SELECT COUNT(*) FROM {TABLE_NE}
                 WHERE {TXT_NORM} IS NULL
                 AND {ERROR_ID} IS NULL
                 AND {NE_OVERLAP} = 0
-            """).fetchone()[0]
+            """
+            ).fetchone()[0]
 
             self.logger.info(f"Found {total_rows} entities that need normalization")
 
@@ -1738,13 +2031,15 @@ class Preprocessor(BaseComponent):
                 process_function=process_function,
                 write_function=writer_function,
                 total_rows=total_rows,
-                process_title="Normalizing entity text"
+                process_title="Normalizing entity text",
             )
 
             # Execute the normalization
             rw_pair.run()
 
-            self.logger.info(f"Normalization complete. Processed {total_rows} entities.")
+            self.logger.info(
+                f"Normalization complete. Processed {total_rows} entities."
+            )
 
             # Create index on TXT_NORM for faster lookups
             index_norm = Index(TABLE_NE, [TXT_NORM], logger=self.logger)
@@ -1788,20 +2083,30 @@ class Preprocessor(BaseComponent):
                 normalized = normalized.strip()
 
                 # 7. Remove special leading character combinations
-                normalized = re.sub(r'^[%"\'`-]+\s*', '', normalized)  # Remove leading %, ", ', `, - with optional spaces
-                normalized = re.sub(r'^\s*[%"\'`-]+\s*', '', normalized)  # Remove leading spaces followed by %, ", ', `, - with optional spaces
+                normalized = re.sub(
+                    r'^[%"\'`-]+\s*', "", normalized
+                )  # Remove leading %, ", ', `, - with optional spaces
+                normalized = re.sub(
+                    r'^\s*[%"\'`-]+\s*', "", normalized
+                )  # Remove leading spaces followed by %, ", ', `, - with optional spaces
 
                 # 6. Handle possessive forms (before general punctuation removal)
                 # Remove 's at the end of words
-                normalized = re.sub(r'\'s\b', '', normalized)  # Remove "'s" at word boundaries
-                normalized = re.sub(r's\'\b', 's', normalized)  # Convert "s'" to "s" at word boundaries (plural possessive)
+                normalized = re.sub(
+                    r"\'s\b", "", normalized
+                )  # Remove "'s" at word boundaries
+                normalized = re.sub(
+                    r"s\'\b", "s", normalized
+                )  # Convert "s'" to "s" at word boundaries (plural possessive)
 
                 # 3. Remove special characters and punctuation (keep hyphens)
-                punct_translator = str.maketrans('', '', string.punctuation.replace('-', ''))
+                punct_translator = str.maketrans(
+                    "", "", string.punctuation.replace("-", "")
+                )
                 normalized = normalized.translate(punct_translator)
 
                 # Replace multiple spaces with single space
-                normalized = re.sub(r'\s+', ' ', normalized)
+                normalized = re.sub(r"\s+", " ", normalized)
 
                 # 4. Expand common contractions
                 contractions = {
@@ -1861,21 +2166,27 @@ class Preprocessor(BaseComponent):
 
                 # Word boundary to ensure we match whole words only
                 for contraction, expansion in contractions.items():
-                    normalized = re.sub(r'\b' + contraction + r'\b', expansion, normalized)
+                    normalized = re.sub(
+                        r"\b" + contraction + r"\b", expansion, normalized
+                    )
 
                 # Handle specific domain entities or edge cases
                 # Standardize COVID-19
-                normalized = re.sub(r'covid[-\s]?19', 'covid19', normalized)
+                normalized = re.sub(r"covid[-\s]?19", "covid19", normalized)
 
                 # Final cleanup: Remove any remaining non-alphanumeric except spaces and hyphens
-                normalized = re.sub(r'[^\w\s-]', '', normalized)
+                normalized = re.sub(r"[^\w\s-]", "", normalized)
 
                 # Remove redundant hyphens
-                normalized = re.sub(r'-+', '-', normalized)  # Multiple hyphens to single hyphen
-                normalized = re.sub(r'(^-|-$)', '', normalized)  # Remove leading/trailing hyphens
+                normalized = re.sub(
+                    r"-+", "-", normalized
+                )  # Multiple hyphens to single hyphen
+                normalized = re.sub(
+                    r"(^-|-$)", "", normalized
+                )  # Remove leading/trailing hyphens
 
                 # Final whitespace normalization
-                normalized = re.sub(r'\s+', ' ', normalized).strip()
+                normalized = re.sub(r"\s+", " ", normalized).strip()
 
                 return normalized
 
@@ -1928,40 +2239,78 @@ class Preprocessor(BaseComponent):
                 # Pre-compile regex patterns for performance
                 leading_chars_pattern = re.compile(r'^[%"\'`-]+\s*')
                 leading_space_chars_pattern = re.compile(r'^\s*[%"\'`-]+\s*')
-                possessive_s_pattern = re.compile(r'\'s\b')
-                plural_possessive_pattern = re.compile(r's\'\b')
-                whitespace_pattern = re.compile(r'\s+')
-                covid_pattern = re.compile(r'covid[-\s]?19')
-                non_alnum_pattern = re.compile(r'[^\w\s-]')
-                redundant_hyphen_pattern = re.compile(r'-+')
-                edge_hyphen_pattern = re.compile(r'(^-|-$)')
+                possessive_s_pattern = re.compile(r"\'s\b")
+                plural_possessive_pattern = re.compile(r"s\'\b")
+                whitespace_pattern = re.compile(r"\s+")
+                covid_pattern = re.compile(r"covid[-\s]?19")
+                non_alnum_pattern = re.compile(r"[^\w\s-]")
+                redundant_hyphen_pattern = re.compile(r"-+")
+                edge_hyphen_pattern = re.compile(r"(^-|-$)")
 
                 # Create translation table once per thread
-                punct_translator = str.maketrans('', '', string.punctuation.replace('-', ''))
+                punct_translator = str.maketrans(
+                    "", "", string.punctuation.replace("-", "")
+                )
 
                 # Pre-compile contraction regex patterns
                 contractions = {
-                    "ain't": "is not", "aren't": "are not", "can't": "cannot",
-                    "couldn't": "could not", "didn't": "did not", "doesn't": "does not",
-                    "don't": "do not", "hadn't": "had not", "hasn't": "has not",
-                    "haven't": "have not", "he'd": "he would", "he'll": "he will",
-                    "he's": "he is", "i'd": "i would", "i'll": "i will",
-                    "i'm": "i am", "i've": "i have", "isn't": "is not",
-                    "it's": "it is", "let's": "let us", "mustn't": "must not",
-                    "shan't": "shall not", "she'd": "she would", "she'll": "she will",
-                    "she's": "she is", "shouldn't": "should not", "that's": "that is",
-                    "there's": "there is", "they'd": "they would", "they'll": "they will",
-                    "they're": "they are", "they've": "they have", "we'd": "we would",
-                    "we'll": "we will", "we're": "we are", "we've": "we have",
-                    "weren't": "were not", "what'll": "what will", "what're": "what are",
-                    "what's": "what is", "what've": "what have", "where's": "where is",
-                    "who'd": "who would", "who'll": "who will", "who's": "who is",
-                    "who've": "who have", "won't": "will not", "wouldn't": "would not",
-                    "you'd": "you would", "you'll": "you will", "you're": "you are",
-                    "you've": "you have"
+                    "ain't": "is not",
+                    "aren't": "are not",
+                    "can't": "cannot",
+                    "couldn't": "could not",
+                    "didn't": "did not",
+                    "doesn't": "does not",
+                    "don't": "do not",
+                    "hadn't": "had not",
+                    "hasn't": "has not",
+                    "haven't": "have not",
+                    "he'd": "he would",
+                    "he'll": "he will",
+                    "he's": "he is",
+                    "i'd": "i would",
+                    "i'll": "i will",
+                    "i'm": "i am",
+                    "i've": "i have",
+                    "isn't": "is not",
+                    "it's": "it is",
+                    "let's": "let us",
+                    "mustn't": "must not",
+                    "shan't": "shall not",
+                    "she'd": "she would",
+                    "she'll": "she will",
+                    "she's": "she is",
+                    "shouldn't": "should not",
+                    "that's": "that is",
+                    "there's": "there is",
+                    "they'd": "they would",
+                    "they'll": "they will",
+                    "they're": "they are",
+                    "they've": "they have",
+                    "we'd": "we would",
+                    "we'll": "we will",
+                    "we're": "we are",
+                    "we've": "we have",
+                    "weren't": "were not",
+                    "what'll": "what will",
+                    "what're": "what are",
+                    "what's": "what is",
+                    "what've": "what have",
+                    "where's": "where is",
+                    "who'd": "who would",
+                    "who'll": "who will",
+                    "who's": "who is",
+                    "who've": "who have",
+                    "won't": "will not",
+                    "wouldn't": "would not",
+                    "you'd": "you would",
+                    "you'll": "you will",
+                    "you're": "you are",
+                    "you've": "you have",
                 }
-                contraction_patterns = [(re.compile(r'\b' + re.escape(c) + r'\b'), e)
-                                    for c, e in contractions.items()]
+                contraction_patterns = [
+                    (re.compile(r"\b" + re.escape(c) + r"\b"), e)
+                    for c, e in contractions.items()
+                ]
 
                 # Create result buffer
                 normalized_entities = []
@@ -1976,33 +2325,33 @@ class Preprocessor(BaseComponent):
                     normalized = text.lower().strip()
 
                     # 2. Remove special leading character combinations
-                    normalized = leading_chars_pattern.sub('', normalized)
-                    normalized = leading_space_chars_pattern.sub('', normalized)
+                    normalized = leading_chars_pattern.sub("", normalized)
+                    normalized = leading_space_chars_pattern.sub("", normalized)
 
                     # 3. Handle possessive forms
-                    normalized = possessive_s_pattern.sub('', normalized)
-                    normalized = plural_possessive_pattern.sub('s', normalized)
+                    normalized = possessive_s_pattern.sub("", normalized)
+                    normalized = plural_possessive_pattern.sub("s", normalized)
 
                     # 4. Remove punctuation except hyphens
                     normalized = normalized.translate(punct_translator)
 
                     # 5. Normalize whitespace (initial pass)
-                    normalized = whitespace_pattern.sub(' ', normalized)
+                    normalized = whitespace_pattern.sub(" ", normalized)
 
                     # 6. Expand contractions
                     for pattern, replacement in contraction_patterns:
                         normalized = pattern.sub(replacement, normalized)
 
                     # 7. Domain-specific normalizations
-                    normalized = covid_pattern.sub('covid19', normalized)
+                    normalized = covid_pattern.sub("covid19", normalized)
 
                     # 8. Final cleanup
-                    normalized = non_alnum_pattern.sub('', normalized)
-                    normalized = redundant_hyphen_pattern.sub('-', normalized)
-                    normalized = edge_hyphen_pattern.sub('', normalized)
+                    normalized = non_alnum_pattern.sub("", normalized)
+                    normalized = redundant_hyphen_pattern.sub("-", normalized)
+                    normalized = edge_hyphen_pattern.sub("", normalized)
 
                     # 9. Final whitespace normalization
-                    normalized = whitespace_pattern.sub(' ', normalized).strip()
+                    normalized = whitespace_pattern.sub(" ", normalized).strip()
 
                     return normalized
 
@@ -2025,16 +2374,18 @@ class Preprocessor(BaseComponent):
                 # Update database with normalized text values
                 cursor.executemany(
                     f"UPDATE {TABLE_NE} SET {TXT_NORM} = ? WHERE {NE_PRIMARY_ID} = ?",
-                    results
+                    results,
                 )
 
             # Get total rows to process
-            total_rows = self.cursor.execute(f"""
+            total_rows = self.cursor.execute(
+                f"""
                 SELECT COUNT(*) FROM {TABLE_NE}
                 WHERE {TXT_NORM} IS NULL
                 AND {ERROR_ID} IS NULL
                 AND {NE_OVERLAP} = 0
-            """).fetchone()[0]
+            """
+            ).fetchone()[0]
 
             self.logger.info(f"Found {total_rows} entities that need normalization")
 
@@ -2045,22 +2396,24 @@ class Preprocessor(BaseComponent):
             # Create reader-writer pair for parallel processing with optimized parameters
             rw_pair = ReaderWriterPair(
                 conn_params=self.conn_params_dict,
-                batch_size=50000,           # 50K entities per batch
-                max_queue_size=16,          # Allow up to 16 batches in queue (800K entities)
-                num_reader_threads=8,       # 8 parallel reader threads for text processing
-                writer_batch_chunking=10,   # Write 10 batches (500K entities) in one transaction
+                batch_size=50000,  # 50K entities per batch
+                max_queue_size=16,  # Allow up to 16 batches in queue (800K entities)
+                num_reader_threads=8,  # 8 parallel reader threads for text processing
+                writer_batch_chunking=10,  # Write 10 batches (500K entities) in one transaction
                 reader_query=reader_query,
                 process_function=process_function,
                 write_function=writer_function,
                 total_rows=total_rows,
-                process_title="Normalizing entity text"
+                process_title="Normalizing entity text",
             )
 
             # Execute the normalization process
             self.logger.info("Starting multi-threaded text normalization...")
             rw_pair.run()
 
-            self.logger.info(f"Text normalization complete. Processed {total_rows} entities.")
+            self.logger.info(
+                f"Text normalization complete. Processed {total_rows} entities."
+            )
 
             # Create final index on normalized text for faster lookups
             self.logger.info("Creating index on normalized text column...")
@@ -2072,6 +2425,7 @@ class Preprocessor(BaseComponent):
             self.cursor.execute(f"ANALYZE {TABLE_NE}")
             self.logger.info("Normalization process complete.")
 
+
 class Analysis(BaseComponent):
     def record_entity_occurrences(self, batch_size=1000):
         """Record entity occurrences in batches"""
@@ -2082,6 +2436,7 @@ class Analysis(BaseComponent):
         except Exception as e:
             self.logger.error(f"Error recording entity occurrences: {e}")
             return False
+
 
 class Aggregator(BaseComponent):
     def aggregate_named_entities(self, overwrite: bool = False) -> dict:
@@ -2110,20 +2465,23 @@ class Aggregator(BaseComponent):
             # Start transaction for atomicity
             self.cursor.execute("BEGIN TRANSACTION")
 
-
             # Step 1: Prepare and validate input data
             stats_dir = self._analyze_entities_for_aggregation()
-            entity_count = stats_dir['valid_entities']
+            entity_count = stats_dir["valid_entities"]
             if entity_count == 0:
-                self.logger.warning("No valid entities found for aggregation. Skipping process.")
+                self.logger.warning(
+                    "No valid entities found for aggregation. Skipping process."
+                )
                 return None
 
             # Step 2: Perform entity aggregation
-            if stats_dir['unique_combinations'] == 0:
+            if stats_dir["unique_combinations"] == 0:
                 self.logger.info("No unique combinations found. Skipping aggregation.")
                 return None
-            if stats_dir['unique_combinations'] == stats_dir['existing_aggregations']:
-                self.logger.info("All unique combinations are already aggregated. Skipping aggregation.")
+            if stats_dir["unique_combinations"] == stats_dir["existing_aggregations"]:
+                self.logger.info(
+                    "All unique combinations are already aggregated. Skipping aggregation."
+                )
             else:
                 rows_aggregated = self._perform_entity_aggregation()
 
@@ -2140,16 +2498,20 @@ class Aggregator(BaseComponent):
                 # Commit all changes
                 self.conn.commit()
                 elapsed_time = time.time() - start_time
-                self.logger.info(f"Entity aggregation completed successfully in {elapsed_time:.2f} seconds")
+                self.logger.info(
+                    f"Entity aggregation completed successfully in {elapsed_time:.2f} seconds"
+                )
                 return {
                     "entities_processed": entity_count,
                     "unique_aggregations": rows_aggregated,
                     "entities_updated": rows_updated,
                     "validation": validation_result,
-                    "processing_time": elapsed_time
+                    "processing_time": elapsed_time,
                 }
             else:
-                self.logger.error(f"Entity aggregation validation failed: {validation_result['message']}")
+                self.logger.error(
+                    f"Entity aggregation validation failed: {validation_result['message']}"
+                )
                 self.conn.rollback()
                 return None
 
@@ -2209,21 +2571,24 @@ class Aggregator(BaseComponent):
             self.logger.info("Analyzing entity data...")
             stats = self.cursor.execute(stats_query).fetchone()
             unique_combinations = self.cursor.execute(unique_combos_query).fetchone()[0]
-            aggr_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}").fetchone()[0] # Get existing aggregation count
+            aggr_count = self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}"
+            ).fetchone()[
+                0
+            ]  # Get existing aggregation count
 
             stats_dict = {
                 "total_entities": stats[0],
                 "valid_entities": stats[1],
                 "unique_combinations": unique_combinations,
                 "already_referenced": stats[2],
-                "existing_aggregations": aggr_count
+                "existing_aggregations": aggr_count,
             }
 
             # # Save stats to cache
             # try:
             #     with open(os.path.join(cache_dir, 'entity_aggregation_stats.json'), 'w') as f:
             #         json.dump(stats_dict, f)
-
 
             self.logger.info(
                 f"Found {stats_dict['valid_entities']:,} valid entities out of {stats_dict['total_entities']:,} total "
@@ -2276,17 +2641,16 @@ class Aggregator(BaseComponent):
         self.conn.commit()
 
         # Get number of rows in the aggregation table
-        rows_aggregated = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}").fetchone()[0]
+        rows_aggregated = self.cursor.execute(
+            f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}"
+        ).fetchone()[0]
 
         duration = time.time() - start
         self.logger.info(
             f"Entity aggregation (overwrite: {overwrite}) completed in {duration:.2f} seconds:"
-            )
+        )
 
-        return {
-            "aggregated_rows": rows_aggregated,
-            "processing_time": duration
-        }
+        return {"aggregated_rows": rows_aggregated, "processing_time": duration}
 
     def _update_ne_norm_id_references_in_batches(self, overwrite: bool = False) -> dict:
         """
@@ -2304,8 +2668,10 @@ class Aggregator(BaseComponent):
         import signal
         from contextlib import contextmanager
 
-        batch_size = int(os.environ.get('EASYNER_BATCH_SIZE', '200000'))
-        self.logger.info(f"Updating entity references with batch size {batch_size} (overwrite={overwrite})...")
+        batch_size = int(os.environ.get("EASYNER_BATCH_SIZE", "200000"))
+        self.logger.info(
+            f"Updating entity references with batch size {batch_size} (overwrite={overwrite})..."
+        )
 
         start_time = time.time()
 
@@ -2315,7 +2681,7 @@ class Aggregator(BaseComponent):
             WHERE {TXT_NORM} IS NOT NULL
         """
 
-        if not overwrite: # Only update entities without a reference
+        if not overwrite:  # Only update entities without a reference
             total_count_query += f" AND {NE_NORM_ID} IS NULL"
 
         total_to_update = self.cursor.execute(total_count_query).fetchone()[0]
@@ -2330,7 +2696,10 @@ class Aggregator(BaseComponent):
         interrupted = False
         error_occurred = False
         error_message = None
-        checkpoint_file = os.path.join(os.environ.get('EASYNER_CHECKPOINT_DIR', '.'),'ne_reference_checkpoint.json')
+        checkpoint_file = os.path.join(
+            os.environ.get("EASYNER_CHECKPOINT_DIR", "."),
+            "ne_reference_checkpoint.json",
+        )
 
         @contextmanager
         def interrupt_handler():
@@ -2339,7 +2708,9 @@ class Aggregator(BaseComponent):
             def handler(signum, frame):
                 nonlocal interrupted
                 interrupted = True
-                self.logger.warning("Interrupt received, completing current batch before stopping...")
+                self.logger.warning(
+                    "Interrupt received, completing current batch before stopping..."
+                )
 
             try:
                 signal.signal(signal.SIGINT, handler)
@@ -2352,14 +2723,19 @@ class Aggregator(BaseComponent):
 
                 # Create checkpoint for recovery
                 try:
-                    with open(checkpoint_file, 'w') as f:
-                        json.dump({
-                            'processed_count': total_updated,
-                            'timestamp': time.time(),
-                            'error': str(e)
-                        }, f)
+                    with open(checkpoint_file, "w") as f:
+                        json.dump(
+                            {
+                                "processed_count": total_updated,
+                                "timestamp": time.time(),
+                                "error": str(e),
+                            },
+                            f,
+                        )
                 except Exception as checkpoint_error:
-                    self.logger.error(f"Failed to create checkpoint file: {checkpoint_error}")
+                    self.logger.error(
+                        f"Failed to create checkpoint file: {checkpoint_error}"
+                    )
 
                 raise  # Re-raise the exception
             finally:
@@ -2395,7 +2771,9 @@ class Aggregator(BaseComponent):
             AND {where_clause}
             """
         # Essential indexes for fast lookup
-        index_norm_id_txt_norm = Index(TABLE_NE, [NE_NORM_ID, TXT_NORM], logger=self.logger)
+        index_norm_id_txt_norm = Index(
+            TABLE_NE, [NE_NORM_ID, TXT_NORM], logger=self.logger
+        )
         index_norm_id_txt_norm.create_if_not_exists(self.cursor, analyze=True)
 
         self.log_query_plan(update_query)
@@ -2407,18 +2785,24 @@ class Aggregator(BaseComponent):
                     batch_start_time = time.time()
 
                     # --- Execute the UPDATE query with CTE ---
-                    self.logger.debug(f"Executing CTE update_query for batch {batch_count}")
+                    self.logger.debug(
+                        f"Executing CTE update_query for batch {batch_count}"
+                    )
                     previous_changes = self.conn.total_changes
-                    self.cursor.execute(update_query) # Execute the update query
+                    self.cursor.execute(update_query)  # Execute the update query
                     batch_updated = self.conn.total_changes - previous_changes
 
                     total_updated += batch_updated
 
                     if batch_updated != batch_size:
-                        self.logger.warning(f"Batch {batch_count}: Only {batch_updated} out of {batch_size} entities updated")
+                        self.logger.warning(
+                            f"Batch {batch_count}: Only {batch_updated} out of {batch_size} entities updated"
+                        )
 
                     if batch_updated == 0:
-                        self.logger.warning("No entities updated in batch, skipping commit")
+                        self.logger.warning(
+                            "No entities updated in batch, skipping commit"
+                        )
                         continue
 
                     # Commit every 10 batches to avoid large transactions and large rollbacks
@@ -2428,10 +2812,16 @@ class Aggregator(BaseComponent):
 
                     # Log progress periodically
                     if batch_count % 10 == 0:
-                        progress = (total_updated / total_to_update) * 100 if total_to_update > 0 else 100
+                        progress = (
+                            (total_updated / total_to_update) * 100
+                            if total_to_update > 0
+                            else 100
+                        )
                         elapsed = time.time() - start_time
                         rate = total_updated / elapsed if elapsed > 0 else 0
-                        eta = (total_to_update - total_updated) / rate if rate > 0 else 0
+                        eta = (
+                            (total_to_update - total_updated) / rate if rate > 0 else 0
+                        )
 
                         self.logger.info(
                             f"Progress: {progress:.1f}% - Updated {total_updated:,}/{total_to_update:,} references "
@@ -2454,7 +2844,9 @@ class Aggregator(BaseComponent):
         if not interrupted and os.path.exists(checkpoint_file):
             os.remove(checkpoint_file)
 
-        self.logger.info(f"Reference update completed: {total_updated:,} references updated in {duration:.2f} seconds")
+        self.logger.info(
+            f"Reference update completed: {total_updated:,} references updated in {duration:.2f} seconds"
+        )
 
         # Verify that all entities were properly updated
         remaining_query = f"""--sql
@@ -2467,7 +2859,9 @@ class Aggregator(BaseComponent):
         remaining = self.cursor.execute(remaining_query).fetchone()[0]
 
         if remaining > 0:
-            self.logger.warning(f"{remaining:,} entities still missing NE_NORM_ID after update")
+            self.logger.warning(
+                f"{remaining:,} entities still missing NE_NORM_ID after update"
+            )
 
         return {
             "total_updated": total_updated,
@@ -2477,7 +2871,7 @@ class Aggregator(BaseComponent):
             "error_occurred": error_occurred,
             "error_message": error_message,
             "processing_time": duration,
-            "remaining": remaining if 'remaining' in locals() else 0,
+            "remaining": remaining if "remaining" in locals() else 0,
         }
 
     def _create_aggregation_indexes(self):
@@ -2524,15 +2918,23 @@ class Aggregator(BaseComponent):
 
             if missing_norm_count > 0:
                 validation_result["success"] = False
-                validation_result["message"] = f"{missing_norm_count} entities missing NE_NORM_ID"
+                validation_result["message"] = (
+                    f"{missing_norm_count} entities missing NE_NORM_ID"
+                )
                 self.logger.error(f"Validation failed: {validation_result['message']}")
                 return validation_result
 
             # Check 2: Verify sample of frequency counts (for performance with large datasets)
-            aggregation_count = self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}").fetchone()[0]
-            sample_size = min(10000, max(1000, int(aggregation_count * 0.01)))  # Sample 1% or at least 1000, max 10000
+            aggregation_count = self.cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_NE_AGGR}"
+            ).fetchone()[0]
+            sample_size = min(
+                10000, max(1000, int(aggregation_count * 0.01))
+            )  # Sample 1% or at least 1000, max 10000
 
-            self.logger.info(f"Validating counts using {sample_size} sample aggregations...")
+            self.logger.info(
+                f"Validating counts using {sample_size} sample aggregations..."
+            )
 
             # Check frequency counts
             sample_query = f"""--sql
@@ -2560,7 +2962,9 @@ class Aggregator(BaseComponent):
 
             if mismatches > 0:
                 validation_result["success"] = False
-                validation_result["message"] = f"{mismatches}/{sample_size} sampled aggregations have count mismatches"
+                validation_result["message"] = (
+                    f"{mismatches}/{sample_size} sampled aggregations have count mismatches"
+                )
                 self.logger.error(f"Validation failed: {validation_result['message']}")
                 return validation_result
 
@@ -2575,26 +2979,35 @@ class Aggregator(BaseComponent):
             self.logger.error(f"Error during aggregation validation: {str(e)}")
             return validation_result
 
+
 class Statistics(BaseComponent):
     @property
     def entity_statistics(self):
         """Get statistics about entity occurrences"""
         try:
             stats = {
-                'total_entities': self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE}").fetchone()[0],
-                'unique_entities': self.cursor.execute(f"SELECT COUNT(DISTINCT {TXT_NORM}) FROM {TABLE_NE}").fetchone()[0],
-                'entities_with_errors': self.cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NE} WHERE {ERROR_ID} IS NOT NULL").fetchone()[0]
+                "total_entities": self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_NE}"
+                ).fetchone()[0],
+                "unique_entities": self.cursor.execute(
+                    f"SELECT COUNT(DISTINCT {TXT_NORM}) FROM {TABLE_NE}"
+                ).fetchone()[0],
+                "entities_with_errors": self.cursor.execute(
+                    f"SELECT COUNT(*) FROM {TABLE_NE} WHERE {ERROR_ID} IS NOT NULL"
+                ).fetchone()[0],
             }
             return stats
         except sqlite3.Error as e:
             self.logger.error(f"Error getting entity statistics: {e}")
             return None
 
+
 class Tests(BaseComponent):
     """
     Test suite for entity occurrence data.
     Provides validation methods for entity integrity and reference checks.
     """
+
     def __init__(self, db_handler: EasyNerDBHandler, statistics: Statistics):
         """
         Initialize Tests component with proper dependencies.
@@ -2637,21 +3050,26 @@ class Tests(BaseComponent):
         """
         invalid_docs = self.cursor.execute(query).fetchone()[0]
         if invalid_docs:
-            self.logger.error(f"Found {invalid_docs} entities with invalid document references!")
+            self.logger.error(
+                f"Found {invalid_docs} entities with invalid document references!"
+            )
         else:
             self.logger.info("No invalid document references found.")
+
 
 class EntityOccurrence:
     """
     Main entrypoint class for Entity Occurrence functionality.
     Handles integration of schema management, analysis, statistics, and testing.
     """
+
     def __init__(self, db_system_instance: EasyNerDBHandler):
         # Store direct reference to database handler
         self._db = db_system_instance
 
         # Import CacheManager only when needed to avoid circular imports
         from ..core.cache_manager import CacheManager
+
         self.cache = CacheManager(db_system_instance)
 
         # Create component instances with proper initialization
@@ -2676,7 +3094,7 @@ class EntityOccurrence:
         results = {
             "entity_occurrences": self.tests.test_entity_occurrences(),
             "normalization": self.tests.validate_normalization_completeness(),
-            "statistics": self.statistics.entity_statistics
+            "statistics": self.statistics.entity_statistics,
         }
 
         # Determine overall status
@@ -2691,4 +3109,3 @@ class EntityOccurrence:
         results["overall_status"] = "ERROR" if has_errors else "OK"
 
         return results
-

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from .schema import *
 import logging
 
+
 @dataclass
 class NamedEntity:
     id: int
@@ -56,9 +57,7 @@ class Sentence:
                             "entity": entity,
                         }
                     )
-                elif (
-                    entity.txt != self.txt[entity.span_start : entity.span_end]
-                ):
+                elif entity.txt != self.txt[entity.span_start : entity.span_end]:
                     self.validation_errors.append(
                         {
                             "entity_id": entity.id,
@@ -74,9 +73,7 @@ class Sentence:
                             "entity": entity,
                         }
                     )
-                elif (
-                    entity.txt != self.txt[entity.span_start : entity.span_end]
-                ):
+                elif entity.txt != self.txt[entity.span_start : entity.span_end]:
                     self.validation_errors.append(
                         {
                             "entity_id": entity.id,
@@ -207,6 +204,3 @@ class Document:
 
         html += "</tbody></table>"
         return html
-
-
-

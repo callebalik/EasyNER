@@ -243,6 +243,7 @@ SCHEMA_TABLE_DIS_PNM_AGGR = f"""--sql
     )
     """
 
+
 # ----------------------
 # Views
 # ----------------------
@@ -252,15 +253,25 @@ class View:
     'stmt' should only include the SELECT statement.
     """
 
-    def __init__(self, main_table: str, select_stmt: str, suffix: str = None, columns: list[str] = None):
+    def __init__(
+        self,
+        main_table: str,
+        select_stmt: str,
+        suffix: str = None,
+        columns: list[str] = None,
+    ):
         self.name = "v_" + main_table + ("_" + suffix if suffix else "")
         self.stmt = select_stmt.replace("--sql", "").strip()
         self.columns = columns
 
-    def create_if_not_exists(self, cursor: sqlite3.Cursor, logger: logging.Logger = None) -> bool:
+    def create_if_not_exists(
+        self, cursor: sqlite3.Cursor, logger: logging.Logger = None
+    ) -> bool:
         """Execute the CREATE VIEW IF NOT EXISTS statement for this view."""
         # Check if the view already exists
-        cursor.execute(f"SELECT name FROM sqlite_master WHERE type='view' AND name='{self.name}';")
+        cursor.execute(
+            f"SELECT name FROM sqlite_master WHERE type='view' AND name='{self.name}';"
+        )
         if cursor.fetchone():
             if logger:
                 logger.debug(f"View {self.name} already exists.")
@@ -293,8 +304,10 @@ class View:
         try:
             self.drop(cursor)
             self.create_if_not_exists(cursor)
-            logger.info(f"Refreshed view {self.name}.") if logger else print(
-                f"Refreshed view {self.name}."
+            (
+                logger.info(f"Refreshed view {self.name}.")
+                if logger
+                else print(f"Refreshed view {self.name}.")
             )
         except Exception as e:
             if logger:
@@ -397,6 +410,7 @@ VIEW_DIS_PNM_PRESENTATION = View(
             """,
 )
 
+
 # ----------------------
 # Indexes (ind + TABLE +)
 # ----------------------
@@ -491,9 +505,7 @@ class Index:
         cursor.execute(f"DROP INDEX IF EXISTS {self.stmt};")
 
 
-
 IDX_NE_ERROR_ID_NOT_NULL = Index(TABLE_NE, [ERROR_ID], where=f"{ERROR_ID} IS NOT NULL")
-
 
 
 VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY = View(
@@ -542,7 +554,4 @@ VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY = View(
                 JOIN {TABLE_NE_AGGR} ne1 ON co.{E1_NORM_ID} = ne1.{NE_NORM_ID}
                 JOIN {TABLE_NE_AGGR} ne2 ON co.{E2_NORM_ID} = ne2.{NE_NORM_ID}
             """,
-
 )
-
-

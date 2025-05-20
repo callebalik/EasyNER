@@ -43,15 +43,11 @@ class TestNERUtils:
         pipeline = MagicMock()
         pipeline.device = torch.device("cpu")
 
-        dataset = Dataset.from_dict(
-            {"text": ["Sample text 1", "Sample text 2"]}
-        )
+        dataset = Dataset.from_dict({"text": ["Sample text 1", "Sample text 2"]})
 
         with patch("builtins.print"):  # Suppress print outputs
             result = calculate_optimal_batch_size(pipeline, dataset)
-            assert (
-                result == 32
-            ), "CPU devices should return a fixed batch size of 32"
+            assert result == 32, "CPU devices should return a fixed batch size of 32"
 
     @patch("torch.cuda.is_available", return_value=True)
     @patch("torch.cuda.empty_cache")
@@ -78,9 +74,7 @@ class TestNERUtils:
             time_values.append(i)
 
         # Call function
-        with patch(
-            "torch.cuda.get_device_properties", return_value=mock_device
-        ):
+        with patch("torch.cuda.get_device_properties", return_value=mock_device):
             with patch("time.time", side_effect=time_values):
                 with patch("builtins.print"):  # Suppress print outputs
                     # Create small dataset for quick testing
@@ -116,9 +110,7 @@ class TestNERUtils:
 
         pipeline.side_effect = side_effect
 
-        dataset = Dataset.from_dict(
-            {"text": ["Sample text " * 10 for _ in range(10)]}
-        )
+        dataset = Dataset.from_dict({"text": ["Sample text " * 10 for _ in range(10)]})
 
         # Call the function with print suppressed
         with patch("builtins.print"):  # Suppress print outputs
@@ -136,13 +128,9 @@ class TestNERUtils:
         """Test that batch size calculation outputs informative progress messages."""
         # Test for CUDA device, since CPU devices exit early before printing
         pipeline = MagicMock()
-        pipeline.device = torch.device(
-            "cuda:0"
-        )  # Use CUDA device to trigger prints
+        pipeline.device = torch.device("cuda:0")  # Use CUDA device to trigger prints
 
-        dataset = Dataset.from_dict(
-            {"text": ["Sample text 1", "Sample text 2"]}
-        )
+        dataset = Dataset.from_dict({"text": ["Sample text 1", "Sample text 2"]})
 
         # Collect print calls
         print_values = []
@@ -156,12 +144,8 @@ class TestNERUtils:
             patch("torch.cuda.is_available", return_value=True),
             patch("torch.cuda.empty_cache"),
             patch("torch.cuda.reset_peak_memory_stats"),
-            patch(
-                "torch.cuda.max_memory_allocated", return_value=1 * (1024**3)
-            ),  # 1GB
-            patch(
-                "time.time", side_effect=range(100)
-            ),  # Mock time with many values
+            patch("torch.cuda.max_memory_allocated", return_value=1 * (1024**3)),  # 1GB
+            patch("time.time", side_effect=range(100)),  # Mock time with many values
             patch(
                 "torch.cuda.get_device_properties",
                 return_value=MagicMock(total_memory=16 * (1024**3)),

@@ -8,6 +8,7 @@ import os
 
 TABLE_CACHE = "cache_entries"
 
+
 class CacheManager:
     """
     Database-backed cache manager for EasyNer that stores key-value pairs with expiration times.
@@ -126,7 +127,7 @@ class CacheManager:
             self.set_global("_cache_manager_version", "1.0")
 
             # Record database path for reference
-            db_path = getattr(self.db_handler, 'db_path', 'unknown')
+            db_path = getattr(self.db_handler, "db_path", "unknown")
             self.set_global("_database_path", db_path)
 
             # Initialize empty metrics containers with no expiration
@@ -137,7 +138,7 @@ class CacheManager:
             env_info = {
                 "batch_size": int(os.environ.get("BATCH_SIZE", "1000")),
                 "log_level": os.environ.get("LOG_LEVEL", "INFO"),
-                "db_path": os.environ.get("DB_PATH", "")
+                "db_path": os.environ.get("DB_PATH", ""),
             }
             self.set_global("environment", env_info)
 
@@ -174,15 +175,15 @@ class CacheManager:
             value, value_type, expires_at = result
 
             # Deserialize based on the stored type
-            if value_type == 'pickle':
+            if value_type == "pickle":
                 value = pickle.loads(value)
-            elif value_type == 'json':
+            elif value_type == "json":
                 value = json.loads(value)
-            elif value_type == 'int':
+            elif value_type == "int":
                 value = int(value)
-            elif value_type == 'float':
+            elif value_type == "float":
                 value = float(value)
-            elif value_type == 'str':
+            elif value_type == "str":
                 value = str(value)
 
             self.logger.debug(f"Cache hit for key: {key}")
@@ -192,7 +193,13 @@ class CacheManager:
             self.logger.error(f"Error retrieving from cache for key {key}: {e}")
             return default
 
-    def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None, overwrite: bool = True) -> bool:
+    def set(
+        self,
+        key: str,
+        value: Any,
+        ttl_seconds: Optional[int] = None,
+        overwrite: bool = True,
+    ) -> bool:
         """
         Store a value in the cache with optional expiration time.
 
@@ -213,26 +220,28 @@ class CacheManager:
             expires_at = current_time + ttl_seconds if ttl_seconds is not None else None
 
             # Determine serialization method based on value type
-            if isinstance(value, (dict, list, tuple)) or not isinstance(value, (int, float, str, bytes)):
+            if isinstance(value, (dict, list, tuple)) or not isinstance(
+                value, (int, float, str, bytes)
+            ):
                 try:
                     serialized_value = pickle.dumps(value)
-                    value_type = 'pickle'
+                    value_type = "pickle"
                 except (pickle.PickleError, TypeError):
                     # Fallback to JSON for values that can't be pickled
                     serialized_value = json.dumps(value)
-                    value_type = 'json'
+                    value_type = "json"
             elif isinstance(value, int):
                 serialized_value = value
-                value_type = 'int'
+                value_type = "int"
             elif isinstance(value, float):
                 serialized_value = value
-                value_type = 'float'
+                value_type = "float"
             elif isinstance(value, str):
                 serialized_value = value
-                value_type = 'str'
+                value_type = "str"
             else:
                 serialized_value = str(value)
-                value_type = 'str'
+                value_type = "str"
 
             if overwrite:
                 query = """--sql
@@ -245,7 +254,9 @@ class CacheManager:
                 VALUES (?, ?, ?, ?, ?)
                 """
 
-            self.cursor.execute(query, (key, serialized_value, value_type, current_time, expires_at))
+            self.cursor.execute(
+                query, (key, serialized_value, value_type, current_time, expires_at)
+            )
             self.conn.commit()
 
             self.logger.debug(f"Cache set for key: {key}, expires: {expires_at}")
@@ -295,15 +306,15 @@ class CacheManager:
                     clean_name = name
 
                     # Deserialize based on the stored type
-                    if value_type == 'pickle':
+                    if value_type == "pickle":
                         result[clean_name] = pickle.loads(value)
-                    elif value_type == 'json':
+                    elif value_type == "json":
                         result[clean_name] = json.loads(value)
-                    elif value_type == 'int':
+                    elif value_type == "int":
                         result[clean_name] = int(value)
-                    elif value_type == 'float':
+                    elif value_type == "float":
                         result[clean_name] = float(value)
-                    elif value_type == 'str':
+                    elif value_type == "str":
                         result[clean_name] = str(value)
 
                 return result or default
@@ -312,7 +323,9 @@ class CacheManager:
                 self.logger.error(f"Error retrieving all global values: {e}")
                 return default or {}
 
-    def set_global(self, name: str, value: Any, ttl_seconds: Optional[int] = None) -> bool:
+    def set_global(
+        self, name: str, value: Any, ttl_seconds: Optional[int] = None
+    ) -> bool:
         """
         Set a global cache value with optional expiration.
 
@@ -360,19 +373,24 @@ class CacheManager:
 
                     # Check which tables exist
                     for table in tables_to_check:
-                        self.cursor.execute("""--sql
+                        self.cursor.execute(
+                            """--sql
                             SELECT COUNT(*) FROM sqlite_master
                             WHERE type='table' AND name=?
-                        """, (table,))
+                        """,
+                            (table,),
+                        )
 
                         if self.cursor.fetchone()[0] > 0:
                             # Table exists, count rows
-                            self.cursor.execute(f"""--sql SELECT COUNT(*) FROM {table}""")
+                            self.cursor.execute(
+                                f"""--sql SELECT COUNT(*) FROM {table}"""
+                            )
                             count = self.cursor.fetchone()[0]
                             metrics[f"{table}_count"] = count
 
                     # Get database file size
-                    db_path = getattr(self.db_handler, 'db_path', None)
+                    db_path = getattr(self.db_handler, "db_path", None)
                     if db_path and os.path.exists(db_path):
                         metrics["database_size_bytes"] = os.path.getsize(db_path)
 
@@ -438,15 +456,15 @@ class CacheManager:
                     clean_name = name
 
                     # Deserialize based on the stored type
-                    if value_type == 'pickle':
+                    if value_type == "pickle":
                         result[clean_name] = pickle.loads(value)
-                    elif value_type == 'json':
+                    elif value_type == "json":
                         result[clean_name] = json.loads(value)
-                    elif value_type == 'int':
+                    elif value_type == "int":
                         result[clean_name] = int(value)
-                    elif value_type == 'float':
+                    elif value_type == "float":
                         result[clean_name] = float(value)
-                    elif value_type == 'str':
+                    elif value_type == "str":
                         result[clean_name] = str(value)
 
                 return result
@@ -507,17 +525,21 @@ class CacheManager:
 
             query = """--sql DELETE FROM cache_entries WHERE cache_key LIKE ?"""
 
-            self.cursor.execute(query, (prefix + '%',))
+            self.cursor.execute(query, (prefix + "%",))
             deleted_count = self.cursor.rowcount
 
             self.conn.commit()
-            self.logger.info(f"Deleted {deleted_count} cache entries with prefix '{prefix}'")
+            self.logger.info(
+                f"Deleted {deleted_count} cache entries with prefix '{prefix}'"
+            )
             return deleted_count
 
         except sqlite3.Error as e:
             if self.conn.in_transaction:
                 self.conn.rollback()
-            self.logger.error(f"Failed to delete cache entries with prefix '{prefix}': {e}")
+            self.logger.error(
+                f"Failed to delete cache entries with prefix '{prefix}': {e}"
+            )
             return 0
 
     def clean_expired(self) -> int:
@@ -568,7 +590,9 @@ class CacheManager:
             deleted_count = self.cursor.rowcount
 
             self.conn.commit()
-            self.logger.info(f"Cleaned {deleted_count} cache entries older than {seconds} seconds")
+            self.logger.info(
+                f"Cleaned {deleted_count} cache entries older than {seconds} seconds"
+            )
             return deleted_count
 
         except sqlite3.Error as e:
@@ -619,6 +643,7 @@ class CacheManager:
         Returns:
             Decorated function
         """
+
         def decorator(func):
             def wrapper(*args, **kwargs):
                 # Create a cache key from the function name and arguments
@@ -652,7 +677,9 @@ class CacheManager:
                 execution_time = time.time() - start_time
 
                 # Store the result in cache
-                self.set(cache_key, result, ttl_seconds=ttl_seconds, overwrite=overwrite)
+                self.set(
+                    cache_key, result, ttl_seconds=ttl_seconds, overwrite=overwrite
+                )
 
                 # Optionally record execution time in metrics
                 if hasattr(func, "__qualname__"):
@@ -660,7 +687,9 @@ class CacheManager:
                     self.set_global(metric_key, execution_time)
 
                 return result
+
             return wrapper
+
         return decorator
 
     # Global configuration methods
@@ -689,15 +718,15 @@ class CacheManager:
                     # Process as in get_global
                     clean_name = name
 
-                    if value_type == 'pickle':
+                    if value_type == "pickle":
                         result[clean_name] = pickle.loads(value)
-                    elif value_type == 'json':
+                    elif value_type == "json":
                         result[clean_name] = json.loads(value)
-                    elif value_type == 'int':
+                    elif value_type == "int":
                         result[clean_name] = int(value)
-                    elif value_type == 'float':
+                    elif value_type == "float":
                         result[clean_name] = float(value)
-                    elif value_type == 'str':
+                    elif value_type == "str":
                         result[clean_name] = str(value)
 
                 return result or default
@@ -738,15 +767,15 @@ class CacheManager:
                 for name, value, value_type in self.cursor:
                     clean_name = name
 
-                    if value_type == 'pickle':
+                    if value_type == "pickle":
                         result[clean_name] = pickle.loads(value)
-                    elif value_type == 'json':
+                    elif value_type == "json":
                         result[clean_name] = json.loads(value)
-                    elif value_type == 'int':
+                    elif value_type == "int":
                         result[clean_name] = int(value)
-                    elif value_type == 'float':
+                    elif value_type == "float":
                         result[clean_name] = float(value)
-                    elif value_type == 'str':
+                    elif value_type == "str":
                         result[clean_name] = str(value)
 
                 return result
@@ -776,21 +805,24 @@ class CacheManager:
                 "namespaces": {},
                 "oldest_entry_age": 0,
                 "newest_entry_age": 0,
-                "total_size_bytes": 0
+                "total_size_bytes": 0,
             }
 
             # Get current time for age calculations
             current_time = time.time()
 
             # Get total, active, and expired counts
-            self.cursor.execute("""--sql
+            self.cursor.execute(
+                """--sql
                 SELECT
                     COUNT(*) as total,
                     COUNT(CASE WHEN expires_at IS NULL OR expires_at > ? THEN 1 END) as active,
                     COUNT(CASE WHEN expires_at IS NOT NULL AND expires_at <= ? THEN 1 END) as expired,
                     COUNT(CASE WHEN expires_at IS NULL THEN 1 END) as permanent
                 FROM cache_entries
-            """, (current_time, current_time))
+            """,
+                (current_time, current_time),
+            )
 
             row = self.cursor.fetchone()
             stats["total_entries"] = row[0]
@@ -799,12 +831,14 @@ class CacheManager:
             stats["permanent_entries"] = row[3]
 
             # Get oldest and newest entries
-            self.cursor.execute("""--sql
+            self.cursor.execute(
+                """--sql
                 SELECT
                     MIN(created_at) as oldest,
                     MAX(created_at) as newest
                 FROM cache_entries
-            """)
+            """
+            )
 
             row = self.cursor.fetchone()
             if row[0]:
@@ -813,7 +847,8 @@ class CacheManager:
                 stats["newest_entry_age"] = current_time - row[1]
 
             # Count entries by namespace
-            self.cursor.execute("""--sql
+            self.cursor.execute(
+                """--sql
                 SELECT
                     CASE
                         WHEN cache_key LIKE 'global.%' THEN 'global'
@@ -825,17 +860,20 @@ class CacheManager:
                     COUNT(*) as count
                 FROM cache_entries
                 GROUP BY namespace
-            """)
+            """
+            )
 
             for namespace, count in self.cursor:
                 stats["namespaces"][namespace] = count
 
             # Estimate total size (approximate)
-            self.cursor.execute("""--sql
+            self.cursor.execute(
+                """--sql
                 SELECT
                     SUM(LENGTH(cache_key) + LENGTH(cache_value)) as total_size
                 FROM cache_entries
-            """)
+            """
+            )
 
             row = self.cursor.fetchone()
             if row[0]:

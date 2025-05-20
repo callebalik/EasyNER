@@ -1,9 +1,16 @@
 import logging
 
+
 class BaseLogger:
     """Base class for application logging with configurable file and console handlers."""
 
-    def __init__(self, logger_name="BaseAppLogger", log_level=logging.DEBUG, log_dir="logs", enable_console_log=True):
+    def __init__(
+        self,
+        logger_name="BaseAppLogger",
+        log_level=logging.DEBUG,
+        log_dir="logs",
+        enable_console_log=True,
+    ):
         """
         Initialize the BaseLogger.
 
@@ -13,7 +20,9 @@ class BaseLogger:
         :param enable_console_log: Boolean to enable or disable console logging.
         """
         self.logger = logging.getLogger(logger_name)
-        self.logger.setLevel(logging.DEBUG)  # Logger level is set to DEBUG to capture all messages, handlers can filter
+        self.logger.setLevel(
+            logging.DEBUG
+        )  # Logger level is set to DEBUG to capture all messages, handlers can filter
 
         # Ensure the logs directory exists
         os.makedirs(log_dir, exist_ok=True)
@@ -35,7 +44,7 @@ class BaseLogger:
         """Sets up file handler for logging all levels to a file."""
         log_file = os.path.join(self.log_dir, self.logger_name + ".log")
         file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(log_level) # Set level from constructor argument
+        file_handler.setLevel(log_level)  # Set level from constructor argument
         file_handler.setFormatter(self._get_log_formatter())
         self.logger.addHandler(file_handler)
 
@@ -48,7 +57,9 @@ class BaseLogger:
 
     def _setup_error_file_handler(self):
         """Sets up a separate file handler for logging ERROR level and above to an error log file."""
-        error_log_file = os.path.join(self.log_dir, "db_error.log") # Keeping "db_error.log" as in original
+        error_log_file = os.path.join(
+            self.log_dir, "db_error.log"
+        )  # Keeping "db_error.log" as in original
         error_file_handler = logging.FileHandler(error_log_file)
         error_file_handler.setLevel(logging.ERROR)
         error_file_handler.setFormatter(self._get_log_formatter())

@@ -9,13 +9,15 @@ import threading
 from contextlib import contextmanager
 import shutil
 
+
 class VisualizationFileHandler(FileSystemEventHandler):
     """Handler for visualization file changes"""
+
     def __init__(self, manager):
         self.manager = manager
 
     def on_modified(self, event):
-        if event.src_path.endswith('.py'):
+        if event.src_path.endswith(".py"):
             visualization_name = os.path.splitext(os.path.basename(event.src_path))[0]
             module_path = os.path.dirname(event.src_path)
             if module_path not in sys.path:
@@ -23,18 +25,21 @@ class VisualizationFileHandler(FileSystemEventHandler):
             try:
                 # Reload the module if it's already loaded
                 module_name = f"statistics.{visualization_name}"
-                if (module_name in sys.modules):
+                if module_name in sys.modules:
                     importlib.reload(sys.modules[module_name])
                 self.manager.invalidate_cache(visualization_name)
             except Exception as e:
-                self.manager.app.logger.error(f"Error reloading module {visualization_name}: {e}")
+                self.manager.app.logger.error(
+                    f"Error reloading module {visualization_name}: {e}"
+                )
+
 
 class VisualizationManager:
     def __init__(self, app):
         self.app = app
         self.caches = {}  # Dictionary to store multiple visualization caches
         self.last_modified = {}
-        self.cache_path = os.path.join(os.path.dirname(__file__), 'cache')
+        self.cache_path = os.path.join(os.path.dirname(__file__), "cache")
         self.lock = threading.Lock()
         self.thread_local = threading.local()
 
@@ -42,7 +47,7 @@ class VisualizationManager:
 
         # Add the current directory to sys.path if not already there
         current_dir = os.path.dirname(__file__)
-        if (current_dir not in sys.path):
+        if current_dir not in sys.path:
             sys.path.append(current_dir)
 
         # Setup file watching
@@ -51,7 +56,7 @@ class VisualizationManager:
         self.observer.schedule(
             self.event_handler,
             os.path.dirname(__file__),
-            recursive=True  # Changed to True to watch subdirectories
+            recursive=True,  # Changed to True to watch subdirectories
         )
         self.observer.start()
         app.logger.debug("Started visualization file monitoring")
@@ -77,15 +82,19 @@ class VisualizationManager:
             # If db_source is a function (get_db_simple_connection), use it to get a connection
             if callable(db_source):
                 conn = db_source()
-                self.app.logger.debug("Created connection using connection factory function")
+                self.app.logger.debug(
+                    "Created connection using connection factory function"
+                )
                 # Only close connections that we create
                 should_close_conn = True
             else:
                 # Otherwise assume it's the main db handler or an existing connection
-                if hasattr(db_source, 'get_dedicated_connection'):
+                if hasattr(db_source, "get_dedicated_connection"):
                     # It's a database handler with dedicated connection method
                     conn = db_source.get_dedicated_connection()
-                    self.app.logger.debug("Created dedicated connection from db_handler")
+                    self.app.logger.debug(
+                        "Created dedicated connection from db_handler"
+                    )
                     # We should close this dedicated connection
                     should_close_conn = True
                 else:
@@ -96,7 +105,7 @@ class VisualizationManager:
                     should_close_conn = False
 
             # Check if the connection has a cursor method or is a cursor already
-            if hasattr(conn, 'cursor') and callable(getattr(conn, 'cursor')):
+            if hasattr(conn, "cursor") and callable(getattr(conn, "cursor")):
                 cursor = conn.cursor()
                 self.app.logger.debug("Created new cursor from connection")
                 # We created this cursor, so we should close it
@@ -119,7 +128,12 @@ class VisualizationManager:
 
             # Commit any pending changes if it's an actual connection with commit method
             # and only if we're responsible for managing this connection
-            if should_close_conn and conn and hasattr(conn, 'commit') and callable(getattr(conn, 'commit')):
+            if (
+                should_close_conn
+                and conn
+                and hasattr(conn, "commit")
+                and callable(getattr(conn, "commit"))
+            ):
                 try:
                     conn.commit()
                 except Exception as e:
@@ -128,7 +142,12 @@ class VisualizationManager:
         except Exception as e:
             # Log the error and rollback if needed
             self.app.logger.error(f"Error in thread connection: {e}", exc_info=True)
-            if should_close_conn and conn and hasattr(conn, 'rollback') and callable(getattr(conn, 'rollback')):
+            if (
+                should_close_conn
+                and conn
+                and hasattr(conn, "rollback")
+                and callable(getattr(conn, "rollback"))
+            ):
                 try:
                     conn.rollback()
                 except Exception as rollback_e:
@@ -138,7 +157,13 @@ class VisualizationManager:
             # Always clean up in reverse order, but only for resources we created
 
             # Only close the cursor if we created it and it's distinct from the connection
-            if should_close_cursor and cursor and cursor != conn and hasattr(cursor, 'close') and callable(getattr(cursor, 'close')):
+            if (
+                should_close_cursor
+                and cursor
+                and cursor != conn
+                and hasattr(cursor, "close")
+                and callable(getattr(cursor, "close"))
+            ):
                 try:
                     cursor.close()
                     self.app.logger.debug("Closed cursor that we created")
@@ -146,7 +171,12 @@ class VisualizationManager:
                     self.app.logger.error(f"Error closing cursor: {e}")
 
             # Only close the connection if we created it
-            if should_close_conn and conn and hasattr(conn, 'close') and callable(getattr(conn, 'close')):
+            if (
+                should_close_conn
+                and conn
+                and hasattr(conn, "close")
+                and callable(getattr(conn, "close"))
+            ):
                 try:
                     conn.close()
                     self.app.logger.debug("Closed connection that we created")
@@ -154,13 +184,13 @@ class VisualizationManager:
                     self.app.logger.error(f"Error closing connection: {e}")
 
             # Clear thread local storage
-            if hasattr(self.thread_local, 'cursor'):
+            if hasattr(self.thread_local, "cursor"):
                 del self.thread_local.cursor
-            if hasattr(self.thread_local, 'conn'):
+            if hasattr(self.thread_local, "conn"):
                 del self.thread_local.conn
-            if hasattr(self.thread_local, 'should_close_conn'):
+            if hasattr(self.thread_local, "should_close_conn"):
                 del self.thread_local.should_close_conn
-            if hasattr(self.thread_local, 'should_close_cursor'):
+            if hasattr(self.thread_local, "should_close_cursor"):
                 del self.thread_local.should_close_cursor
 
     def invalidate_cache(self, visualization_name):
@@ -169,7 +199,9 @@ class VisualizationManager:
             if visualization_name in self.caches:
                 self.caches[visualization_name] = None
                 self.last_modified[visualization_name] = 0
-                self.app.logger.debug(f"{visualization_name} visualization cache invalidated")
+                self.app.logger.debug(
+                    f"{visualization_name} visualization cache invalidated"
+                )
 
     def clear_cache(self):
         """Clear all visualization caches"""
@@ -183,15 +215,21 @@ class VisualizationManager:
             if os.path.exists(self.cache_path):
                 try:
                     # Remove and recreate cache directory
-                    cache_files = [f for f in os.listdir(self.cache_path) if f.endswith('.html')]
+                    cache_files = [
+                        f for f in os.listdir(self.cache_path) if f.endswith(".html")
+                    ]
                     cleared_files = len(cache_files)
                     for cache_file in cache_files:
                         file_path = os.path.join(self.cache_path, cache_file)
                         try:
                             os.remove(file_path)
                         except Exception as e:
-                            self.app.logger.error(f"Error removing cache file {file_path}: {e}")
-                    self.app.logger.info(f"Cleared {cleared_files} visualization cache files")
+                            self.app.logger.error(
+                                f"Error removing cache file {file_path}: {e}"
+                            )
+                    self.app.logger.info(
+                        f"Cleared {cleared_files} visualization cache files"
+                    )
                 except Exception as e:
                     self.app.logger.error(f"Error clearing visualization cache: {e}")
         return cleared_files
@@ -208,23 +246,27 @@ class VisualizationManager:
         Returns:
             HTML content for the visualization
         """
-        cache_file = os.path.join(self.cache_path, f'{visualization_name}.html')
-        source_file = os.path.join(os.path.dirname(__file__), f'{visualization_name}.py')
+        cache_file = os.path.join(self.cache_path, f"{visualization_name}.html")
+        source_file = os.path.join(
+            os.path.dirname(__file__), f"{visualization_name}.py"
+        )
 
         try:
             with self.lock:
                 module_name = f"statistics.{visualization_name}"
-                module_modified = os.path.getmtime(source_file) if os.path.exists(source_file) else 0
+                module_modified = (
+                    os.path.getmtime(source_file) if os.path.exists(source_file) else 0
+                )
                 cache_exists = os.path.exists(cache_file)
                 cache_modified = os.path.getmtime(cache_file) if cache_exists else 0
 
                 # Check if module was modified or cache is invalid
                 needs_update = (
-                    visualization_name not in self.caches or
-                    self.caches[visualization_name] is None or
-                    not cache_exists or
-                    module_modified > cache_modified or
-                    module_modified > self.last_modified.get(visualization_name, 0)
+                    visualization_name not in self.caches
+                    or self.caches[visualization_name] is None
+                    or not cache_exists
+                    or module_modified > cache_modified
+                    or module_modified > self.last_modified.get(visualization_name, 0)
                 )
 
                 if needs_update:
@@ -236,7 +278,8 @@ class VisualizationManager:
                     self.last_modified[visualization_name] = time.time()
 
                     # Add version-based refresh script that only checks when the file is modified
-                    refresh_script = """
+                    refresh_script = (
+                        """
                     <script>
                         const sourceModified = %s;
                         let lastModified = sourceModified;
@@ -268,7 +311,9 @@ class VisualizationManager:
                             checkInterval = setInterval(checkForChanges, 5000);
                         });
                     </script>
-                    """ % module_modified
+                    """
+                        % module_modified
+                    )
 
                     # Insert refresh script before closing body tag
                     if "</body>" in html:
@@ -277,7 +322,7 @@ class VisualizationManager:
                         html += refresh_script
 
                     # Cache the result
-                    with open(cache_file, 'w') as f:
+                    with open(cache_file, "w") as f:
                         f.write(html)
 
                     self.caches[visualization_name] = html
@@ -285,7 +330,10 @@ class VisualizationManager:
                 return self.caches.get(visualization_name, "")
 
         except Exception as e:
-            self.app.logger.error(f"Error handling cached visualization {visualization_name}: {e}", exc_info=True)
+            self.app.logger.error(
+                f"Error handling cached visualization {visualization_name}: {e}",
+                exc_info=True,
+            )
             raise
 
     def get_cache_stats(self):
@@ -294,12 +342,14 @@ class VisualizationManager:
             "in_memory_cache_count": len(self.caches),
             "file_cache_count": 0,
             "cache_size_bytes": 0,
-            "cache_items": []
+            "cache_items": [],
         }
 
         try:
             if os.path.exists(self.cache_path):
-                cache_files = [f for f in os.listdir(self.cache_path) if f.endswith('.html')]
+                cache_files = [
+                    f for f in os.listdir(self.cache_path) if f.endswith(".html")
+                ]
                 stats["file_cache_count"] = len(cache_files)
 
                 for cache_file in cache_files:
@@ -308,13 +358,17 @@ class VisualizationManager:
                         file_size = os.path.getsize(file_path)
                         file_mtime = os.path.getmtime(file_path)
                         stats["cache_size_bytes"] += file_size
-                        stats["cache_items"].append({
-                            "name": os.path.splitext(cache_file)[0],
-                            "size_bytes": file_size,
-                            "last_modified": file_mtime
-                        })
+                        stats["cache_items"].append(
+                            {
+                                "name": os.path.splitext(cache_file)[0],
+                                "size_bytes": file_size,
+                                "last_modified": file_mtime,
+                            }
+                        )
                     except Exception as e:
-                        self.app.logger.error(f"Error getting stats for cache file {file_path}: {e}")
+                        self.app.logger.error(
+                            f"Error getting stats for cache file {file_path}: {e}"
+                        )
         except Exception as e:
             self.app.logger.error(f"Error getting visualization cache stats: {e}")
 

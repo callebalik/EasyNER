@@ -20,7 +20,15 @@ def get_gpu_usage(job_id):
 
     # Log onto the node running the job and retrieve GPU usage details
     jobsh_result = subprocess.run(
-        ["jobsh", "-j", job_id, "--", "nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+        [
+            "jobsh",
+            "-j",
+            job_id,
+            "--",
+            "nvidia-smi",
+            "--query-gpu=utilization.gpu",
+            "--format=csv,noheader,nounits",
+        ],
         stdout=subprocess.PIPE,
         universal_newlines=True,
     )

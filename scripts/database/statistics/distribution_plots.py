@@ -2,6 +2,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 import numpy as np
 
+
 class DualDistributionVisualizer:
     """Class for creating and annotating statistical distributions."""
 
@@ -61,29 +62,52 @@ class DualDistributionVisualizer:
         self.fig, self.ax_primary = plt.subplots(figsize=figsize)
 
         # Configure primary axis (NPMI)
-        primary_color = 'tab:blue'
-        label_color = 'black'
-        self.ax_primary.set_xlabel('Normalized Pointwise Mutual Information (NPMI)')
-        self.ax_primary.xaxis.label.set_bbox(dict(facecolor=primary_color, alpha=0.5, pad=5))
-        self.ax_primary.set_ylabel('Frequency', color=label_color, fontsize=14)
-        sns.histplot(self.primary_data, bins=bins, kde=show_kde, ax=self.ax_primary, color=primary_color)
-        self.ax_primary.tick_params(axis='y', labelcolor=label_color)
-        self.ax_primary.locator_params(axis='y', nbins=30)
+        primary_color = "tab:blue"
+        label_color = "black"
+        self.ax_primary.set_xlabel("Normalized Pointwise Mutual Information (NPMI)")
+        self.ax_primary.xaxis.label.set_bbox(
+            dict(facecolor=primary_color, alpha=0.5, pad=5)
+        )
+        self.ax_primary.set_ylabel("Frequency", color=label_color, fontsize=14)
+        sns.histplot(
+            self.primary_data,
+            bins=bins,
+            kde=show_kde,
+            ax=self.ax_primary,
+            color=primary_color,
+        )
+        self.ax_primary.tick_params(axis="y", labelcolor=label_color)
+        self.ax_primary.locator_params(axis="y", nbins=30)
         self.ax_primary.grid(alpha=0.3)
         self.ax_primary.xaxis.labelpad = 20
 
         # Configure secondary axis (Unique Documents)
         self.ax_secondary = self.ax_primary.twiny()
-        secondary_color = 'tab:green'
-        self.ax_secondary.set_xlabel('Unique Documents')
-        self.ax_secondary.xaxis.label.set_bbox(dict(facecolor=secondary_color, alpha=0.5, pad=5))
-        sns.histplot(self.secondary_data, bins=bins, kde=show_kde, ax=self.ax_secondary, color=secondary_color)
-        self.ax_secondary.tick_params(axis='x', labelcolor=secondary_color)
+        secondary_color = "tab:green"
+        self.ax_secondary.set_xlabel("Unique Documents")
+        self.ax_secondary.xaxis.label.set_bbox(
+            dict(facecolor=secondary_color, alpha=0.5, pad=5)
+        )
+        sns.histplot(
+            self.secondary_data,
+            bins=bins,
+            kde=show_kde,
+            ax=self.ax_secondary,
+            color=secondary_color,
+        )
+        self.ax_secondary.tick_params(axis="x", labelcolor=secondary_color)
         self.ax_secondary.xaxis.labelpad = 20
 
         return self
 
-    def add_percentile_annotations(self, percentiles=None, colors=None, linestyles=None, text_y_offset=0.1, include_zero_pmi=True):
+    def add_percentile_annotations(
+        self,
+        percentiles=None,
+        colors=None,
+        linestyles=None,
+        text_y_offset=0.1,
+        include_zero_pmi=True,
+    ):
         """
         Add vertical lines and text annotations for percentiles.
 
@@ -116,12 +140,12 @@ class DualDistributionVisualizer:
 
         # Default settings
         if colors is None:
-            colors = {p: 'red' for p in percentiles.keys()}
+            colors = {p: "red" for p in percentiles.keys()}
         elif isinstance(colors, str):
             colors = {p: colors for p in percentiles.keys()}
 
         if linestyles is None:
-            linestyles = {p: '--' for p in percentiles.keys()}
+            linestyles = {p: "--" for p in percentiles.keys()}
         elif isinstance(linestyles, str):
             linestyles = {p: linestyles for p in percentiles.keys()}
 
@@ -130,16 +154,12 @@ class DualDistributionVisualizer:
 
         # Add lines and annotations for each percentile
         for i, (percentile, value) in enumerate(percentiles.items()):
-            color = colors.get(percentile, 'rgb(76, 157, 142)')
-            linestyle = linestyles.get(percentile, '--')
+            color = colors.get(percentile, "rgb(76, 157, 142)")
+            linestyle = linestyles.get(percentile, "--")
 
             # Add vertical line
             self.ax_primary.axvline(
-                x=value,
-                color=color,
-                linestyle=linestyle,
-                linewidth=1,
-                alpha=0.7
+                x=value, color=color, linestyle=linestyle, linewidth=1, alpha=0.7
             )
 
             # Add text annotation
@@ -156,10 +176,10 @@ class DualDistributionVisualizer:
                 text_y,
                 label,
                 color=color,
-                fontweight='normal',
+                fontweight="normal",
                 fontsize=8,
-                ha='center',
-                bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.5')
+                ha="center",
+                bbox=dict(facecolor="white", alpha=0.7, boxstyle="round,pad=0.5"),
             )
 
         return self
@@ -183,6 +203,7 @@ class DualDistributionVisualizer:
         plt.show()
         return self
 
+
 if __name__ == "__main__":
     import numpy as np
     import matplotlib.pyplot as plt
@@ -190,20 +211,16 @@ if __name__ == "__main__":
     import sqlite3
 
     # Example database connection and data retrieval
-    conn = sqlite3.connect('example.db')
+    conn = sqlite3.connect("example.db")
     cursor = conn.cursor()
 
-
     # Example usage:
-    cursor.execute("SELECT npmi, uniq_docs FROM v_DIS_PNM_AGGR_ROW_FACTORY WHERE fq_doc_level > 30")
+    cursor.execute(
+        "SELECT npmi, uniq_docs FROM v_DIS_PNM_AGGR_ROW_FACTORY WHERE fq_doc_level > 30"
+    )
     data = np.array(cursor.fetchall())
 
     visualizer = DualDistributionVisualizer(data)
-    visualizer.create_dual_axis_plot() \
-        .add_percentile_annotations(
-            percentiles=[50, 75],
-            colors='darkred',
-            include_zero_pmi=True
-        ) \
-        .adjust_layout(width_scale=0.7) \
-        .show()
+    visualizer.create_dual_axis_plot().add_percentile_annotations(
+        percentiles=[50, 75], colors="darkred", include_zero_pmi=True
+    ).adjust_layout(width_scale=0.7).show()

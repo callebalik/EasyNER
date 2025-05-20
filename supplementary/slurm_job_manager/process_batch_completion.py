@@ -86,10 +86,14 @@ def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file
                 )
 
                 if batch_completion:
-                    completed_batches = sum(1 for p in batch_completion.values() if p == 100)
+                    completed_batches = sum(
+                        1 for p in batch_completion.values() if p == 100
+                    )
                     total_batches += len(batch_completion)
                     total_completed_batches += completed_batches
-                    completion_percentage = (completed_batches / len(batch_completion)) * 100
+                    completion_percentage = (
+                        completed_batches / len(batch_completion)
+                    ) * 100
 
                     # Initialize counters for unstarted and in-progress batches
                     unstarted_batches = 0
@@ -97,7 +101,9 @@ def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file
                     all_batches_completed = True
 
                     # Write the results to the output file with job name
-                    f_out.write(f"Job {job_name} (ID: {job_id}) - {completed_batches}/{len(batch_completion)} ({completion_percentage:.2f}%):\n")
+                    f_out.write(
+                        f"Job {job_name} (ID: {job_id}) - {completed_batches}/{len(batch_completion)} ({completion_percentage:.2f}%):\n"
+                    )
                     for batch, percentage in batch_completion.items():
                         if percentage == "Not Started":
                             unstarted_batches += 1
@@ -129,7 +135,9 @@ def process_batch_completion(job_metadata_file, err_dir, output_file, rerun_file
                 print(f"No job ID found for batch {job_key}")
 
         # Calculate and write the total completion progress bar
-        total_completion_percentage = (total_completed_batches / total_batches) * 100 if total_batches > 0 else 0
+        total_completion_percentage = (
+            (total_completed_batches / total_batches) * 100 if total_batches > 0 else 0
+        )
         progress_bar = f"[{'#' * int(total_completion_percentage // 2)}{' ' * (50 - int(total_completion_percentage // 2))}] {total_completion_percentage:.2f}%"
         f_out.write(f"Total Completion Progress: {progress_bar}\n\n")
 
@@ -185,4 +193,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Process the jobs and extract highest completion percentages per batch from their .err files
-    process_batch_completion(args.metadata_file, args.err_dir, args.output_file, args.rerun_file)
+    process_batch_completion(
+        args.metadata_file, args.err_dir, args.output_file, args.rerun_file
+    )

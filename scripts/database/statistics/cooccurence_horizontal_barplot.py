@@ -12,16 +12,18 @@ class CooccurenceHorizontalBarplot:
     with customizable appearance for each entity type in a seamless grid layout.
     """
 
-    def __init__(self,
-                first_entity_color='#e6f2ff',
-                second_entity_color='#e6ffe6',
-                first_entity_name='Disease',
-                second_entity_name='Phenomenon',
-                separator='|',
-                fontsize=9,
-                column_spacing=0.1,
-                label_opacity=0.9,           # Increased opacity for label backgrounds
-                title_opacity=0.95):         # Increased opacity for title backgrounds):
+    def __init__(
+        self,
+        first_entity_color="#e6f2ff",
+        second_entity_color="#e6ffe6",
+        first_entity_name="Disease",
+        second_entity_name="Phenomenon",
+        separator="|",
+        fontsize=9,
+        column_spacing=0.1,
+        label_opacity=0.9,  # Increased opacity for label backgrounds
+        title_opacity=0.95,
+    ):  # Increased opacity for title backgrounds):
         """
         Initialize the visualizer with styling preferences.
 
@@ -46,7 +48,9 @@ class CooccurenceHorizontalBarplot:
         self.label_opacity = label_opacity
         self.title_opacity = title_opacity
 
-    def create_bar_plot(self, df, x_column, figsize=(14, 10), title=None, palette="viridis"):
+    def create_bar_plot(
+        self, df, x_column, figsize=(14, 10), title=None, palette="viridis"
+    ):
         """
         Create a horizontal bar plot with seamless entity label columns and the plot.
 
@@ -65,10 +69,11 @@ class CooccurenceHorizontalBarplot:
 
         # Configure GridSpec with explicit spacing parameters
         gs = gridspec.GridSpec(
-            1, 3,
+            1,
+            3,
             width_ratios=[2, 2, 6],
             figure=fig,
-            wspace=self.column_spacing  # Use the column spacing parameter
+            wspace=self.column_spacing,  # Use the column spacing parameter
         )
 
         # Create three axes: first_entity_ax, second_entity_ax, plot_ax
@@ -80,10 +85,12 @@ class CooccurenceHorizontalBarplot:
         y_positions = np.arange(len(df))
 
         # Create bar plot in the main plot area
-        bars = plot_ax.barh(y_positions, df[x_column], color=sns.color_palette(palette, len(df)))
+        bars = plot_ax.barh(
+            y_positions, df[x_column], color=sns.color_palette(palette, len(df))
+        )
         plot_ax.set_xlim(left=0)  # Force x-axis to start at 0
         plot_ax.set_xlabel(x_column)
-        plot_ax.grid(axis='x')
+        plot_ax.grid(axis="x")
 
         # Configure y-ticks on the plot
         plot_ax.set_yticks(y_positions)
@@ -91,7 +98,9 @@ class CooccurenceHorizontalBarplot:
 
         # Set title if provided
         if title:
-            fig.suptitle(title, fontsize=14, y=0.98)  # Adjust title position to prevent layout shifts
+            fig.suptitle(
+                title, fontsize=14, y=0.98
+            )  # Adjust title position to prevent layout shifts
 
         # Draw First Entity labels with edge alignment
         self._draw_entity_labels(
@@ -100,12 +109,13 @@ class CooccurenceHorizontalBarplot:
             df[self.first_entity_name],
             self.first_entity_color,
             label_alignment="right",
-            edge_alignment="right"
+            edge_alignment="right",
         )
 
-
         # Add styled title with background instead of simple set_title
-        self._add_styled_title(first_entity_ax, self.first_entity_name, self.first_entity_color)
+        self._add_styled_title(
+            first_entity_ax, self.first_entity_name, self.first_entity_color
+        )
 
         # Draw Second Entity labels with edge alignment on both sides
         self._draw_entity_labels(
@@ -115,26 +125,31 @@ class CooccurenceHorizontalBarplot:
             self.second_entity_color,
             label_alignment="left",
             edge_alignment="both",
-            add_separator=True
+            add_separator=True,
         )
 
         # Add styled title with background instead of simple set_title
-        self._add_styled_title(second_entity_ax, self.second_entity_name, self.second_entity_color)
-
+        self._add_styled_title(
+            second_entity_ax, self.second_entity_name, self.second_entity_color
+        )
 
         # Remove unnecessary elements and spines
         for ax in [first_entity_ax, second_entity_ax]:
             ax.set_xticks([])
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
-            ax.spines['left'].set_visible(False)
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.spines["bottom"].set_visible(False)
+            ax.spines["left"].set_visible(False)
 
         # Draw connecting horizontal lines across all panels
         for y_pos in y_positions:
             # Draw light horizontal lines across all axes for better tracking
-            first_entity_ax.axhline(y=y_pos, color='#dddddd', linestyle='-', linewidth=0.5, alpha=0.7)
-            second_entity_ax.axhline(y=y_pos, color='#dddddd', linestyle='-', linewidth=0.5, alpha=0.7)
+            first_entity_ax.axhline(
+                y=y_pos, color="#dddddd", linestyle="-", linewidth=0.5, alpha=0.7
+            )
+            second_entity_ax.axhline(
+                y=y_pos, color="#dddddd", linestyle="-", linewidth=0.5, alpha=0.7
+            )
 
         # Layout management - use a single approach to avoid conflicts
         # First apply overall layout adjustments
@@ -142,8 +157,16 @@ class CooccurenceHorizontalBarplot:
 
         return fig
 
-    def _draw_entity_labels(self, ax, y_positions, entity_names, background_color,
-                          label_alignment="left", edge_alignment="right", add_separator=False):
+    def _draw_entity_labels(
+        self,
+        ax,
+        y_positions,
+        entity_names,
+        background_color,
+        label_alignment="left",
+        edge_alignment="right",
+        add_separator=False,
+    ):
         """
         Draw entity labels with colored backgrounds that align perfectly with neighbors.
 
@@ -170,13 +193,13 @@ class CooccurenceHorizontalBarplot:
         for i, (y_pos, entity_name) in enumerate(zip(y_positions, entity_names)):
             # Background rectangle - extend to edges based on alignment
             rect = Rectangle(
-                xy=(0, y_pos-0.4),
+                xy=(0, y_pos - 0.4),
                 width=1,
                 height=0.8,
                 facecolor=background_color,
-                edgecolor='#aaaaaa',  # Lighter border
+                edgecolor="#aaaaaa",  # Lighter border
                 alpha=self.label_opacity,
-                linewidth=0.5
+                linewidth=0.5,
             )
             ax.add_patch(rect)
 
@@ -191,15 +214,15 @@ class CooccurenceHorizontalBarplot:
                 text_x,
                 y_pos,
                 str(entity_name),
-                va='center',
+                va="center",
                 ha=label_alignment,
                 fontsize=self.fontsize,
-                fontweight='normal'
+                fontweight="normal",
             )
 
         # Add separator line if requested (typically for the second entity)
         if add_separator:
-            ax.axvline(x=0, color='black', linestyle='-', linewidth=1)
+            ax.axvline(x=0, color="black", linestyle="-", linewidth=1)
 
     def _add_styled_title(self, ax, title_text, bg_color):
         """
@@ -224,7 +247,7 @@ class CooccurenceHorizontalBarplot:
             height=0.1,
             transform=ax.transAxes,  # Use axis coordinates (0-1)
             facecolor=bg_color,
-            edgecolor='#aaaaaa',
+            edgecolor="#aaaaaa",
             alpha=self.title_opacity,
             linewidth=0.5,
         )
@@ -232,14 +255,16 @@ class CooccurenceHorizontalBarplot:
 
         # Add the title text on top of the rectangle
         ax.text(
-            0.5, 1.03,  # Centered horizontally, positioned vertically within the rectangle
+            0.5,
+            1.03,  # Centered horizontally, positioned vertically within the rectangle
             title_text,
             transform=ax.transAxes,
-            ha='center',
-            va='center',
+            ha="center",
+            va="center",
             fontsize=11,
-            fontweight='bold'
+            fontweight="bold",
         )
+
 
 if __name__ == "__main__":
     # Example usage
@@ -247,21 +272,21 @@ if __name__ == "__main__":
 
     # Sample DataFrame
     data = {
-        'Disease': ['Disease A', 'Disease B', 'Disease C'],
-        'Phenomenon': ['Phenomenon X', 'Phenomenon Y', 'Phenomenon Z'],
-        'NPMI': [0.5, 0.7, 0.9],
-        'FQ_DOC_LEVEL': [10, 20, 30]
+        "Disease": ["Disease A", "Disease B", "Disease C"],
+        "Phenomenon": ["Phenomenon X", "Phenomenon Y", "Phenomenon Z"],
+        "NPMI": [0.5, 0.7, 0.9],
+        "FQ_DOC_LEVEL": [10, 20, 30],
     }
     df_npmi = pd.DataFrame(data)
     df_fq_doc_level = pd.DataFrame(data)
     # Initialize the visualizer with appropriate colors
     entity_pair_visualizer = CooccurenceHorizontalBarplot(
-        first_entity_color=NODE_COLOR_DIS_ONLY_RGB,      # Light blue for diseases
-        second_entity_color=NODE_COLOR_PNM_ONLY_RGB,     # Light green for phenomena
-        separator='|',                      # Vertical line separator
-        column_spacing=0.02,                # Minimal spacing between columns
-        label_opacity=0.6,                  # Increased opacity for label backgrounds
-        title_opacity=0.95                  # Increased opacity for title backgrounds
+        first_entity_color=NODE_COLOR_DIS_ONLY_RGB,  # Light blue for diseases
+        second_entity_color=NODE_COLOR_PNM_ONLY_RGB,  # Light green for phenomena
+        separator="|",  # Vertical line separator
+        column_spacing=0.02,  # Minimal spacing between columns
+        label_opacity=0.6,  # Increased opacity for label backgrounds
+        title_opacity=0.95,  # Increased opacity for title backgrounds
     )
 
     # Create and show the NPMI plot
@@ -276,6 +301,6 @@ if __name__ == "__main__":
         df=df_fq_doc_level,
         x_column="FQ_DOC_LEVEL",
         title="Document Frequency by Entity Pair",
-        palette="pastel"
+        palette="pastel",
     )
     plt.show()

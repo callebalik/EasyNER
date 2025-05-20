@@ -3,13 +3,14 @@ import os
 import sqlite3
 from pathlib import Path
 
+
 class SankeyValidator:
     """Validator for disease-phenomenon data relationships used in Sankey diagrams."""
 
     def __init__(self, db_path=None):
         """Initialize the validator with a database path."""
-        self.logger = logging.getLogger('sankey_validator')
-        self.db_path = db_path or os.environ.get('EASYNER_DB_PATH')
+        self.logger = logging.getLogger("sankey_validator")
+        self.db_path = db_path or os.environ.get("EASYNER_DB_PATH")
 
         if not self.db_path:
             self.logger.error("No database path provided or found in environment")
@@ -24,7 +25,9 @@ class SankeyValidator:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT NE_CLASS_ID, NE_CLASS FROM NE_CLASS ORDER BY NE_CLASS")
+                cursor.execute(
+                    "SELECT NE_CLASS_ID, NE_CLASS FROM NE_CLASS ORDER BY NE_CLASS"
+                )
                 return cursor.fetchall()
         except Exception as e:
             self.logger.error(f"Error fetching entity classes: {e}")
@@ -96,11 +99,13 @@ class SankeyValidator:
             for class2_id, class2_name in entity_classes[i:]:
                 results = self.test_sankey_query(class1_id, class2_id, -1.0)
                 if results:
-                    working_combinations.append({
-                        "class1": {"id": class1_id, "name": class1_name},
-                        "class2": {"id": class2_id, "name": class2_name},
-                        "count": len(results),
-                        "sample": results[0] if results else None
-                    })
+                    working_combinations.append(
+                        {
+                            "class1": {"id": class1_id, "name": class1_name},
+                            "class2": {"id": class2_id, "name": class2_name},
+                            "count": len(results),
+                            "sample": results[0] if results else None,
+                        }
+                    )
 
         return working_combinations

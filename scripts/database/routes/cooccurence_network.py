@@ -2,6 +2,7 @@
 from flask import render_template, request, jsonify
 from ..statistics.cooccurrence_network import CooccurrenceNetwork
 
+
 def register_cooccurrence_routes(app, get_db):
     """
     Register co-occurrence network routes with the Flask application.
@@ -18,7 +19,12 @@ def register_cooccurrence_routes(app, get_db):
             return render_template("cooccurrence_network.html")
         except Exception as e:
             app.logger.error(f"Error loading co-occurrence network page: {e}")
-            return render_template("error.html", message="Error loading co-occurrence network page"), 500
+            return (
+                render_template(
+                    "error.html", message="Error loading co-occurrence network page"
+                ),
+                500,
+            )
 
     @app.route("/cooccurrence-network/generate")
     def generate_cooccurrence_network():
@@ -44,11 +50,14 @@ def register_cooccurrence_routes(app, get_db):
                 entity1_filter=entity1_filter if entity1_filter else None,
                 entity2_filter=entity2_filter if entity2_filter else None,
                 excluded_entity1=excluded_entity1,
-                excluded_entity2=excluded_entity2
+                excluded_entity2=excluded_entity2,
             )
 
             if html_content is None:
-                return jsonify({"error": "No data available for the specified filters"}), 404
+                return (
+                    jsonify({"error": "No data available for the specified filters"}),
+                    404,
+                )
 
             return html_content
 
@@ -69,7 +78,7 @@ def register_cooccurrence_routes(app, get_db):
             entities = network.get_available_entities(
                 min_frequency=min_frequency,
                 entity1_type=entity1_type,
-                entity2_type=entity2_type
+                entity2_type=entity2_type,
             )
 
             return jsonify(entities)

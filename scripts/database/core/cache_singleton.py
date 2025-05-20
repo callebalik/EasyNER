@@ -9,6 +9,7 @@ from typing import Optional, Any, Callable
 _cache_manager = None
 _logger = logging.getLogger("EasyNerDB")
 
+
 def get_cache_manager():
     """Get the global cache manager instance, lazily initialized when needed"""
     global _cache_manager
@@ -16,8 +17,10 @@ def get_cache_manager():
         _logger.debug("Initializing global cache manager")
         # Lazy import to avoid circular dependencies
         from .cache_manager import CacheManager
+
         _cache_manager = CacheManager(db_handler=None)
     return _cache_manager
+
 
 def set_cache_manager_connection(conn, cursor, logger=None):
     """
@@ -39,7 +42,10 @@ def set_cache_manager_connection(conn, cursor, logger=None):
         cache_mgr._ensure_cache_table_exists()
     return cache_mgr
 
-def cached(ttl_seconds: Optional[int] = 3600, prefix: str = None, overwrite: bool = True):
+
+def cached(
+    ttl_seconds: Optional[int] = 3600, prefix: str = None, overwrite: bool = True
+):
     """
     Global cached decorator that works without explicit CacheManager instantiation.
     If the cache manager is not fully initialized when this decorator is used,
@@ -53,6 +59,7 @@ def cached(ttl_seconds: Optional[int] = 3600, prefix: str = None, overwrite: boo
     Returns:
         Decorator function
     """
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -60,7 +67,9 @@ def cached(ttl_seconds: Optional[int] = 3600, prefix: str = None, overwrite: boo
 
             # If cache manager is not fully initialized, just execute the function
             if cache_mgr.conn is None or cache_mgr.cursor is None:
-                _logger.debug(f"Cache manager not initialized, executing {func.__name__} without caching")
+                _logger.debug(
+                    f"Cache manager not initialized, executing {func.__name__} without caching"
+                )
                 return func(*args, **kwargs)
 
             try:
@@ -72,13 +81,12 @@ def cached(ttl_seconds: Optional[int] = 3600, prefix: str = None, overwrite: boo
                 if prefix is None:
                     prefix = f"{func.__module__.split('.')[-1]}"
 
-
                 # Autogenerate prefix if not provided
                 if prefix is None:
                     prefix = f"{func.__module__.split('.')[-1]}"
 
                 # Add self.__class__.__name__ if this is an instance method
-                if args and hasattr(args[0], '__class__'):
+                if args and hasattr(args[0], "__class__"):
                     cls_name = args[0].__class__.__name__
                     key_parts = [prefix, cls_name, func_name]
                 else:
@@ -115,7 +123,9 @@ def cached(ttl_seconds: Optional[int] = 3600, prefix: str = None, overwrite: boo
                 execution_time = time.time() - start_time
 
                 # Store in cache
-                cache_mgr.set(cache_key, result, ttl_seconds=ttl_seconds, overwrite=overwrite)
+                cache_mgr.set(
+                    cache_key, result, ttl_seconds=ttl_seconds, overwrite=overwrite
+                )
 
                 # Record performance metrics if possible
                 try:
@@ -127,7 +137,11 @@ def cached(ttl_seconds: Optional[int] = 3600, prefix: str = None, overwrite: boo
                 return result
 
             except Exception as e:
-                _logger.warning(f"Cache error in {func.__name__}: {e} - executing without caching")
+                _logger.warning(
+                    f"Cache error in {func.__name__}: {e} - executing without caching"
+                )
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator

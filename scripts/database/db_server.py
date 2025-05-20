@@ -32,27 +32,26 @@ if not os.path.isabs(DBPATH):
     raise ValueError(f"Database path {DBPATH} is not an absolute path")
 
 
-
-
 # Import our new monitoring module
 from .monitoring import OperationMonitor, DBConnectionMonitor, ThreadMonitor
 
 # Import after app is defined
 from .statistics.visualization_manager import VisualizationManager
 
+
 def setup_logging(app):
     """Configure logging for the application"""
     # Create logs directory if it doesn't exist
-    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
     os.makedirs(log_dir, exist_ok=True)
 
     # Set up file handler
-    log_file = os.path.join(log_dir, 'server.log')
+    log_file = os.path.join(log_dir, "server.log")
     print(f"Logging to: {log_file}")
 
     # Only remove Flask's default handlers, not handlers from other loggers
     flask_logger = app.logger
-    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger = logging.getLogger("werkzeug")
 
     # Remove Flask's default handlers
     for handler in flask_logger.handlers[:]:
@@ -70,7 +69,7 @@ def setup_logging(app):
             # Only append traceback info if there is an actual exception
             if record.exc_info:
                 # Get the traceback text
-                tb = '\n'.join(traceback.format_exception(*record.exc_info))
+                tb = "\n".join(traceback.format_exception(*record.exc_info))
                 if tb:
                     formatted += f"\nStack trace:\n{tb}"
 
@@ -79,7 +78,11 @@ def setup_logging(app):
     class RequestFormatter(logging.Formatter):
         def format(self, record):
             # For Werkzeug request logs, simplify the message
-            if hasattr(record, 'msg') and isinstance(record.msg, str) and ' - - [' in record.msg:
+            if (
+                hasattr(record, "msg")
+                and isinstance(record.msg, str)
+                and " - - [" in record.msg
+            ):
                 # Extract just the method, path and status code
                 try:
                     method = record.msg.split('"')[1].split()[0]
@@ -87,22 +90,20 @@ def setup_logging(app):
                     status = record.msg.split('"')[2].strip().split()[0]
                     record.msg = f"{method} {path} - {status}"
                 except:
-                    pass # If parsing fails, leave message as is
+                    pass  # If parsing fails, leave message as is
             return super().format(record)
 
     # Create file handler with the smart formatter
     # file_handler = RotatingFileHandler(log_file, maxBytes=1024 * 1024, backupCount=10)
-    file_handler = logging.FileHandler(log_file, mode='w')
-    file_handler.setFormatter(SmartFormatter(
-        '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
-    ))
+    file_handler = logging.FileHandler(log_file, mode="w")
+    file_handler.setFormatter(
+        SmartFormatter("[%(asctime)s] %(levelname)s in %(module)s: %(message)s")
+    )
     file_handler.setLevel(logging.DEBUG)
 
     # Create console handler with the request formatter for cleaner output
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(RequestFormatter(
-        '[%(levelname)s] %(message)s'
-    ))
+    console_handler.setFormatter(RequestFormatter("[%(levelname)s] %(message)s"))
     console_handler.setLevel(logging.WARNING)
 
     # Add handler to app logger
@@ -115,7 +116,8 @@ def setup_logging(app):
     werkzeug_logger.addHandler(console_handler)
     werkzeug_logger.setLevel(logging.WARNING)  # Only show warnings and errors
 
-    app.logger.info('Flask logging setup completed')
+    app.logger.info("Flask logging setup completed")
+
 
 # Set template directory to current directory/templates
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
@@ -135,15 +137,17 @@ thread_monitor = ThreadMonitor(app.logger)
 
 # Register periodic monitoring
 operation_monitor.register_periodic_monitor(
-    app,
-    interval=int(os.environ.get('EASYNER_METRIC_INTERVAL', '60'))
+    app, interval=int(os.environ.get("EASYNER_METRIC_INTERVAL", "60"))
 )
 
 # Initialize the connection pool as a global
 db_pool = ConnectionPool(
-    max_connections=int(os.environ.get('EASYNER_POOL_SIZE', '5')), # Fallback to server defaults
-    idle_timeout=int(os.environ.get('EASYNER_POOL_TIMEOUT', '300')),
+    max_connections=int(
+        os.environ.get("EASYNER_POOL_SIZE", "5")
+    ),  # Fallback to server defaults
+    idle_timeout=int(os.environ.get("EASYNER_POOL_TIMEOUT", "300")),
 )
+
 
 # Register shutdown handler
 @atexit.register
@@ -155,27 +159,31 @@ def shutdown_pool():
 # Initialize visualization manager
 visualization_manager = VisualizationManager(app)
 
+
 @contextmanager
 def get_db_easyner_context_connection():
     """Get a database connection from the pool with monitoring"""
     try:
         # Start monitoring the database connection operation
-        with operation_monitor.monitor_operation('get_db_connection'):
+        with operation_monitor.monitor_operation("get_db_connection"):
             # Get connection from pool instead of creating a new one
             with db_pool.get_connection() as connection:
                 # Register the connection with the monitor
                 connection_monitor.register_connection(
                     connection.conn,
                     context={
-                        'thread_id': threading.get_ident(),
-                        'request_connection': has_request_context(),
-                    }
+                        "thread_id": threading.get_ident(),
+                        "request_connection": has_request_context(),
+                    },
                 )
 
-                app.logger.debug("Using connection from pool", extra={
-                    'thread_id': threading.get_ident(),
-                    'conn_id': id(connection.conn)
-                })
+                app.logger.debug(
+                    "Using connection from pool",
+                    extra={
+                        "thread_id": threading.get_ident(),
+                        "conn_id": id(connection.conn),
+                    },
+                )
 
                 # Yield the connection to the caller
                 try:
@@ -185,24 +193,29 @@ def get_db_easyner_context_connection():
                     connection_monitor.unregister_connection(connection.conn)
     except Exception as e:
         app.logger.error(f"Database connection error: {e}", exc_info=True)
-        operation_monitor.monitor_exception(e, context={
-            'operation': 'database_operation',
-            'thread_id': threading.get_ident()
-        })
+        operation_monitor.monitor_exception(
+            e,
+            context={
+                "operation": "database_operation",
+                "thread_id": threading.get_ident(),
+            },
+        )
         raise
 
 
 def get_db_simple_connection() -> sqlite3.Connection:
     """Get a simple database connection"""
-    db = getattr(g, '_database_simple', None)
+    db = getattr(g, "_database_simple", None)
     if db is None:
         db = g._database = sqlite3.connect(DBPATH)
     return db
+
 
 def get_db_easyner():
     """Get the database handler using the connection manager"""
     with get_db_easyner_context_connection() as db:
         return db
+
 
 def close_db_connections():
     """Close all database connections during cleanup"""
@@ -219,8 +232,10 @@ def close_db_connections():
     # Shutdown the connection pool
     db_pool.shutdown()
 
+
 # Register cleanup function
 atexit.register(close_db_connections)
+
 
 @app.teardown_appcontext
 def cleanup(e=None):
@@ -229,7 +244,9 @@ def cleanup(e=None):
         app.logger.error(f"Error during request: {e}", exc_info=True)
 
     # Close main connection if it was created during a request
-    if hasattr(db_connections, 'connection') and getattr(db_connections, 'is_request_connection', False):
+    if hasattr(db_connections, "connection") and getattr(
+        db_connections, "is_request_connection", False
+    ):
         try:
             # Close the connection
             db_connections.connection.close()
@@ -240,15 +257,20 @@ def cleanup(e=None):
 
             app.logger.debug("Closed request-specific database connection")
         except Exception as close_error:
-            app.logger.error(f"Error closing request database connection: {close_error}")
+            app.logger.error(
+                f"Error closing request database connection: {close_error}"
+            )
+
 
 def close_simple_connection(exception):
     """Close the simple database connection."""
-    db = getattr(g, '_database_simple', None)
+    db = getattr(g, "_database_simple", None)
     if db is not None:
         db.close()
 
+
 app.teardown_appcontext(close_simple_connection)
+
 
 # Compile SCSS to CSS on server load
 def compile_scss():
@@ -338,7 +360,7 @@ def get_available_entities(db):
 def home():
     """Home page displaying database statistics"""
     try:
-        with operation_monitor.monitor_operation('home_page_load'):
+        with operation_monitor.monitor_operation("home_page_load"):
             with get_db_easyner_context_connection() as db:
                 tables_info = {}
 
@@ -365,18 +387,16 @@ def home():
                 return render_template("home.html", tables=tables_info, stats=stats)
     except Exception as e:
         app.logger.error(f"Error loading home page: {e}")
-        operation_monitor.monitor_exception(e, context={'route': '/'})
+        operation_monitor.monitor_exception(e, context={"route": "/"})
         return (
             render_template("error.html", message="Error loading database information"),
             500,
         )
 
+
 @app.route("/data_flow")
 def data_flow():
     """Data flow processing endpoint"""
-
-
-
 
 
 def _format_size(size_bytes):
@@ -391,7 +411,7 @@ def _format_size(size_bytes):
 def health_check():
     """Health check endpoint with database status"""
     try:
-        with operation_monitor.monitor_operation('health_check'):
+        with operation_monitor.monitor_operation("health_check"):
             with get_db_easyner_context_connection() as db:
                 tables_info = {}
 
@@ -418,11 +438,11 @@ def health_check():
                             "server_status": "running",
                             "connections": {
                                 "count": len(connections),
-                                "details": connections[:5]  # Limit for readability
+                                "details": connections[:5],  # Limit for readability
                             },
                             "threads": {
                                 "count": len(threads),
-                                "details": threads[:5]  # Limit for readability
+                                "details": threads[:5],  # Limit for readability
                             },
                             "endpoints": {
                                 "/": "Health check and basic info",
@@ -435,14 +455,15 @@ def health_check():
                 )
     except Exception as e:
         app.logger.error(f"Health check failed: {e}")
-        operation_monitor.monitor_exception(e, context={'route': '/health'})
+        operation_monitor.monitor_exception(e, context={"route": "/health"})
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
+
 
 @app.route("/documents")
 def list_documents():
     """Display documents with filtering"""
     try:
-        with operation_monitor.monitor_operation('list_documents'):
+        with operation_monitor.monitor_operation("list_documents"):
             with get_db_easyner_context_connection() as db:
                 page = int(request.args.get("page", 1))
                 query = request.args.get("query", "")
@@ -487,9 +508,12 @@ def list_documents():
                 params.extend([per_page + 1, offset])
 
                 # Using monitor_query to track query performance
-                with operation_monitor.monitor_query(sql, params,
-                                                  context={'page': page, 'per_page': per_page},
-                                                  conn=db.conn):
+                with operation_monitor.monitor_query(
+                    sql,
+                    params,
+                    context={"page": page, "per_page": per_page},
+                    conn=db.conn,
+                ):
                     documents = db.execute(sql, params)
 
                 has_more = len(documents) > per_page
@@ -501,7 +525,8 @@ def list_documents():
                 return render_template(
                     "documents.html",
                     documents=[
-                        dict(zip(["id", "title", "word_count"], doc)) for doc in documents
+                        dict(zip(["id", "title", "word_count"], doc))
+                        for doc in documents
                     ],
                     page=page,
                     query=query,
@@ -512,8 +537,9 @@ def list_documents():
                 )
     except Exception as e:
         app.logger.error(f"Error loading documents page: {e}")
-        operation_monitor.monitor_exception(e, context={'route': '/documents'})
+        operation_monitor.monitor_exception(e, context={"route": "/documents"})
         return render_template("error.html", message="Error loading documents"), 500
+
 
 @app.route("/named-entities")
 def list_named_entity_classes():
@@ -530,11 +556,7 @@ def get_named_entity_types():
         sql = f"SELECT {CLASS_ID}, {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}"
         types = db.execute(sql)
         return jsonify(
-            {
-                "types": [
-                    dict(zip(["id", "class_name"], type_row)) for type_row in types
-                ]
-            }
+            {"types": [dict(zip(["id", "class_name"], type_row)) for type_row in types]}
         )
     except Exception as e:
         app.logger.error(f"Error fetching named entity types: {e}")
@@ -1059,11 +1081,13 @@ def show_views():
         views_info = {}
 
         # Get list of views with their full definitions
-        views = db.execute("""
+        views = db.execute(
+            """
             SELECT name, sql
             FROM sqlite_master
             WHERE type='view'
-        """)
+        """
+        )
 
         total_views = 0
         valid_views = 0
@@ -1074,8 +1098,8 @@ def show_views():
             create_sql = view[1]
 
             if create_sql:
-                create_sql = ' '.join(line.strip() for line in create_sql.splitlines())
-                create_sql = re.sub(r'\s+', ' ', create_sql)
+                create_sql = " ".join(line.strip() for line in create_sql.splitlines())
+                create_sql = re.sub(r"\s+", " ", create_sql)
 
             # Validate the view and get its status
             is_valid, validation_result = validate_view(db, view_name)
@@ -1087,21 +1111,28 @@ def show_views():
                     # Only try to get schema if view is valid
                     schema = db.execute(f"PRAGMA table_info({view_name})")
                     schema_info = [
-                        dict(zip(["cid", "name", "type", "notnull", "dflt_value", "pk"], col))
+                        dict(
+                            zip(
+                                ["cid", "name", "type", "notnull", "dflt_value", "pk"],
+                                col,
+                            )
+                        )
                         for col in schema
                     ]
                 except Exception as schema_error:
-                    app.logger.warning(f"Error getting schema for valid view {view_name}: {schema_error}")
+                    app.logger.warning(
+                        f"Error getting schema for valid view {view_name}: {schema_error}"
+                    )
             else:
                 schema_info = []
-                schema_error = validation_result.get('error')
+                schema_error = validation_result.get("error")
 
             views_info[view_name] = {
                 "schema": schema_info,
                 "definition": create_sql,
                 "is_valid": is_valid,
                 "schema_error": schema_error,
-                "validation_result": validation_result
+                "validation_result": validation_result,
             }
 
         if not views_info:
@@ -1111,7 +1142,7 @@ def show_views():
                 views=views_info,
                 message="No views found in the database",
                 total_views=0,
-                valid_views=0
+                valid_views=0,
             )
 
         return render_template(
@@ -1119,12 +1150,17 @@ def show_views():
             views=views_info,
             total_views=total_views,
             valid_views=valid_views,
-            error="Some views have errors" if valid_views < total_views else None
+            error="Some views have errors" if valid_views < total_views else None,
         )
 
     except Exception as e:
         app.logger.error(f"Error loading views page: {e}")
-        return render_template("error.html", message=f"Error loading views page: {str(e)}"), 500
+        return (
+            render_template(
+                "error.html", message=f"Error loading views page: {str(e)}"
+            ),
+            500,
+        )
 
 
 @app.route("/tables-json")
@@ -1189,7 +1225,7 @@ def show_tables():
                     "type": col[2],
                     "notnull": col[3] == 1,
                     "dflt_value": col[4],
-                    "pk": col[5] == 1
+                    "pk": col[5] == 1,
                 }
                 for col in schema
             ]
@@ -1197,11 +1233,7 @@ def show_tables():
             # Get foreign keys information
             foreign_keys = db.execute(f"PRAGMA foreign_key_list({table_name})")
             fk_info = [
-                {
-                    "from_column": fk[3],
-                    "to_table": fk[2],
-                    "to_column": fk[4]
-                }
+                {"from_column": fk[3], "to_table": fk[2], "to_column": fk[4]}
                 for fk in foreign_keys
             ]
 
@@ -1209,17 +1241,19 @@ def show_tables():
             tables_info[table_name] = {
                 "name": table_name,
                 "columns": columns,
-                "foreign_keys": fk_info
+                "foreign_keys": fk_info,
             }
 
         return render_template("tables.html", tables=tables_info)
     except Exception as e:
         app.logger.error(f"Error loading tables: {e}")
-        return render_template("error.html", message=f"Error loading tables: {str(e)}"), 500
+        return (
+            render_template("error.html", message=f"Error loading tables: {str(e)}"),
+            500,
+        )
 
 
 @app.route("/table/<table_name>/rowcount")
-
 def get_table_rowcount(table_name):
     try:
         db = get_db_easyner()
@@ -1282,7 +1316,9 @@ def display_table(table_name):
         # Default to False (show only OVERLAP = 0)
         show_overlap = request.args.get("show_overlap", "false").lower() == "true"
         # Get filter_no_errors parameter (default to True for showing only valid entities)
-        filter_no_errors = request.args.get("filter_no_errors", "true").lower() == "true"
+        filter_no_errors = (
+            request.args.get("filter_no_errors", "true").lower() == "true"
+        )
 
         # Get column information dynamically
         cursor.execute(f"PRAGMA table_info({table_name})")
@@ -1296,14 +1332,24 @@ def display_table(table_name):
         text_columns = [col[1] for col in columns_info if col[2].upper() == "TEXT"]
 
         # Get numeric columns for numeric filtering
-        numeric_columns = [col[1] for col in columns_info if col[2].upper() in ["INTEGER", "INT", "REAL", "FLOAT", "NUMERIC"]]
+        numeric_columns = [
+            col[1]
+            for col in columns_info
+            if col[2].upper() in ["INTEGER", "INT", "REAL", "FLOAT", "NUMERIC"]
+        ]
 
         # Include ID columns that should be searchable
-        searchable_id_columns = [col[1] for col in columns_info if col[1] in ['id', 'NE_NORM_ID', 'NE_PRIMARY_ID'] and col[2].upper() in ['INTEGER', 'INT']]
+        searchable_id_columns = [
+            col[1]
+            for col in columns_info
+            if col[1] in ["id", "NE_NORM_ID", "NE_PRIMARY_ID"]
+            and col[2].upper() in ["INTEGER", "INT"]
+        ]
 
         # Extract search queries for each searchable column
         column_search_queries = {
-            col: request.args.get(f"{col}_search", "") for col in text_columns + searchable_id_columns
+            col: request.args.get(f"{col}_search", "")
+            for col in text_columns + searchable_id_columns
         }
 
         # Get NE_CLASS filters (can be multiple values)
@@ -1323,26 +1369,36 @@ def display_table(table_name):
                     numeric_filters[column] = {
                         "op": op,
                         "val1": val1,
-                        "val2": request.args.get(f"{column}_val2", "") if op == "between" else None
+                        "val2": (
+                            request.args.get(f"{column}_val2", "")
+                            if op == "between"
+                            else None
+                        ),
                     }
 
         # Fetch available NE_CLASS values if the table has that column
         ne_classes = None
-        if 'NE_CLASS' in columns:
+        if "NE_CLASS" in columns:
             try:
-                query_result = cursor.execute(f"SELECT {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}")
+                query_result = cursor.execute(
+                    f"SELECT {NE_CLASS} FROM {TABLE_NE_CLASS} ORDER BY {NE_CLASS}"
+                )
                 ne_classes = [row[0] for row in query_result if row[0]]
             except Exception as ne_class_error:
                 app.logger.warning(f"Error fetching NE_CLASS values: {ne_class_error}")
 
         # Fetch available ERROR_ID values if the table has that column
         error_codes = None
-        if 'ERROR_ID' in columns:
+        if "ERROR_ID" in columns:
             try:
-                query_result = cursor.execute(f"SELECT {ERROR_ID}, {ERROR_DESC} FROM {TABLE_NE_ERROR} ORDER BY {ERROR_ID}")
+                query_result = cursor.execute(
+                    f"SELECT {ERROR_ID}, {ERROR_DESC} FROM {TABLE_NE_ERROR} ORDER BY {ERROR_ID}"
+                )
                 error_codes = [(row[0], row[1]) for row in query_result if row[0]]
             except Exception as error_code_error:
-                app.logger.warning(f"Error fetching ERROR_ID values: {error_code_error}")
+                app.logger.warning(
+                    f"Error fetching ERROR_ID values: {error_code_error}"
+                )
 
         # Build the base SQL query
         sql = f"SELECT * FROM {table_name}"
@@ -1365,7 +1421,9 @@ def display_table(table_name):
                 except ValueError:
                     search_conditions.append(f"{col} LIKE ?")
                     params.append(f"%{query}%")
-                    app.logger.debug(f"Non-integer search value '{query}' for ID column {col}")
+                    app.logger.debug(
+                        f"Non-integer search value '{query}' for ID column {col}"
+                    )
 
         # Process numeric filters
         percentile_filters = []  # Track any percentile filters for later processing
@@ -1374,19 +1432,19 @@ def display_table(table_name):
             op = filter_data["op"]
             try:
                 # For percentile filters, we'll handle them differently
-                if op.startswith('percentile_'):
+                if op.startswith("percentile_"):
                     # Validate percentile value (0-100)
                     percentile_value = float(filter_data["val1"])
                     if not (0 <= percentile_value <= 100):
-                        app.logger.warning(f"Invalid percentile value: {percentile_value}. Must be between 0 and 100.")
+                        app.logger.warning(
+                            f"Invalid percentile value: {percentile_value}. Must be between 0 and 100."
+                        )
                         continue
 
                     # Store for later processing after we have the query structure
-                    percentile_filters.append({
-                        "column": column,
-                        "op": op,
-                        "value": percentile_value
-                    })
+                    percentile_filters.append(
+                        {"column": column, "op": op, "value": percentile_value}
+                    )
                     continue
 
                 # Convert the first value based on column type
@@ -1420,32 +1478,34 @@ def display_table(table_name):
                     search_conditions.append(f"{column} BETWEEN ? AND ?")
                     params.extend([val1, val2])
 
-                app.logger.debug(f"Applied numeric filter on {column}: {op} {val1} {filter_data['val2'] if op == 'between' else ''}")
+                app.logger.debug(
+                    f"Applied numeric filter on {column}: {op} {val1} {filter_data['val2'] if op == 'between' else ''}"
+                )
             except (ValueError, TypeError) as e:
                 app.logger.warning(f"Invalid numeric filter value for {column}: {e}")
 
         # Add NE_CLASS filter if present
-        if selected_classes and 'NE_CLASS' in columns:
-            placeholders = ','.join('?' for _ in selected_classes)
+        if selected_classes and "NE_CLASS" in columns:
+            placeholders = ",".join("?" for _ in selected_classes)
             search_conditions.append(f"NE_CLASS IN ({placeholders})")
             params.extend(selected_classes)
             app.logger.debug(f"Applied NE_CLASS filter: {selected_classes}")
 
         # Handle ERROR_ID filtering
-        if 'ERROR_ID' in columns:
+        if "ERROR_ID" in columns:
             if filter_no_errors:
                 # Filter out entities with error codes
                 search_conditions.append(f"{ERROR_ID} IS NULL")
                 app.logger.debug("Applied filter: Show only entries without errors")
             elif selected_errors:
                 # Only apply specific error codes filter if No Errors filter is not active
-                placeholders = ','.join('?' for _ in selected_errors)
+                placeholders = ",".join("?" for _ in selected_errors)
                 search_conditions.append(f"{ERROR_ID} IN ({placeholders})")
                 params.extend(selected_errors)
                 app.logger.debug(f"Applied ERROR_ID filter: {selected_errors}")
 
         # Add OVERLAP filter if column exists and show_overlap is false
-        if 'OVERLAP' in columns and not show_overlap:
+        if "OVERLAP" in columns and not show_overlap:
             search_conditions.append("OVERLAP = 0")
 
         # Apply any WHERE conditions from the base filters
@@ -1473,7 +1533,9 @@ def display_table(table_name):
 
                     count_result = db.execute(check_query, params)
                     if not count_result or count_result[0][0] == 0:
-                        app.logger.warning(f"No data found for percentile calculation on {column}")
+                        app.logger.warning(
+                            f"No data found for percentile calculation on {column}"
+                        )
                         continue
 
                     # Calculate the threshold value for this percentile
@@ -1497,14 +1559,26 @@ def display_table(table_name):
                         LIMIT 1
                     """
 
-                    percentile_params = params + [100 - percentile_value if is_top_percentile else percentile_value]
-                    app.logger.debug(f"Executing percentile query: {percentile_query} with params: {percentile_params}")
+                    percentile_params = params + [
+                        (
+                            100 - percentile_value
+                            if is_top_percentile
+                            else percentile_value
+                        )
+                    ]
+                    app.logger.debug(
+                        f"Executing percentile query: {percentile_query} with params: {percentile_params}"
+                    )
 
-                    threshold_result = cursor.execute(percentile_query, percentile_params)
+                    threshold_result = cursor.execute(
+                        percentile_query, percentile_params
+                    )
 
                     if threshold_result and threshold_result[0][0] is not None:
                         threshold_value = threshold_result[0][0]
-                        app.logger.debug(f"Calculated {'top' if is_top_percentile else 'bottom'} {percentile_value}% threshold for {column}: {threshold_value}")
+                        app.logger.debug(
+                            f"Calculated {'top' if is_top_percentile else 'bottom'} {percentile_value}% threshold for {column}: {threshold_value}"
+                        )
 
                         # Now that we have the threshold, add it as a condition to our main query
                         if search_conditions:
@@ -1519,11 +1593,18 @@ def display_table(table_name):
                             sql = sql + f"{column} <= ?"
                             params.append(threshold_value)
 
-                        app.logger.debug(f"Applied percentile filter on {column}: {'top' if is_top_percentile else 'bottom'} {percentile_value}%")
+                        app.logger.debug(
+                            f"Applied percentile filter on {column}: {'top' if is_top_percentile else 'bottom'} {percentile_value}%"
+                        )
                     else:
-                        app.logger.warning(f"No valid threshold found for percentile filter on {column}")
+                        app.logger.warning(
+                            f"No valid threshold found for percentile filter on {column}"
+                        )
                 except Exception as e:
-                    app.logger.error(f"Error applying percentile filter on {column}: {str(e)}", exc_info=True)
+                    app.logger.error(
+                        f"Error applying percentile filter on {column}: {str(e)}",
+                        exc_info=True,
+                    )
 
         # Add sorting
         if sort_by in columns:
@@ -1567,8 +1648,9 @@ def display_table(table_name):
             "generated_sql": generated_sql,
             "searchable_id_columns": searchable_id_columns,
             "show_overlap": show_overlap,  # Pass the filter state to template
-            "has_overlap_column": 'OVERLAP' in columns,  # Tell template if OVERLAP exists
-            "filter_no_errors": filter_no_errors  # Pass the "No Errors Only" filter state
+            "has_overlap_column": "OVERLAP"
+            in columns,  # Tell template if OVERLAP exists
+            "filter_no_errors": filter_no_errors,  # Pass the "No Errors Only" filter state
         }
     except Exception as e:
         app.logger.error(f"Error displaying table {table_name}: {e}", exc_info=True)
@@ -1669,26 +1751,49 @@ def explain_query():
 
         # Basic validation and extraction of query
         query_lower = query.lower()
-        if query_lower.startswith('create view'):
+        if query_lower.startswith("create view"):
             try:
                 app.logger.debug("Processing CREATE VIEW statement")
                 # Extract the query part after "AS" and clean it up
-                match = re.search(r'create\s+view\s+.*?\s+as\s+(.*)', query, re.IGNORECASE | re.DOTALL)
+                match = re.search(
+                    r"create\s+view\s+.*?\s+as\s+(.*)", query, re.IGNORECASE | re.DOTALL
+                )
                 if not match:
-                    app.logger.error("Could not extract query from CREATE VIEW statement")
-                    return jsonify({"error": "Invalid CREATE VIEW syntax. Could not find query after AS."}), 400
+                    app.logger.error(
+                        "Could not extract query from CREATE VIEW statement"
+                    )
+                    return (
+                        jsonify(
+                            {
+                                "error": "Invalid CREATE VIEW syntax. Could not find query after AS."
+                            }
+                        ),
+                        400,
+                    )
                 query = match.group(1).strip()
                 app.logger.debug(f"Extracted query from CREATE VIEW: {query}")
 
                 # Clean up the query by removing newlines and extra spaces
-                query = ' '.join(query.split())
+                query = " ".join(query.split())
                 app.logger.debug(f"Cleaned query: {query}")
             except Exception as e:
                 app.logger.error(f"Error parsing CREATE VIEW statement: {e}")
-                return jsonify({"error": f"Error parsing CREATE VIEW statement: {str(e)}"}), 400
-        elif not query_lower.startswith('select'):
+                return (
+                    jsonify(
+                        {"error": f"Error parsing CREATE VIEW statement: {str(e)}"}
+                    ),
+                    400,
+                )
+        elif not query_lower.startswith("select"):
             app.logger.error(f"Invalid query type: {query_lower[:20]}...")
-            return jsonify({"error": "Invalid query. Only CREATE VIEW and SELECT statements are allowed."}), 400
+            return (
+                jsonify(
+                    {
+                        "error": "Invalid query. Only CREATE VIEW and SELECT statements are allowed."
+                    }
+                ),
+                400,
+            )
 
         db = get_db_simple_connection()
 
@@ -1709,7 +1814,16 @@ def explain_query():
             db.cursor.execute("ROLLBACK")
 
             if not result:
-                return jsonify([{"id": 0, "parent": 0, "notused": 0, "detail": "Simple query - no complex plan needed"}])
+                return jsonify(
+                    [
+                        {
+                            "id": 0,
+                            "parent": 0,
+                            "notused": 0,
+                            "detail": "Simple query - no complex plan needed",
+                        }
+                    ]
+                )
 
             return jsonify(result)
 
@@ -1746,7 +1860,8 @@ def delete_table(table_name):
 
         # Check if it's actually a table first
         table_check = cursor.execute(
-            "SELECT type, sql FROM sqlite_master WHERE type='table' AND name=?", [table_name]
+            "SELECT type, sql FROM sqlite_master WHERE type='table' AND name=?",
+            [table_name],
         ).fetchall()
 
         if not table_check:
@@ -1757,7 +1872,7 @@ def delete_table(table_name):
         table_info = table_check[0]
 
         # Additional safety checks
-        if table_name.startswith('sqlite_'):
+        if table_name.startswith("sqlite_"):
             app.logger.warning(f"Attempted to delete system table: {table_name}")
             cursor.execute("ROLLBACK")
             return jsonify({"error": "Cannot delete system tables"}), 403
@@ -1765,16 +1880,23 @@ def delete_table(table_name):
         # Check for dependent views
         dependent_views = cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='view' AND sql LIKE ?",
-            [f'%{table_name}%']
+            [f"%{table_name}%"],
         ).fetchall()
 
         if dependent_views:
             view_names = [view[0] for view in dependent_views]
-            app.logger.warning(f"Cannot delete table {table_name} due to dependent views: {view_names}")
+            app.logger.warning(
+                f"Cannot delete table {table_name} due to dependent views: {view_names}"
+            )
             cursor.execute("ROLLBACK")
-            return jsonify({
-                "error": f"Cannot delete table due to dependent views: {', '.join(view_names)}"
-            }), 409
+            return (
+                jsonify(
+                    {
+                        "error": f"Cannot delete table due to dependent views: {', '.join(view_names)}"
+                    }
+                ),
+                409,
+            )
 
         # Save table schema for logging
         table_schema = table_info[1]
@@ -1795,10 +1917,12 @@ def delete_table(table_name):
             f"Rows deleted: {row_count}. Schema was: {table_schema}"
         )
 
-        return jsonify({
-            "message": "Table deleted successfully",
-            "rows_affected": row_count
-        }), 200
+        return (
+            jsonify(
+                {"message": "Table deleted successfully", "rows_affected": row_count}
+            ),
+            200,
+        )
 
     except Exception as e:
         app.logger.error(f"Error deleting table {table_name}: {str(e)}", exc_info=True)
@@ -1809,6 +1933,7 @@ def delete_table(table_name):
             except Exception as rollback_error:
                 app.logger.error(f"Error during rollback: {rollback_error}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/view/<view_name>/delete", methods=["POST"])
 def delete_view(view_name):
@@ -1823,7 +1948,8 @@ def delete_view(view_name):
 
         # Check if it's actually a view first
         view_check = cursor.execute(
-            "SELECT type, sql FROM sqlite_master WHERE type='view' AND name=?", [view_name]
+            "SELECT type, sql FROM sqlite_master WHERE type='view' AND name=?",
+            [view_name],
         ).fetchall()
 
         if not view_check:
@@ -1838,16 +1964,23 @@ def delete_view(view_name):
         # Check for dependent views
         dependent_views = cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='view' AND sql LIKE ? AND name != ?",
-            [f'%{view_name}%', view_name]
+            [f"%{view_name}%", view_name],
         ).fetchall()
 
         if dependent_views:
             view_names = [view[0] for view in dependent_views]
-            app.logger.warning(f"Cannot delete view {view_name} due to dependent views: {view_names}")
+            app.logger.warning(
+                f"Cannot delete view {view_name} due to dependent views: {view_names}"
+            )
             cursor.execute("ROLLBACK")
-            return jsonify({
-                "error": f"Cannot delete view due to dependent views: {', '.join(view_names)}"
-            }), 409
+            return (
+                jsonify(
+                    {
+                        "error": f"Cannot delete view due to dependent views: {', '.join(view_names)}"
+                    }
+                ),
+                409,
+            )
 
         # Execute deletion
         cursor.execute(f"DROP VIEW IF EXISTS {view_name}")
@@ -1861,9 +1994,7 @@ def delete_view(view_name):
             f"View definition was: {view_definition}"
         )
 
-        return jsonify({
-            "message": "View deleted successfully"
-        }), 200
+        return jsonify({"message": "View deleted successfully"}), 200
 
     except Exception as e:
         app.logger.error(f"Error deleting view {view_name}: {str(e)}", exc_info=True)
@@ -1874,6 +2005,7 @@ def delete_view(view_name):
             except Exception as rollback_error:
                 app.logger.error(f"Error during rollback: {rollback_error}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/execute-query", methods=["POST"])
 def execute_query():
@@ -1898,12 +2030,14 @@ def execute_query():
         # Convert rows to list of dictionaries
         rows = [dict(zip(columns, row)) for row in results]
 
-        return jsonify({
-            "columns": columns,
-            "rows": rows,
-            "rowCount": len(rows),
-            "truncated": len(rows) == 1000
-        })
+        return jsonify(
+            {
+                "columns": columns,
+                "rows": rows,
+                "rowCount": len(rows),
+                "truncated": len(rows) == 1000,
+            }
+        )
     except Exception as e:
         app.logger.error(f"Query execution error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -1927,7 +2061,9 @@ def validate_view(db, view_name):
 
         # Check for specific error types
         if "no such table" in error_msg.lower():
-            return False, {"error": "View definition references non-existent tables or views"}
+            return False, {
+                "error": "View definition references non-existent tables or views"
+            }
         elif "no such column" in error_msg.lower():
             return False, {"error": "View definition references non-existent columns"}
         else:
@@ -1941,33 +2077,27 @@ def validate_view_api(view_name):
 
         # First check if view exists
         view_check = db.execute(
-            "SELECT sql FROM sqlite_master WHERE type='view' AND name=?",
-            [view_name]
+            "SELECT sql FROM sqlite_master WHERE type='view' AND name=?", [view_name]
         ).fetchone()
 
         if not view_check:
-            return jsonify({
-                "exists": False,
-                "error": "View does not exist"
-            }), 404
+            return jsonify({"exists": False, "error": "View does not exist"}), 404
 
         # Validate the view
         is_valid, validation_result = validate_view(db, view_name)
 
-        return jsonify({
-            "exists": True,
-            "is_valid": is_valid,
-            "validation_result": validation_result,
-            "definition": view_check[0]
-        })
+        return jsonify(
+            {
+                "exists": True,
+                "is_valid": is_valid,
+                "validation_result": validation_result,
+                "definition": view_check[0],
+            }
+        )
 
     except Exception as e:
         app.logger.error(f"Error validating view {view_name}: {e}")
-        return jsonify({
-            "exists": True,
-            "is_valid": False,
-            "error": str(e)
-        }), 500
+        return jsonify({"exists": True, "is_valid": False, "error": str(e)}), 500
 
 
 @app.route("/table/<table_name>/schema")
@@ -1976,18 +2106,25 @@ def get_table_schema(table_name):
         db = get_db_easyner()
         # Get table creation SQL
         result = db.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
-            [table_name]
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", [table_name]
         )
 
         # Check if we have results and handle them properly
         if not result or len(result) == 0:
-            return jsonify({"error": f"Table {table_name} not found or has no schema"}), 404
+            return (
+                jsonify({"error": f"Table {table_name} not found or has no schema"}),
+                404,
+            )
 
         create_sql = result[0][0]  # Access the first column of the first row
 
         if not create_sql:
-            return jsonify({"error": f"Table {table_name} exists but has no schema definition"}), 404
+            return (
+                jsonify(
+                    {"error": f"Table {table_name} exists but has no schema definition"}
+                ),
+                404,
+            )
 
         return jsonify({"schema": create_sql})
     except Exception as e:
@@ -2002,10 +2139,16 @@ def dis_pnm_presentation():
         result = display_table(VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY)
         if "error" in result:
             return render_template("error.html", message=result["error"]), 500
-        return render_template("table_view.html", table_name=VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY, **result)
+        return render_template(
+            "table_view.html", table_name=VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY, **result
+        )
     except Exception as e:
         app.logger.error(f"Error loading DIS-PNM Presentation: {e}")
-        return render_template("error.html", message="Error loading DIS-PNM Presentation"), 500
+        return (
+            render_template("error.html", message="Error loading DIS-PNM Presentation"),
+            500,
+        )
+
 
 @app.route("/ne-presentation")
 def ne_presentation():
@@ -2014,10 +2157,16 @@ def ne_presentation():
         result = display_table("v_NE_PRESENTATION")
         if "error" in result:
             return render_template("error.html", message=result["error"]), 500
-        return render_template("table_view.html", table_name="v_NE_PRESENTATION", **result)
+        return render_template(
+            "table_view.html", table_name="v_NE_PRESENTATION", **result
+        )
     except Exception as e:
         app.logger.error(f"Error loading NE Presentation: {e}")
-        return render_template("error.html", message="Error loading NE Presentation"), 500
+        return (
+            render_template("error.html", message="Error loading NE Presentation"),
+            500,
+        )
+
 
 @app.route("/clear-visualization-cache", methods=["POST"])
 def clear_visualization_cache():
@@ -2041,22 +2190,33 @@ def clear_visualization_cache():
             f"After: {stats_after['file_cache_count']} files ({_format_size(stats_after['cache_size_bytes'])})"
         )
 
-        return jsonify({
-            "status": "success",
-            "message": f"Cleared {cleared_count} visualization cache files",
-            "details": {
-                "cleared_count": cleared_count,
-                "before": stats_before,
-                "after": stats_after
-            }
-        }), 200
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "message": f"Cleared {cleared_count} visualization cache files",
+                    "details": {
+                        "cleared_count": cleared_count,
+                        "before": stats_before,
+                        "after": stats_after,
+                    },
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         app.logger.error(f"Error clearing visualization cache: {e}", exc_info=True)
-        return jsonify({
-            "status": "error",
-            "message": f"Failed to clear visualization cache: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Failed to clear visualization cache: {str(e)}",
+                }
+            ),
+            500,
+        )
+
 
 @app.route("/visualization-cache-stats")
 def visualization_cache_stats():
@@ -2069,24 +2229,26 @@ def visualization_cache_stats():
             "in_memory_cache_count": stats["in_memory_cache_count"],
             "file_cache_count": stats["file_cache_count"],
             "cache_size": _format_size(stats["cache_size_bytes"]),
-            "cache_items": []
+            "cache_items": [],
         }
 
         # Format each cache item
         for item in stats["cache_items"]:
-            formatted_stats["cache_items"].append({
-                "name": item["name"],
-                "size": _format_size(item["size_bytes"]),
-                "last_modified": time.strftime(
-                    "%Y-%m-%d %H:%M:%S",
-                    time.localtime(item["last_modified"])
-                )
-            })
+            formatted_stats["cache_items"].append(
+                {
+                    "name": item["name"],
+                    "size": _format_size(item["size_bytes"]),
+                    "last_modified": time.strftime(
+                        "%Y-%m-%d %H:%M:%S", time.localtime(item["last_modified"])
+                    ),
+                }
+            )
 
         return jsonify(formatted_stats)
     except Exception as e:
         app.logger.error(f"Error getting visualization cache stats: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/reload-server", methods=["POST"])
 def reload_server():
@@ -2106,14 +2268,14 @@ def reload_server():
             "skipped": 0,
             "successful_modules": [],
             "failed_modules": {},
-            "skipped_modules": []
+            "skipped_modules": [],
         }
 
         # Collect all modules that are part of our application
         modules_to_reload = []
         for module_name, module in list(sys.modules.items()):
             # Filter for our application modules
-            if module_name.startswith('scripts.') or module_name == 'scripts':
+            if module_name.startswith("scripts.") or module_name == "scripts":
                 modules_to_reload.append(module_name)
                 reload_details["attempted"] += 1
 
@@ -2122,14 +2284,17 @@ def reload_server():
 
         # Sort modules by dependency order (parent modules after their children)
         # This helps with proper reloading order
-        modules_to_reload.sort(key=lambda m: -m.count('.'))
+        modules_to_reload.sort(key=lambda m: -m.count("."))
 
         # Reload collected modules
         for module_name in modules_to_reload:
             try:
                 if module_name in sys.modules:
                     # Check if module has reload capability (some built-ins don't)
-                    if hasattr(sys.modules[module_name], '__file__') and sys.modules[module_name].__file__:
+                    if (
+                        hasattr(sys.modules[module_name], "__file__")
+                        and sys.modules[module_name].__file__
+                    ):
                         # Perform the actual reload
                         importlib.reload(sys.modules[module_name])
                         reload_details["reloaded"] += 1
@@ -2156,42 +2321,57 @@ def reload_server():
 
         # We skip re-initializing routes to avoid the endpoint overwriting issue
         # Routes have already been registered and will use the reloaded module code
-        app.logger.info(f"Server reload completed. "
-                        f"Reloaded {reload_details['reloaded']} modules, "
-                        f"skipped {reload_details['skipped']}, "
-                        f"failed {reload_details['failed']}.")
+        app.logger.info(
+            f"Server reload completed. "
+            f"Reloaded {reload_details['reloaded']} modules, "
+            f"skipped {reload_details['skipped']}, "
+            f"failed {reload_details['failed']}."
+        )
 
         # Return detailed information about the reload process
-        return jsonify({
-            "status": "success",
-            "message": f"Server reloaded. Refreshed {reload_details['reloaded']} modules.",
-            "details": {
-                "modules": {
-                    "attempted": reload_details["attempted"],
-                    "reloaded": reload_details["reloaded"],
-                    "failed": reload_details["failed"],
-                    "skipped": reload_details["skipped"]
-                },
-                "successful_modules": reload_details["successful_modules"],
-                "failed_modules": reload_details["failed_modules"],
-                "skipped_modules": reload_details["skipped_modules"],  # Add this line
-                "scss_compilation": scss_status
-            }
-        }), 200
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "message": f"Server reloaded. Refreshed {reload_details['reloaded']} modules.",
+                    "details": {
+                        "modules": {
+                            "attempted": reload_details["attempted"],
+                            "reloaded": reload_details["reloaded"],
+                            "failed": reload_details["failed"],
+                            "skipped": reload_details["skipped"],
+                        },
+                        "successful_modules": reload_details["successful_modules"],
+                        "failed_modules": reload_details["failed_modules"],
+                        "skipped_modules": reload_details[
+                            "skipped_modules"
+                        ],  # Add this line
+                        "scss_compilation": scss_status,
+                    },
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         app.logger.error(f"Error during server reload: {e}", exc_info=True)
-        return jsonify({
-            "status": "error",
-            "message": f"Failed to reload server: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {"status": "error", "message": f"Failed to reload server: {str(e)}"}
+            ),
+            500,
+        )
+
 
 @app.route("/dev/reload")
 def dev_reload_page():
     """Developer page with reload server button."""
-    return render_template("dev_reload.html",
-                          server_status="Running",
-                          modules_count=len([m for m in sys.modules if m.startswith('scripts.')]))
+    return render_template(
+        "dev_reload.html",
+        server_status="Running",
+        modules_count=len([m for m in sys.modules if m.startswith("scripts.")]),
+    )
+
 
 @app.route("/dev/monitor")
 def show_monitoring_status():
@@ -2202,12 +2382,16 @@ def show_monitoring_status():
 
         # Check for leaked connections
         leaks = connection_monitor.check_for_leaks(
-            age_threshold=float(os.environ.get('EASYNER_CONNECTION_LEAK_THRESHOLD', '300.0'))
+            age_threshold=float(
+                os.environ.get("EASYNER_CONNECTION_LEAK_THRESHOLD", "300.0")
+            )
         )
 
         # Check for stuck threads
         stuck_threads = thread_monitor.check_for_stuck_threads(
-            heartbeat_threshold=float(os.environ.get('EASYNER_THREAD_STUCK_THRESHOLD', '60.0'))
+            heartbeat_threshold=float(
+                os.environ.get("EASYNER_THREAD_STUCK_THRESHOLD", "60.0")
+            )
         )
 
         # Get active threads
@@ -2215,9 +2399,9 @@ def show_monitoring_status():
 
         # Get resource stats
         resource_stats = {
-            'memory': operation_monitor._get_memory_usage(),
-            'cpu': operation_monitor._get_cpu_usage(),
-            'disk': operation_monitor._get_disk_usage()
+            "memory": operation_monitor._get_memory_usage(),
+            "cpu": operation_monitor._get_cpu_usage(),
+            "disk": operation_monitor._get_disk_usage(),
         }
 
         # Get operation stats
@@ -2240,59 +2424,66 @@ def show_monitoring_status():
             operation_stats=operation_stats,
             open_transactions=open_transactions,
             active_queries=active_queries,
-            slow_queries=slow_queries
+            slow_queries=slow_queries,
         )
     except Exception as e:
         app.logger.error(f"Error displaying monitoring status: {e}")
-        operation_monitor.monitor_exception(e, context={'route': '/monitor'})
-        return render_template("error.html", message="Error accessing monitoring data"), 500
+        operation_monitor.monitor_exception(e, context={"route": "/monitor"})
+        return (
+            render_template("error.html", message="Error accessing monitoring data"),
+            500,
+        )
 
 
 @app.route("/dev/terminate-connection", methods=["POST"])
 def terminate_connection():
     """Terminate a database connection by ID"""
     try:
-        conn_id = int(request.json.get('connection_id'))
+        conn_id = int(request.json.get("connection_id"))
 
         # Find the active query to get connection ID
         active_queries = operation_monitor.get_active_queries()
         query_found = False
 
-        if 'query_id' in request.json:
-            query_id = request.json.get('query_id')
+        if "query_id" in request.json:
+            query_id = request.json.get("query_id")
             # Find the connection associated with this query
             for query in active_queries:
-                if query['id'] == query_id:
+                if query["id"] == query_id:
                     # Extract connection ID from transaction ID if possible
                     # This depends on your transaction ID format and storage
                     query_found = True
                     break
 
             if not query_found:
-                return jsonify({
-                    'success': False,
-                    'message': f'Query ID {query_id} not found in active queries'
-                }), 404
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Query ID {query_id} not found in active queries",
+                        }
+                    ),
+                    404,
+                )
 
         # Perform the termination
         result = connection_monitor.terminate_connection(conn_id)
 
-        if result['success']:
+        if result["success"]:
             return jsonify(result), 200
         else:
             return jsonify(result), 404
 
     except ValueError:
-        return jsonify({
-            'success': False,
-            'message': 'Invalid connection ID'
-        }), 400
+        return jsonify({"success": False, "message": "Invalid connection ID"}), 400
     except Exception as e:
         app.logger.error(f"Error terminating connection: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'message': f'Error terminating connection: {str(e)}'
-        }), 500
+        return (
+            jsonify(
+                {"success": False, "message": f"Error terminating connection: {str(e)}"}
+            ),
+            500,
+        )
 
 
 # Import route implementations
@@ -2302,6 +2493,7 @@ from .routes import init_routes
 
 init_routes(app, get_db_easyner, visualization_manager)
 from .server.statistics.route import stats
+
 app.register_blueprint(stats)
 
 if __name__ == "__main__":
@@ -2310,26 +2502,28 @@ if __name__ == "__main__":
     import tempfile
 
     # Set up command-line argument parsing
-    parser = argparse.ArgumentParser(description='EasyNer DB Server')
-    parser.add_argument('--port', type=int, help='Port to run the server on')
+    parser = argparse.ArgumentParser(description="EasyNer DB Server")
+    parser.add_argument("--port", type=int, help="Port to run the server on")
     args = parser.parse_args()
 
     # Create PID file for process tracking
     pid = os.getpid()
-    pid_dir = os.path.join(tempfile.gettempdir(), 'easyner')
+    pid_dir = os.path.join(tempfile.gettempdir(), "easyner")
     os.makedirs(pid_dir, exist_ok=True)
-    pid_file = os.path.join(pid_dir, 'db_server.pid')
+    pid_file = os.path.join(pid_dir, "db_server.pid")
 
     # Check for existing PID file (orphaned process)
     if os.path.exists(pid_file):
-        with open(pid_file, 'r') as f:
+        with open(pid_file, "r") as f:
             old_pid = int(f.read().strip())
             try:
                 # Check if process exists and terminate it
                 if psutil.pid_exists(old_pid):
                     old_process = psutil.Process(old_pid)
                     if "python" in old_process.name().lower():
-                        app.logger.info(f"Terminating orphaned server process: {old_pid}")
+                        app.logger.info(
+                            f"Terminating orphaned server process: {old_pid}"
+                        )
                         old_process.terminate()
                         try:
                             old_process.wait(timeout=3)
@@ -2339,7 +2533,7 @@ if __name__ == "__main__":
                 app.logger.info(f"Old PID {old_pid} no longer exists or not accessible")
 
     # Write current PID to file
-    with open(pid_file, 'w') as f:
+    with open(pid_file, "w") as f:
         f.write(str(pid))
 
     # Cleanup function for proper server shutdown
@@ -2373,19 +2567,19 @@ if __name__ == "__main__":
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    if hasattr(signal, 'SIGUSR1'):
+    if hasattr(signal, "SIGUSR1"):
         signal.signal(signal.SIGUSR1, signal_handler)
-    if hasattr(signal, 'SIGUSR2'):
+    if hasattr(signal, "SIGUSR2"):
         signal.signal(signal.SIGUSR2, signal_handler)
 
     # Determine the port (command line > environment variable > default)
-    port = args.port if args.port else int(os.environ.get('EASYNER_SERVER_PORT', 5001))
+    port = args.port if args.port else int(os.environ.get("EASYNER_SERVER_PORT", 5001))
 
     # Check if the port is available
     s = socket(AF_INET, SOCK_STREAM)
     port_in_use = False
     try:
-        s.bind(('127.0.0.1', port))
+        s.bind(("127.0.0.1", port))
     except OSError:
         port_in_use = True
     finally:
@@ -2397,7 +2591,7 @@ if __name__ == "__main__":
         for test_port in range(5002, 5020):
             s = socket(AF_INET, SOCK_STREAM)
             try:
-                s.bind(('127.0.0.1', test_port))
+                s.bind(("127.0.0.1", test_port))
                 port = test_port
                 port_in_use = False
                 app.logger.info(f"Found available port: {port}")

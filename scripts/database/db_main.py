@@ -16,8 +16,10 @@ from contextlib import contextmanager
 # Global thread-local storage for connections
 _thread_local = threading.local()
 
+
 def db_error_handler(method):
     """Decorator to handle database errors consistently"""
+
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         try:
@@ -26,19 +28,30 @@ def db_error_handler(method):
             self.logger.error(f"Database error in {method.__name__}: {str(e)}")
             self.logger.debug(f"Args: {args}, Kwargs: {kwargs}")
             # Add traceback to debug log without changing existing error messages
-            self.logger.debug(f"Traceback for {method.__name__}:\n{traceback.format_exc()}")
+            self.logger.debug(
+                f"Traceback for {method.__name__}:\n{traceback.format_exc()}"
+            )
             raise
         except Exception as e:
             self.logger.error(f"Error in {method.__name__}: {str(e)}")
             # Add traceback to debug log without changing existing error messages
-            self.logger.debug(f"Traceback for {method.__name__}:\n{traceback.format_exc()}")
+            self.logger.debug(
+                f"Traceback for {method.__name__}:\n{traceback.format_exc()}"
+            )
             raise
+
     return wrapper
+
 
 class EasyNerDBHandler:
     """Handle database operations with thread-safety and connection management."""
 
-    def __init__(self, db_path: Optional[str] = None, config_path: str = "../../config.json", from_pool: bool = False):
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        config_path: str = "../../config.json",
+        from_pool: bool = False,
+    ):
         """
         Initialize the database handler.
 
@@ -133,7 +146,7 @@ class EasyNerDBHandler:
         try:
             # Try to get database path from environment if not provided
             if not db_path:
-                db_path = os.environ.get('DB_PATH')
+                db_path = os.environ.get("DB_PATH")
                 path_source = "DB_PATH environment variable"
             else:
                 path_source = "parameter"
@@ -142,13 +155,12 @@ class EasyNerDBHandler:
                 db_path = "dev.db"
                 path_source = "default"
 
-
             # Create connection with thread checking to ensure thread safety
             # Use consistent naming - always set _connection not conn
             self._connection = sqlite3.connect(
                 db_path,
                 check_same_thread=False,  # We'll manage thread safety ourselves
-                timeout=5.0  # 5 second timeout for busy database
+                timeout=5.0,  # 5 second timeout for busy database
             )
 
             # Set row factory for easier access to results
@@ -165,8 +177,8 @@ class EasyNerDBHandler:
 
             # Cache environment settings
             env_settings = {}
-            if os.environ.get('LOG_LEVEL'):
-                env_settings['log_level'] = os.environ.get('LOG_LEVEL')
+            if os.environ.get("LOG_LEVEL"):
+                env_settings["log_level"] = os.environ.get("LOG_LEVEL")
             self._set_cached_value("global.environment_settings", env_settings)
 
             # Initialize views if needed
@@ -180,13 +192,15 @@ class EasyNerDBHandler:
         """Initialize cache table for storing metadata."""
         try:
             # Create cache table if it doesn't exist
-            self._connection.execute("""
+            self._connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS _cache (
                     key TEXT PRIMARY KEY,
                     value TEXT,
                     expires INTEGER
                 )
-            """)
+            """
+            )
             self._connection.commit()
             self.logger.debug("Cache table initialized")
 
@@ -223,12 +237,16 @@ class EasyNerDBHandler:
             foreign_keys = self._connection.execute("PRAGMA foreign_keys").fetchone()[0]
 
             # Get journal size limit
-            journal_size = self._connection.execute("PRAGMA journal_size_limit").fetchone()[0]
+            journal_size = self._connection.execute(
+                "PRAGMA journal_size_limit"
+            ).fetchone()[0]
 
             # Get max parameter count
             max_params = "Not available"
             try:
-                max_params = self._connection.execute("PRAGMA max_parameter_count").fetchone()[0]
+                max_params = self._connection.execute(
+                    "PRAGMA max_parameter_count"
+                ).fetchone()[0]
             except:
                 pass
 
@@ -241,32 +259,36 @@ class EasyNerDBHandler:
 
             # Get environment settings
             env_settings = {}
-            if os.environ.get('LOG_LEVEL'):
-                env_settings['log_level'] = os.environ.get('LOG_LEVEL')
+            if os.environ.get("LOG_LEVEL"):
+                env_settings["log_level"] = os.environ.get("LOG_LEVEL")
 
             # Log and print connection info
             try:
                 from scripts.utils.log_formatter import TableFormatter
 
                 log_config = {
-                    'Database': self.name,
-                    'Path': self.db_path,
-                    'Path source': self.path_source,
-                    'Main log (INFO)': self.log_file,
-                    'Error log (ERRORS only)': self.error_log_file,
-                    'Debug log (FULL DEBUG)': self.debug_log_file,
-                    'Row-factory': self.cursor.row_factory,
-                    'Journal Mode': self._get_pragma_value("journal_mode"),
-                    'Busy Timeout': self._get_pragma_value("busy_timeout"),
-                    'Synchronous': self._get_pragma_value("synchronous"),
-                    'Foreign keys': self._get_pragma_value("foreign_keys"),
-                    'Journal size limit': self._get_pragma_value("journal_size_limit"),
-                    'Max parameter count': self._get_pragma_value("max_variable_number"),
+                    "Database": self.name,
+                    "Path": self.db_path,
+                    "Path source": self.path_source,
+                    "Main log (INFO)": self.log_file,
+                    "Error log (ERRORS only)": self.error_log_file,
+                    "Debug log (FULL DEBUG)": self.debug_log_file,
+                    "Row-factory": self.cursor.row_factory,
+                    "Journal Mode": self._get_pragma_value("journal_mode"),
+                    "Busy Timeout": self._get_pragma_value("busy_timeout"),
+                    "Synchronous": self._get_pragma_value("synchronous"),
+                    "Foreign keys": self._get_pragma_value("foreign_keys"),
+                    "Journal size limit": self._get_pragma_value("journal_size_limit"),
+                    "Max parameter count": self._get_pragma_value(
+                        "max_variable_number"
+                    ),
                     # 'Environment settings': self.cache_manager.get_global("environment_settings"),
-                    'Mapped I/O (> 1 -> True)': self._get_pragma_value("mmap_size"),
+                    "Mapped I/O (> 1 -> True)": self._get_pragma_value("mmap_size"),
                 }
 
-                table = TableFormatter.format_table(log_config, title="Database connection initialized")
+                table = TableFormatter.format_table(
+                    log_config, title="Database connection initialized"
+                )
                 self.logger.info(f"\n{table}")
                 print(table)
             except ImportError:
@@ -280,16 +302,16 @@ class EasyNerDBHandler:
                     f"\n Debug log - (FULL DEBUG LOG): {self.debug_log_file}"
                 )
 
-
         except Exception as e:
             self.logger.error(f"Error logging connection info: {e}")
-
 
     @property
     def schema(self):
         """Get database schema info."""
         if not self._schema:
-            self._schema = self._connection.execute("SELECT sql FROM sqlite_master").fetchall()
+            self._schema = self._connection.execute(
+                "SELECT sql FROM sqlite_master"
+            ).fetchall()
         return self._schema
 
     @property
@@ -297,7 +319,8 @@ class EasyNerDBHandler:
         """Get database tables info."""
         if not self._tables:
             tables = self._connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
             self._tables = {"tables": [table[0] for table in tables]}
         return self._tables
 
@@ -330,6 +353,7 @@ class EasyNerDBHandler:
         """Get database statistics."""
         if self._statistics is None:
             from .statistics.db_statistics import DBStatistics
+
             self._statistics = DBStatistics(
                 self._connection, self._cursor, self.logger, self.data_exchanger
             )
@@ -338,6 +362,7 @@ class EasyNerDBHandler:
     def _get_statistics(self):
         """Get statistics object for complex operations."""
         from .statistics.db_statistics import DBStatistics
+
         if self._statistics is None:
             self._statistics = DBStatistics(
                 self._connection, self._cursor, self.logger, self.data_exchanger
@@ -349,8 +374,11 @@ class EasyNerDBHandler:
     def _get_data_exchanger(self):
         """Get data exchanger object for complex operations."""
         from .db_data_exchanger import DBDataExchanger
+
         if self._data_exchanger is None:
-            self._data_exchanger = DBDataExchanger(self._connection, self._cursor, self.logger)
+            self._data_exchanger = DBDataExchanger(
+                self._connection, self._cursor, self.logger
+            )
         return self._data_exchanger
 
     @property
@@ -364,7 +392,7 @@ class EasyNerDBHandler:
             value_json = json.dumps(value)
             self._connection.execute(
                 "INSERT OR REPLACE INTO _cache (key, value, expires) VALUES (?, ?, ?)",
-                (key, value_json, expires)
+                (key, value_json, expires),
             )
             self._connection.commit()
             self.logger.debug(f"Cache set for key: {key}, expires: {expires}")
@@ -405,13 +433,13 @@ class EasyNerDBHandler:
             self.execute("PRAGMA temp_store = MEMORY")
 
             # Set larger cache
-            self.execute("PRAGMA cache_size = -10000") # ~10MB
+            self.execute("PRAGMA cache_size = -10000")  # ~10MB
 
             # Set mmap size for faster lookups in large datasets
             try:
-                self.execute("PRAGMA mmap_size = 1073741824") # 1GB
+                self.execute("PRAGMA mmap_size = 1073741824")  # 1GB
             except:
-                pass # May not be supported on all systems
+                pass  # May not be supported on all systems
 
         except Exception as e:
             self.logger.warning(f"Failed to optimize database for read: {e}")
@@ -426,7 +454,7 @@ class EasyNerDBHandler:
             self.execute("PRAGMA synchronous = 1")
 
             # Use larger cache
-            self.execute("PRAGMA cache_size = -20000") # ~20MB
+            self.execute("PRAGMA cache_size = -20000")  # ~20MB
 
         except Exception as e:
             self.logger.warning(f"Failed to optimize database for write: {e}")
@@ -438,7 +466,7 @@ class EasyNerDBHandler:
             self.execute("PRAGMA synchronous = 2")
 
             # Reset cache to default
-            self.execute("PRAGMA cache_size = -2000") # ~2MB
+            self.execute("PRAGMA cache_size = -2000")  # ~2MB
 
         except Exception as e:
             self.logger.warning(f"Failed to reset database settings: {e}")
@@ -456,7 +484,9 @@ class EasyNerDBHandler:
         # Check if we're in the same thread that created the connection
         current_thread_id = threading.get_ident()
         if current_thread_id != self.creation_thread_id:
-            self.logger.debug(f"Thread mismatch: created in {self.creation_thread_id}, accessed in {current_thread_id}")
+            self.logger.debug(
+                f"Thread mismatch: created in {self.creation_thread_id}, accessed in {current_thread_id}"
+            )
 
         try:
             if params:
@@ -471,8 +501,12 @@ class EasyNerDBHandler:
                 return self.cursor.rowcount
 
         except Exception as e:
-            self.logger.error(f"Error executing query: {query}\n with args: {params}. Exception: {str(e)}")
-            self.logger.debug(f"Query execution error details: {traceback.format_exc()}")
+            self.logger.error(
+                f"Error executing query: {query}\n with args: {params}. Exception: {str(e)}"
+            )
+            self.logger.debug(
+                f"Query execution error details: {traceback.format_exc()}"
+            )
 
             if not query.lstrip().upper().startswith(("SELECT", "PRAGMA")):
                 try:
@@ -543,7 +577,8 @@ class EasyNerDBHandler:
     def refresh_tables_info(self):
         """Refresh table information."""
         tables = self._connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
         self._tables = {"tables": [table[0] for table in tables]}
 
     def close(self):
@@ -649,22 +684,26 @@ class EasyNerDBHandler:
             if env_batch_size:
                 env_settings["batch_size"] = int(env_batch_size)
         except ValueError:
-            self.logger.warning(f"Invalid DEFAULT_BATCH_SIZE value: {os.getenv('DEFAULT_BATCH_SIZE')}")
+            self.logger.warning(
+                f"Invalid DEFAULT_BATCH_SIZE value: {os.getenv('DEFAULT_BATCH_SIZE')}"
+            )
             env_settings["batch_size"] = 32
 
         # Log level
         env_log_level = os.getenv("LOG_LEVEL")
-        if (env_log_level):
+        if env_log_level:
             valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-            if (env_log_level.upper() in valid_levels):
+            if env_log_level.upper() in valid_levels:
                 env_settings["log_level"] = env_log_level.upper()
                 # Update logger level
                 level = getattr(logging, env_log_level.upper())
                 self.logger.setLevel(level)
-                self.logger.info(f"Set log level to {env_log_level.upper()} from environment variable")
+                self.logger.info(
+                    f"Set log level to {env_log_level.upper()} from environment variable"
+                )
 
         # Store settings in cache if we have a cache manager
-        if hasattr(self, 'cache_manager'):
+        if hasattr(self, "cache_manager"):
             self.cache_manager.set_global("environment_settings", env_settings)
 
         return env_settings
@@ -693,9 +732,12 @@ class EasyNerDBHandler:
 
             # Initialize primary components
             self.data_cleaner = DBDataCleaner(
-                self._connection, self._cursor, self.logger, data_exchanger, config=self.config
+                self._connection,
+                self._cursor,
+                self.logger,
+                data_exchanger,
+                config=self.config,
             )
-
 
             self._statistics = None  # Will be initialized on first access
 
@@ -713,7 +755,7 @@ class EasyNerDBHandler:
         """
         Returns the connection parameters as a dictionary for Reader/Writer classes.
         """
-        return {"database": self.db_path} # Return connection parameters as dict
+        return {"database": self.db_path}  # Return connection parameters as dict
 
     def _analyze_database(self, table_name: str = None):
         """
@@ -735,7 +777,6 @@ class EasyNerDBHandler:
         self.execute("PRAGMA journal_size_limit = 6144000;")
         self.execute("PRAGMA temp_store = MEMORY;")
         self.execute("PRAGMA busy_timeout = 10000;")
-
 
     def _load_config(self, config_path):
         """Load the JSON configuration file."""
@@ -798,9 +839,9 @@ class EasyNerDBHandler:
         self.error_log_file = os.path.join(log_dir, self.name + ".err")
         self.debug_log_file = os.path.join(log_dir, self.name + ".debug.log")
 
-            # Create file handler for logging
+        # Create file handler for logging
         try:
-            log_file_handler = logging.FileHandler(self.log_file, mode='w')
+            log_file_handler = logging.FileHandler(self.log_file, mode="w")
             log_file_handler.setLevel(logging.DEBUG)
             file_formatter = logging.Formatter(
                 "%(asctime)s - [%(threadName)s] - %(levelname)s - %(message)s"
@@ -809,7 +850,9 @@ class EasyNerDBHandler:
 
             # Create console handler for logging
             console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.getLevelName(os.getenv("LOGGING_LEVEL_CONSOLE", "ERROR")))
+            console_handler.setLevel(
+                logging.getLevelName(os.getenv("LOGGING_LEVEL_CONSOLE", "ERROR"))
+            )
             # Fix the console_formatter - change levellevel to levelname
             console_formatter = logging.Formatter(
                 "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
@@ -817,7 +860,7 @@ class EasyNerDBHandler:
             console_handler.setFormatter(console_formatter)
 
             # Create separate error file handler for logging errors
-            error_file_handler = logging.FileHandler(self.error_log_file, mode='w')
+            error_file_handler = logging.FileHandler(self.error_log_file, mode="w")
             error_file_handler.setLevel(logging.ERROR)
             error_file_formatter = logging.Formatter(
                 "%(asctime)s - %(name)s - [%(threadName)s] - %(levelname)s - %(message)s"
@@ -826,18 +869,19 @@ class EasyNerDBHandler:
 
             class TracebackFilter(logging.Filter):
                 """Filter that automatically adds traceback information to debug logs"""
+
                 def filter(self, record):
                     # If exc_info is not already set but we're in an exception context,
                     # capture the current exception info
                     if not record.exc_info:
                         exc_info = sys.exc_info()
-                        if (exc_info[0] is not None):
+                        if exc_info[0] is not None:
                             record.exc_info = exc_info
 
                     # Always include the record
                     return True
 
-            debug_file_handler = logging.FileHandler(self.debug_log_file, mode='w')
+            debug_file_handler = logging.FileHandler(self.debug_log_file, mode="w")
             debug_file_handler.setLevel(logging.DEBUG)
             debug_file_handler.setFormatter(file_formatter)
             debug_file_handler.addFilter(TracebackFilter())
@@ -900,6 +944,7 @@ class EasyNerDBHandler:
         self.cursor.execute("PRAGMA foreign_keys = ON;")
         self._connection.commit()
         self.cursor.execute("VACUUM;")
+
     def _backup_database_(self, backup_path: str = None):
         """
         Backup the database to a specified path.
@@ -912,9 +957,7 @@ class EasyNerDBHandler:
             backup_path = self.db_path + ".backup"
         else:
             if not os.path.isabs(backup_path):
-                backup_path = os.path.join(
-                    os.path.dirname(self.db_path), backup_path
-                )
+                backup_path = os.path.join(os.path.dirname(self.db_path), backup_path)
 
         self.logger.info(f"Backing up database to {backup_path}")
 
@@ -1114,9 +1157,9 @@ class EasyNerDBHandler:
             "PRAGMA synchronous = OFF",
             "PRAGMA journal_size_limit = 6144000",
             "PRAGMA temp_store = MEMORY",
-            "PRAGMA cache_size = -20000", # 20 MB
-            "PRAGMA mmap_size = 30000000000", # ~30 GB,
-            "PRAGMA busy_timeout = 30000", # Wait 30 seconds for a lock to clear
+            "PRAGMA cache_size = -20000",  # 20 MB
+            "PRAGMA mmap_size = 30000000000",  # ~30 GB,
+            "PRAGMA busy_timeout = 30000",  # Wait 30 seconds for a lock to clear
         ]
 
         try:
@@ -1126,10 +1169,8 @@ class EasyNerDBHandler:
             self.logger.error(f"Error setting {pragma}: {e}")
 
         self.logger.info(
-            f"Database performance parameters optimized."
-            f"{' '.join(pragmas)}")
-
-
+            f"Database performance parameters optimized." f"{' '.join(pragmas)}"
+        )
 
     def optimize_db_performance_for_read(self):
         # Set WAL mode, synchronous=OFF, and journal_mode=MEMORY
@@ -1285,7 +1326,9 @@ class EasyNerDBHandler:
             result = self.execute(f"PRAGMA {pragma_name};")
             if result and len(result) > 0 and len(result[0]) > 0:
                 return result[0][0]
-            return "Not available"  # Return a placeholder if result is empty or malformed
+            return (
+                "Not available"  # Return a placeholder if result is empty or malformed
+            )
 
         except sqlite3.Error as e:
             self.logger.warning(f"SQLite error getting pragma {pragma_name}: {str(e)}")
@@ -1295,8 +1338,10 @@ class EasyNerDBHandler:
             self.logger.debug(f"Error getting pragma {pragma_name}: {str(e)}")
             return "Not available"  # Return a placeholder on error
 
+
 class BaseComponent:
     """Common base class for all components with shared logger and database connection."""
+
     def __init__(self, db_handler: EasyNerDBHandler):
         # Direct attribute access from the database handler
         self.logger = db_handler.logger
@@ -1316,6 +1361,7 @@ class BaseComponent:
 
     # Remove init_deps as it's redundant with proper inheritance
 
+
 # Thread-local connection factory for safe access across threads
 @contextmanager
 def get_dedicated_connection(db_path=None):
@@ -1326,9 +1372,9 @@ def get_dedicated_connection(db_path=None):
     finally:
         connection.close()
 
+
 def get_connection(db_path=None):
     """Get a thread-local connection that's reused within the thread."""
-    if not hasattr(_thread_local, 'db_connection'):
+    if not hasattr(_thread_local, "db_connection"):
         _thread_local.db_connection = EasyNerDBHandler(db_path)
     return _thread_local.db_connection
-

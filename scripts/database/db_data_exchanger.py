@@ -5,7 +5,6 @@ from .data_model.schema import *
 import logging
 
 
-
 class DBDataExchanger:
 
     def __init__(
@@ -64,11 +63,14 @@ class DBDataExchanger:
 
     def get_document(self, doc_id: int) -> Document:
         with self.conn:
-            self.conn.row_factory = sqlite3.Row  # Configure the connection to return sqlite3.Row objects
+            self.conn.row_factory = (
+                sqlite3.Row
+            )  # Configure the connection to return sqlite3.Row objects
             try:
                 cursor = self.conn.cursor()
                 # Use proper field mapping for Document class
-                cursor.execute(f"""--sql
+                cursor.execute(
+                    f"""--sql
                     SELECT
                         {DOC_ID} as id,
                         {TITLE} as title,
@@ -77,7 +79,9 @@ class DBDataExchanger:
                         {ALPHA_COUNT} as alpha_count
                     FROM {TABLE_DOCS}
                     WHERE {DOC_ID} = ?
-                """, (doc_id,))
+                """,
+                    (doc_id,),
+                )
 
                 document_row = cursor.fetchone()
                 document_dict = self._row_to_dict(document_row)
@@ -95,7 +99,8 @@ class DBDataExchanger:
         try:
             cursor = self.conn.cursor()
             # Use proper field mapping for Sentence class
-            cursor.execute(f"""--sql
+            cursor.execute(
+                f"""--sql
                 SELECT
                     {TXT} as txt,
                     {SENT_IDX} as sentence_index,
@@ -105,7 +110,9 @@ class DBDataExchanger:
                     {ALPHA_COUNT} as alpha_count
                 FROM {TABLE_SENTENCES}
                 WHERE {DOC_ID} = ?
-            """, (doc_id,))
+            """,
+                (doc_id,),
+            )
 
             sentences = cursor.fetchall()
             sentence_objects = []
@@ -149,16 +156,23 @@ class DBDataExchanger:
 
     def get_named_entity_class_id(self, named_entity_class: str) -> int:
         try:
-            self.cursor.execute(f"SELECT {CLASS_ID} FROM {TABLE_NE_CLASS} WHERE {NE_CLASS} = ?", (named_entity_class,))
+            self.cursor.execute(
+                f"SELECT {CLASS_ID} FROM {TABLE_NE_CLASS} WHERE {NE_CLASS} = ?",
+                (named_entity_class,),
+            )
 
             result = self.cursor.fetchone()
             if result:
                 return result[0]
             else:
-                self.logger.warning(f"No ID found for named entity: {named_entity_class}")
+                self.logger.warning(
+                    f"No ID found for named entity: {named_entity_class}"
+                )
                 return None  # Or raise an exception if appropriate
         except sqlite3.Error as e:
-            self.logger.error(f"Error fetching named entity ID for {named_entity_class}: {e}")
+            self.logger.error(
+                f"Error fetching named entity ID for {named_entity_class}: {e}"
+            )
             return None
 
     def search_entities(

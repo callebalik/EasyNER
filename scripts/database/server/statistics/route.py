@@ -8,11 +8,19 @@ from ...statistics.ne_doc_distr import Flowchart
 from ...statistics.db_statistics import DBStatistics
 from ...db_server import get_db_easyner_context_connection
 
-stats = Blueprint("database_stats", __name__, template_folder="templates", static_folder="../../static", url_prefix="/statistics")
+stats = Blueprint(
+    "database_stats",
+    __name__,
+    template_folder="templates",
+    static_folder="../../static",
+    url_prefix="/statistics",
+)
+
 
 @stats.get("/")
 def index():
     return render_template("stats_home.html")  # No need for prefixes
+
 
 @stats.get("/data-flowchart")
 def data_flowchart():
@@ -23,7 +31,7 @@ def data_flowchart():
             conn=db.conn,
             cursor=db.cursor,
             logger=db.logger,
-            data_exchanger=db.data_exchanger
+            data_exchanger=db.data_exchanger,
         )
 
         # Initialize the Flowchart class with our statistics
@@ -47,5 +55,5 @@ def data_flowchart():
             "ne_doc_distr.html",
             # basic_stats=tabular_data["basic_stats"],
             sankey_html=sankey_html,  # Now matches template expectation
-            title="Named Entity Document Distribution"
+            title="Named Entity Document Distribution",
         )

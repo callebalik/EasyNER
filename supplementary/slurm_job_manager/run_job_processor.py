@@ -22,4 +22,6 @@ print(error_log_dir)
 run_error_logging(metadata_file, err_dir, error_log_dir)
 
 # Run the batch completion logging process
-run_completion_logging(metadata_file, err_dir, batch_completion_log_file, rerun_file=batch_rerun_file)
+run_completion_logging(
+    metadata_file, err_dir, batch_completion_log_file, rerun_file=batch_rerun_file
+)

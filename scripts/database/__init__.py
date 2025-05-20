@@ -21,16 +21,12 @@ from .db_main import EasyNerDBHandler
 from .analysis.analyzer import DataAnalyzer
 from .statistics.db_statistics import DBStatistics
 
-__all__ = [
-    'EasyNerDBHandler',
-    'DBStatistics',
-    'DBDataExchanger',
-    'CacheManager'
-]
+__all__ = ["EasyNerDBHandler", "DBStatistics", "DBDataExchanger", "CacheManager"]
 
 import logging
 from flask import Flask
 from .routes import init_routes
+
 
 class DatabaseSystem:
     """Single entry point to the database module."""
@@ -38,7 +34,7 @@ class DatabaseSystem:
     def __init__(self, db_path, log_level=logging.INFO):
         # Configure logging globally or within DatabaseSystem if preferred
         logging.basicConfig(level=log_level)
-        self.core_logger = BaseLogger("db_core_logger") # Core Logger Instance
+        self.core_logger = BaseLogger("db_core_logger")  # Core Logger Instance
         self.db_manager = DatabaseManager(db_path)
         self.base_executor = BaseExecutor(self.db_manager, self.core_logger)
         self.parallel_executor = ParallelExecutor(self.db_manager, self.core_logger)
@@ -52,7 +48,7 @@ class DatabaseSystem:
     @property
     def core(self):
         """Access to core components (DatabaseManager, Logger, Executor)."""
-        return self # Allows db_system.core.log_message() etc., but not ideal, refine if needed.
+        return self  # Allows db_system.core.log_message() etc., but not ideal, refine if needed.
 
     @property
     def analysis(self):
@@ -70,6 +66,7 @@ class DatabaseSystem:
         self.db_manager.close_connection()
         self.core_logger.info("Database system shutdown.")
 
+
 def create_app():
     # """Create and configure the Flask application."""
     # app = Flask(__name__)
@@ -80,9 +77,12 @@ def create_app():
     # return app
 
     import logging
-    logging.warning("create_app() in __init__.py is deprecated. Use db_server.py instead.")
+
+    logging.warning(
+        "create_app() in __init__.py is deprecated. Use db_server.py instead."
+    )
     return None
+
 
 # Create the application instance
 # app = create_app()
-

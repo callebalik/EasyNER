@@ -4,6 +4,7 @@ Example demonstrating the use of ReaderWriterPair with formatted table logging.
 This script shows how to use the ReaderWriterPair class with the integrated
 table formatting functionality to make log output more readable.
 """
+
 import os
 import sqlite3
 import logging
@@ -26,16 +27,20 @@ def example_process_function(batch: List[Dict], conn_params: Dict) -> List[Dict]
     """
     processed_data = []
     for row in batch:
-        processed_data.append({
-            'id': row['id'],
-            'text': row['text'].upper(),
-            'processed': True,
-            'length': len(row['text'])
-        })
+        processed_data.append(
+            {
+                "id": row["id"],
+                "text": row["text"].upper(),
+                "processed": True,
+                "length": len(row["text"]),
+            }
+        )
     return processed_data
 
 
-def example_write_function(batch: List[Dict], cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
+def example_write_function(
+    batch: List[Dict], cursor: sqlite3.Cursor, conn: sqlite3.Connection
+) -> None:
     """
     Example write function that writes processed data to a database.
 
@@ -47,7 +52,7 @@ def example_write_function(batch: List[Dict], cursor: sqlite3.Cursor, conn: sqli
     for item in batch:
         cursor.execute(
             "INSERT INTO processed_texts (text, is_processed, text_length) VALUES (?, ?, ?)",
-            (item['text'], item['processed'], item['length'])
+            (item["text"], item["processed"], item["length"]),
         )
 
 
@@ -63,22 +68,26 @@ def setup_example_database(db_path: str) -> None:
     cursor = conn.cursor()
 
     # Create source table
-    cursor.execute("""
+    cursor.execute(
+        """
     CREATE TABLE IF NOT EXISTS source_texts (
         id INTEGER PRIMARY KEY,
         text TEXT NOT NULL
     )
-    """)
+    """
+    )
 
     # Create processed table
-    cursor.execute("""
+    cursor.execute(
+        """
     CREATE TABLE IF NOT EXISTS processed_texts (
         id INTEGER PRIMARY KEY,
         text TEXT NOT NULL,
         is_processed BOOLEAN NOT NULL,
         text_length INTEGER NOT NULL
     )
-    """)
+    """
+    )
 
     # Insert sample data
     cursor.execute("DELETE FROM source_texts")
@@ -87,11 +96,13 @@ def setup_example_database(db_path: str) -> None:
         "Another example with different content.",
         "Processing multiple texts in parallel.",
         "Using ReaderWriterPair for efficient database operations.",
-        "Table formatting makes logs more readable."
+        "Table formatting makes logs more readable.",
     ]
 
     for i, text in enumerate(sample_texts):
-        cursor.execute("INSERT INTO source_texts (id, text) VALUES (?, ?)", (i+1, text))
+        cursor.execute(
+            "INSERT INTO source_texts (id, text) VALUES (?, ?)", (i + 1, text)
+        )
 
     conn.commit()
     conn.close()
@@ -106,7 +117,7 @@ def run_example() -> None:
     # Set up logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger("ReaderWriterExample")
 
@@ -128,11 +139,11 @@ def run_example() -> None:
         write_function=example_write_function,
         total_rows=5,  # We know we have 5 sample texts
         logger=logger,
-        batch_size=2,   # Small batch size for demonstration
+        batch_size=2,  # Small batch size for demonstration
         num_reader_threads=2,  # Use 2 reader threads
         max_queue_size=5,  # Small queue size for demonstration
         writer_batch_chunking=1,  # No batch chunking for this simple example
-        process_title="Example Text Processing"
+        process_title="Example Text Processing",
     )
 
     # Run the process
@@ -141,7 +152,9 @@ def run_example() -> None:
     # Verify results
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute("SELECT text, is_processed, text_length FROM processed_texts ORDER BY id")
+    cursor.execute(
+        "SELECT text, is_processed, text_length FROM processed_texts ORDER BY id"
+    )
     results = cursor.fetchall()
 
     print("\nProcessed Results:")

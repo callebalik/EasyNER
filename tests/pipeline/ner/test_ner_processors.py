@@ -29,9 +29,7 @@ class TestNERProcessors:
     def mock_transformers(self):
         """Mock all transformer components"""
         with (
-            patch(
-                "transformers.AutoTokenizer.from_pretrained"
-            ) as mock_tokenizer,
+            patch("transformers.AutoTokenizer.from_pretrained") as mock_tokenizer,
             patch(
                 "transformers.AutoModelForTokenClassification.from_pretrained"
             ) as mock_model,
@@ -43,9 +41,7 @@ class TestNERProcessors:
             model_instance.__class__.__name__ = "PreTrainedModel"
             model_instance.device = torch.device("cuda:0")
             model_instance.eval = MagicMock(return_value=model_instance)
-            type(model_instance).hf_device_map = PropertyMock(
-                return_value=None
-            )
+            type(model_instance).hf_device_map = PropertyMock(return_value=None)
             mock_model.return_value = model_instance
 
             # Configure pipeline mock
@@ -62,9 +58,7 @@ class TestNERProcessors:
                     }
                 ]
             ]
-            pipeline_instance.__call__ = MagicMock(
-                return_value=mock_predictions
-            )
+            pipeline_instance.__call__ = MagicMock(return_value=mock_predictions)
             mock_pipeline.return_value = pipeline_instance
 
             # Configure tokenizer mock
@@ -92,9 +86,7 @@ class TestNERProcessors:
                 ner_utils, "calculate_optimal_batch_size", create=True
             ) as mock_calc,
             patch.object(io_utils, "get_batch_file_index") as mock_batch_index,
-            patch.object(
-                io_utils, "_remove_all_files_from_dir"
-            ) as mock_remove_files,
+            patch.object(io_utils, "_remove_all_files_from_dir") as mock_remove_files,
         ):
             mock_get_device.return_value = 0
             mock_calc.return_value = 32
@@ -139,9 +131,7 @@ class TestNERProcessors:
             )
             mock_convert_to_dataset.return_value = sample_dataset
             mock_convert_to_dict.return_value = {
-                "article1": {
-                    "sentences": [{"text": "Test sentence", "entities": []}]
-                }
+                "article1": {"sentences": [{"text": "Test sentence", "entities": []}]}
             }
 
             yield {
@@ -228,9 +218,7 @@ class TestNERProcessors:
                     model_instance = MagicMock()
                     pipeline_instance = MagicMock()
 
-                    mock_tokenizer.from_pretrained.return_value = (
-                        tokenizer_instance
-                    )
+                    mock_tokenizer.from_pretrained.return_value = tokenizer_instance
                     mock_model.from_pretrained.return_value = model_instance
                     mock_pipeline.return_value = pipeline_instance
 
@@ -292,9 +280,7 @@ class TestNERProcessors:
         )
 
         # Process a sample file
-        result = biobert_processor._process_single_file(
-            "dummy_file.json", device
-        )
+        result = biobert_processor._process_single_file("dummy_file.json", device)
 
         # Verify interactions
         mock_io["convert_to_dataset"].assert_called_once()
@@ -350,16 +336,12 @@ class TestNERProcessors:
         # Create a wrapper function that forces the pipeline to be called
         def mock_predict_dataset(dataset, text_column="text", batch_size=None):
             # Force call the pipeline directly
-            pipeline_instance(
-                inputs=dataset[text_column], batch_size=batch_size
-            )
+            pipeline_instance(inputs=dataset[text_column], batch_size=batch_size)
             # Then call the original function
             return original_predict_dataset(dataset, text_column, batch_size)
 
         # Use direct patching
-        with patch(
-            "easyner.pipeline.ner.transformer_based.ner_biobert.AutoTokenizer"
-        ):
+        with patch("easyner.pipeline.ner.transformer_based.ner_biobert.AutoTokenizer"):
             with patch(
                 "easyner.pipeline.ner.transformer_based.ner_biobert.AutoModelForTokenClassification"
             ):
@@ -387,9 +369,7 @@ class TestNERProcessors:
 
                     # Our test is complete, we've successfully validated the behavior
 
-    def test_optimal_batch_size(
-        self, biobert_processor, mock_transformers, mock_utils
-    ):
+    def test_optimal_batch_size(self, biobert_processor, mock_transformers, mock_utils):
         """Test optimal batch size calculation"""
         # Setup processor
         device = torch.device("cuda:0")
@@ -405,9 +385,7 @@ class TestNERProcessors:
         )
 
         # Get optimal batch size
-        batch_size = biobert_processor._get_optimal_batch_size(
-            sample_dataset, "text"
-        )
+        batch_size = biobert_processor._get_optimal_batch_size(sample_dataset, "text")
 
         # Verify the calculation function is called
         mock_utils["calculate_optimal_batch_size"].assert_called_once_with(
@@ -450,9 +428,7 @@ class TestNERProcessors:
         assert hasattr(biobert_processor, "nlp")
 
         # Verify each file was processed
-        assert process_single_file_mock.call_count == len(
-            sample_files["file_paths"]
-        )
+        assert process_single_file_mock.call_count == len(sample_files["file_paths"])
 
     def test_parallel_processing(
         self,
@@ -492,14 +468,10 @@ class TestNERProcessors:
         )
 
         # Process the dataset with parallel processing
-        biobert_processor._process_files_in_parallel(
-            sample_files["file_paths"]
-        )
+        biobert_processor._process_files_in_parallel(sample_files["file_paths"])
 
         # Verify each file was processed
-        assert process_single_file_mock.call_count == len(
-            sample_files["file_paths"]
-        )
+        assert process_single_file_mock.call_count == len(sample_files["file_paths"])
 
 
 class TestNERPipeline:
@@ -525,9 +497,7 @@ class TestNERPipeline:
             def mock_glob(pattern):
                 return sample_files["file_paths"]
 
-            monkeypatch.setattr(
-                "easyner.pipeline.ner.ner_main.glob", mock_glob
-            )
+            monkeypatch.setattr("easyner.pipeline.ner.ner_main.glob", mock_glob)
 
         def patch_os(monkeypatch):
             monkeypatch.setattr("os.makedirs", lambda *args, **kwargs: None)
@@ -562,9 +532,7 @@ class TestNERPipeline:
 
         return {"input_dir": str(input_dir), "file_paths": file_paths}
 
-    def test_pipeline_initialization(
-        self, sample_config, mock_processor_factory
-    ):
+    def test_pipeline_initialization(self, sample_config, mock_processor_factory):
         """Test that NERPipeline initializes correctly"""
         pipeline = NERPipeline(sample_config, cpu_limit=4)
 
@@ -572,9 +540,9 @@ class TestNERPipeline:
         assert pipeline.config["cpu_limit"] == 4
 
         # Verify processor was created
-        mock_processor_factory[
-            "factory"
-        ].create_processor.assert_called_once_with(pipeline.config)
+        mock_processor_factory["factory"].create_processor.assert_called_once_with(
+            pipeline.config
+        )
         assert pipeline.processor == mock_processor_factory["processor"]
 
     def test_pipeline_run(
@@ -598,12 +566,8 @@ class TestNERPipeline:
             pipeline.run()
 
             # Verify processor was called correctly
-            mock_processor_factory[
-                "processor"
-            ].process_dataset.assert_called_once()
-            args, kwargs = mock_processor_factory[
-                "processor"
-            ].process_dataset.call_args
+            mock_processor_factory["processor"].process_dataset.assert_called_once()
+            args, kwargs = mock_processor_factory["processor"].process_dataset.call_args
             assert len(args[0]) == 2  # Should have 2 files
             assert kwargs.get("device") == "mocked_device"
 
