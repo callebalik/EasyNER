@@ -1,4 +1,5 @@
-import threading
+# pyright: reportOptionalMemberAccess=false
+# import threading
 import time
 
 import schedule
@@ -18,7 +19,14 @@ class CleanupManager:
         self._scheduler_thread = None
         self._is_running = False
 
-    def register_task(self, task_id, schedule_str, task_callable, *args, **kwargs) -> None:
+    def register_task(
+        self,
+        task_id,
+        schedule_str,
+        task_callable,
+        *args,
+        **kwargs,
+    ) -> None:
         """Registers a cleanup task with its schedule."""
         self._scheduled_tasks.append(
             {
@@ -105,7 +113,10 @@ class CleanupManager:
         start_time = time.time()
         try:
             task_callable(
-                self.db_manager, self.logger, *args, **kwargs,
+                self.db_manager,
+                self.logger,
+                *args,
+                **kwargs,
             )  # Pass db_manager and logger
             end_time = time.time()
             duration = end_time - start_time

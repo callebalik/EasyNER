@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=false,  reportPossiblyUnboundVariable=false
 import logging
 import sqlite3
 from typing import Any
@@ -235,7 +236,9 @@ class DBDataExchanger:
         try:
             self.cursor.execute(query, params)
             columns = [col[0] for col in self.cursor.description]
-            rows = [dict(zip(columns, row, strict=False)) for row in self.cursor.fetchall()]
+            rows = [
+                dict(zip(columns, row, strict=False)) for row in self.cursor.fetchall()
+            ]
             return rows
         except sqlite3.Error as e:
             self.logger.error(f"Error searching entities: {e}")

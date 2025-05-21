@@ -1,4 +1,3 @@
-# filepath: /home/carloa/Desktop/EasyNer/scripts/database/routes/cooccurrence_routes.py
 from flask import jsonify, render_template, request
 
 

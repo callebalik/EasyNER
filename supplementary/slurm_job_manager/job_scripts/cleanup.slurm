@@ -12,17 +12,15 @@ module load Anaconda3
 source config_conda.sh
 conda activate easyner_env
 
-
 # Debug: Print the activated environment
 echo "Activated conda environment: $(conda env list | grep '*')"
 
-
 # Set environment variables
-export PYTHONPATH=$PYTHONPATH:/home/carloa/Desktop/EasyNer
+export PYTHONPATH=$PYTHONPATH:$EASYNER_DIR
 export DB_RUN=True
 # export FILE_SPAN=None
 echo "DB_RUN is set to: $DB_RUN"
 echo "FILE_SPAN is set to: $FILE_SPAN"
 
 # Run the conversion script (all configuration is in config.json)
-python /home/carloa/Desktop/EasyNer/scripts/database/cleanup.py
+python $EASYNER_DIR/scripts/database/cleanup.py

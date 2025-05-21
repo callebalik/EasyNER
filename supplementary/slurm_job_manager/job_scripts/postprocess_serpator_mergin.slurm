@@ -13,8 +13,6 @@ cat $0
 # Load required modules
 module load Anaconda3
 
-
-
 # Activate the conda environment if you're using one
 source config_conda.sh
 conda activate easyner_env
@@ -23,4 +21,4 @@ conda activate easyner_env
 INPUT_DIR="/lunarc/nobackup/projects/snic2020-6-41/carl/ner_merged_plurals_and_word_count/"
 
 # Run the Python script
-python /home/carloa/Desktop/EasyNer/supplementary/experiment_scripts/postprocess_separator_merging.py $INPUT_DIR
+python $EASYNER_DIR/supplementary/experiment_scripts/postprocess_separator_merging.py $INPUT_DIR

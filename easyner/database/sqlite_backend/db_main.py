@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=false,  reportPossiblyUnboundVariable=false
 import functools
 import json
 import logging
@@ -8,7 +9,6 @@ import threading
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -353,7 +353,7 @@ class EasyNerDBHandler:
     def statistics(self):
         """Get database statistics."""
         if self._statistics is None:
-            from db_statistics import DBStatistics
+            from easyner.database.sqlite_backend.statistics import DBStatistics
 
             self._statistics = DBStatistics(
                 self._connection,
@@ -365,7 +365,7 @@ class EasyNerDBHandler:
 
     def _get_statistics(self):
         """Get statistics object for complex operations."""
-        from db_statistics import DBStatistics
+        from easyner.database.sqlite_backend.statistics import DBStatistics
 
         if self._statistics is None:
             self._statistics = DBStatistics(

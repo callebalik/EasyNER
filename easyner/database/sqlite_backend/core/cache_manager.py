@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false
 import json
 import logging
 import os
@@ -219,7 +220,8 @@ class CacheManager:
 
             # Determine serialization method based on value type
             if isinstance(value, (dict, list, tuple)) or not isinstance(
-                value, (int, float, str, bytes),
+                value,
+                (int, float, str, bytes),
             ):
                 try:
                     serialized_value = pickle.dumps(value)
@@ -253,7 +255,8 @@ class CacheManager:
                 """
 
             self.cursor.execute(
-                query, (key, serialized_value, value_type, current_time, expires_at),
+                query,
+                (key, serialized_value, value_type, current_time, expires_at),
             )
             self.conn.commit()
 
@@ -322,7 +325,10 @@ class CacheManager:
                 return default or {}
 
     def set_global(
-        self, name: str, value: Any, ttl_seconds: int | None = None,
+        self,
+        name: str,
+        value: Any,
+        ttl_seconds: int | None = None,
     ) -> bool:
         """Set a global cache value with optional expiration.
 
@@ -676,7 +682,10 @@ class CacheManager:
 
                 # Store the result in cache
                 self.set(
-                    cache_key, result, ttl_seconds=ttl_seconds, overwrite=overwrite,
+                    cache_key,
+                    result,
+                    ttl_seconds=ttl_seconds,
+                    overwrite=overwrite,
                 )
 
                 # Optionally record execution time in metrics

@@ -1,9 +1,8 @@
-import sqlite3
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from easyner.database.sqlite_backend.data_model.entity_cooccurrence import DataExchanger
+from easyner.io.database.services.data_exchanger import DataExchanger
 
 
 @pytest.fixture

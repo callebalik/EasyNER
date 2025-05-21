@@ -18,7 +18,7 @@ conda activate easyner_env
 echo "Activated conda environment: $(conda env list | grep '*')"
 
 # Set environment variables
-export PYTHONPATH=$PYTHONPATH:/home/carloa/Desktop/EasyNer
+export PYTHONPATH=$PYTHONPATH:$EASYNER_DIR
 export DB_RUN=True
 # export FILE_SPAN=None
 echo "DB_RUN is set to: $DB_RUN"

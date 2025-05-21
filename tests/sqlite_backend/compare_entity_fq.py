@@ -47,12 +47,10 @@ def compare_total_count(tsv_file, csv_file, output_file) -> None:
 
 
 if __name__ == "__main__":
-    tsv_file = (
-        "/home/x_caoll/EasyNer/results/analysis/analysis_phenoma/result_phenoma.tsv"
-    )
-    csv_file = "/home/x_caoll/EasyNer/results/analysis/analysis_phenoma/entity_fq.csv"
-    output_file = (
-        "/home/x_caoll/EasyNer/results/analysis/analysis_phenoma/diff_file.csv"
-    )
+    from easyner.infrastructure.paths import RESULTS_DIR
+
+    tsv_file = f"{RESULTS_DIR}/analysis/analysis_phenoma/result_phenoma.tsv"
+    csv_file = f"{RESULTS_DIR}/analysis/analysis_phenoma/entity_fq.csv"
+    output_file = f"{RESULTS_DIR}/analysis/analysis_phenoma/diff_file.csv"
 
     compare_total_count(tsv_file, csv_file, output_file)

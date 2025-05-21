@@ -1,12 +1,10 @@
-# coding=utf-8
-
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed  # noqa: I001
 from typing import Dict, List, Any
 import warnings
 from datasets import Dataset
 from transformers import (
-    AutoTokenizer,
-    AutoModelForTokenClassification,
+    AutoTokenizer, # type: ignore
+    AutoModelForTokenClassification, # type: ignore
     pipeline,
     Pipeline,
 )
@@ -20,7 +18,7 @@ from easyner.pipeline.ner.processor import NERProcessor
 class BioBertNERProcessor(NERProcessor):
     """NER processor using BioBert fine-tuned model."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         # Load BioBERT model once for all processing
         self._model = None
@@ -28,13 +26,13 @@ class BioBertNERProcessor(NERProcessor):
         self._optimal_batch_size = None
 
     def _initialize_model(self, device: Any) -> None:
-        """
-        Initialize the BioBERT model once for all processing.
+        """Initialize the BioBERT model once for all processing.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         device: Any
             Device to use for model loading (GPU or CPU)
+
         """
         from easyner.pipeline.ner.utils import get_device_int
 
@@ -46,17 +44,19 @@ class BioBertNERProcessor(NERProcessor):
         model_max_length = self.config.get("model_max_length", 192)
 
         if not model_dir or not model_name:
+            msg = "Missing required configuration for BioBERT: 'model_folder' and 'model_name' must be provided"
             raise ValueError(
-                "Missing required configuration for BioBERT: 'model_folder' and 'model_name' must be provided"
+                msg,
             )
 
         # Initialize model components directly in the processor
         self.model_path = PurePosixPath(Path(model_dir, model_name))
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_path, model_max_length=model_max_length
+            self.model_path,
+            model_max_length=model_max_length,
         )
         self.model = AutoModelForTokenClassification.from_pretrained(
-            self.model_path
+            self.model_path,
         )
 
         self.model.eval()  # Set model to evaluation mode
@@ -72,17 +72,19 @@ class BioBertNERProcessor(NERProcessor):
         print("BioBERT model initialized successfully")
 
     def process_dataset(
-        self, input_files: List[str], device: Any = None
+        self,
+        input_files: list[str],
+        device: Any = None,
     ) -> None:
-        """
-        Process all files using BioBERT.
+        """Process all files using BioBERT.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         input_files: List[str]
             List of input file paths to process
         device: Any, optional
             Device to use for processing
+
         """
         if device is None:
             device = torch.device(0 if torch.cuda.is_available() else "cpu")
@@ -99,7 +101,8 @@ class BioBertNERProcessor(NERProcessor):
         else:
             # Process sequentially
             for batch_file in tqdm(
-                input_files, desc="Processing with BioBERT"
+                input_files,
+                desc="Processing with BioBERT",
             ):
                 self._process_single_file(batch_file, device)
 
@@ -134,16 +137,15 @@ class BioBertNERProcessor(NERProcessor):
         if batch_size is None:
             # Check if we should reuse the cached optimal batch size
             reuse_optimal_batch_size = self.config.get(
-                "reuse_optimal_batch_size", True
+                "reuse_optimal_batch_size",
+                True,
             )
 
-            if (
-                self._optimal_batch_size is None
-                or not reuse_optimal_batch_size
-            ):
+            if self._optimal_batch_size is None or not reuse_optimal_batch_size:
                 # Calculate optimal batch size if not already determined or if explicitly told not to reuse
                 self._optimal_batch_size = self._get_optimal_batch_size(
-                    articles_dataset, "text"
+                    articles_dataset,
+                    "text",
                 )
                 print(
                     f"Calculated optimal batch size: {self._optimal_batch_size}",
@@ -166,24 +168,29 @@ class BioBertNERProcessor(NERProcessor):
 
         # Process the dataset
         articles_dataset_processed = self._predict_dataset(
-            articles_dataset, text_column="text", batch_size=batch_size
+            articles_dataset,
+            text_column="text",
+            batch_size=batch_size,
         )
 
         # Convert back to the dictionary structure
         processed_articles = convert_dataset_to_dict(
-            articles, articles_dataset_processed
+            articles,
+            articles_dataset_processed,
         )
         self._save_processed_articles(processed_articles, batch_index)
         return batch_index
 
     def _predict_dataset(
-        self, dataset: Dataset, text_column="text", batch_size=None
+        self,
+        dataset: Dataset,
+        text_column="text",
+        batch_size=None,
     ):
-        """
-        Process an entire HuggingFace dataset.
+        """Process an entire HuggingFace dataset.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         dataset: Dataset
             HuggingFace dataset with text column
         text_column: str
@@ -191,11 +198,12 @@ class BioBertNERProcessor(NERProcessor):
         batch_size: int, optional
             Batch size to use (None for auto-determination)
 
-        Returns:
-        --------
+        Returns
+        -------
         Dataset: Dataset with predictions added
+
         """
-        print(f"Processing dataset", flush=True)
+        print("Processing dataset", flush=True)
 
         # Check if dataset is empty
         if dataset is None or len(dataset) == 0:
@@ -217,7 +225,8 @@ class BioBertNERProcessor(NERProcessor):
             try:
                 # Pass the dataset column directly
                 results = self.nlp(
-                    inputs=dataset[text_column], batch_size=batch_size
+                    inputs=dataset[text_column],
+                    batch_size=batch_size,
                 )
             except torch.cuda.OutOfMemoryError as oom:
                 print(f"Out of memory error during NER processing: {oom}")
@@ -232,13 +241,16 @@ class BioBertNERProcessor(NERProcessor):
         # Add predictions to the dataset
         dataset = dataset.add_column("prediction", results)
         if "prediction" not in dataset.column_names:
+            msg = "Failed to add predictions to the dataset. Check the pipeline output."
             raise ValueError(
-                "Failed to add predictions to the dataset. Check the pipeline output."
+                msg,
             )
         return dataset
 
     def _process_with_cross_file_batching(
-        self, input_files: List[str], device: Any
+        self,
+        input_files: list[str],
+        device: Any,
     ) -> None:
         """Process with optimal batching across files."""
         # Implementation for cross-file batching strategy
@@ -246,7 +258,7 @@ class BioBertNERProcessor(NERProcessor):
         # for transformer processing
         pass
 
-    def _process_files_in_parallel(self, input_files: List[str]) -> None:
+    def _process_files_in_parallel(self, input_files: list[str]) -> None:
         """Process files in parallel using multiprocessing."""
         from multiprocessing import cpu_count
 
@@ -270,15 +282,17 @@ class BioBertNERProcessor(NERProcessor):
                     )
                     futures.append(
                         executor.submit(
-                            self._process_single_file, batch_file, device
-                        )
+                            self._process_single_file,
+                            batch_file,
+                            device,
+                        ),
                     )
 
                 for i, future in enumerate(as_completed(futures)):
                     try:
                         batch_index = future.result()
                         print(
-                            f"Completed BioBERT batch {batch_index} ({i+1}/{len(futures)})"
+                            f"Completed BioBERT batch {batch_index} ({i+1}/{len(futures)})",
                         )
                     except Exception as e:
                         print(f"Error processing batch: {e}")
@@ -288,15 +302,17 @@ class BioBertNERProcessor(NERProcessor):
             print("Falling back to sequential processing")
             for batch_file in input_files:
                 device = torch.device(
-                    0 if torch.cuda.is_available() else "cpu"
+                    0 if torch.cuda.is_available() else "cpu",
                 )
                 self._process_single_file(batch_file, device)
 
     def _get_optimal_batch_size(
-        self, dataset: Dataset, text_column: str, fallback_batch_size: int = 32
+        self,
+        dataset: Dataset,
+        text_column: str,
+        fallback_batch_size: int = 32,
     ) -> int:
-        """
-        Determine the optimal batch size for processing the dataset.
+        """Determine the optimal batch size for processing the dataset.
         This is a placeholder function and should be implemented based on
         specific requirements or heuristics.
 
@@ -305,6 +321,7 @@ class BioBertNERProcessor(NERProcessor):
 
         Returns:
             Optimal batch size
+
         """
         # Placeholder logic for determining batch size
         try:
@@ -323,8 +340,7 @@ class BioBertNERProcessor(NERProcessor):
 
         except ImportError as e:
             print(
-                "Error importing calculate_optimal_batch_size function: "
-                f"{e}",
+                "Error importing calculate_optimal_batch_size function: " f"{e}",
                 flush=True,
             )
 
@@ -357,13 +373,16 @@ class BioBertNERProcessor(NERProcessor):
 
 
 class NER_biobert:
-    """
-    DEPRECATED: This class is being phased out in favor of BioBertNERProcessor.
+    """DEPRECATED: This class is being phased out in favor of BioBertNERProcessor.
     Please use BioBertNERProcessor instead.
     """
 
     def __init__(
-        self, model_dir: str, model_name: str, model_max_length=192, device=-1
+        self,
+        model_dir: str,
+        model_name: str,
+        model_max_length=192,
+        device=-1,
     ):
         warnings.warn(
             "NER_biobert is deprecated and will be removed in a future version. "
@@ -375,10 +394,11 @@ class NER_biobert:
 
         self.model_path = PurePosixPath(Path(model_dir, model_name))
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_path, model_max_length=model_max_length
+            self.model_path,
+            model_max_length=model_max_length,
         )
         self.model = AutoModelForTokenClassification.from_pretrained(
-            self.model_path
+            self.model_path,
         )
 
         self.model.eval()  # Set model to evaluation mode
@@ -393,10 +413,12 @@ class NER_biobert:
         )
 
     def _get_optimal_batch_size(
-        self, dataset: Dataset, text_column: str, fallback_batch_size: int = 32
+        self,
+        dataset: Dataset,
+        text_column: str,
+        fallback_batch_size: int = 32,
     ) -> int:
-        """
-        Determine the optimal batch size for processing the dataset.
+        """Determine the optimal batch size for processing the dataset.
         This is a placeholder function and should be implemented based on
         specific requirements or heuristics.
 
@@ -405,6 +427,7 @@ class NER_biobert:
 
         Returns:
             Optimal batch size
+
         """
         # Placeholder logic for determining batch size
         try:
@@ -423,8 +446,7 @@ class NER_biobert:
 
         except ImportError as e:
             print(
-                "Error importing calculate_optimal_batch_size function: "
-                f"{e}",
+                "Error importing calculate_optimal_batch_size function: " f"{e}",
                 flush=True,
             )
 
@@ -456,16 +478,18 @@ class NER_biobert:
             return fallback_batch_size
 
     @DeprecationWarning
-    def predict(self, sequence: str) -> List[Dict[str, Any]]:
-        """Process a single text sequence"""
+    def predict(self, sequence: str) -> list[dict[str, Any]]:
+        """Process a single text sequence."""
         print(f"Processing text in single sequence: {sequence}")
         return self.nlp(sequence)
 
     def predict_dataset(
-        self, dataset: Dataset, text_column="text", batch_size=None
+        self,
+        dataset: Dataset,
+        text_column="text",
+        batch_size=None,
     ):
-        """
-        Process an entire HuggingFace dataset for better GPU utilization.
+        """Process an entire HuggingFace dataset for better GPU utilization.
 
         Args:
             dataset: HuggingFace dataset with text column
@@ -474,8 +498,9 @@ class NER_biobert:
 
         Returns:
             Dataset with predictions added
+
         """
-        print(f"Processing dataset", flush=True)
+        print("Processing dataset", flush=True)
 
         # Check if dataset is empty
         if dataset is None or len(dataset) == 0:
@@ -497,7 +522,8 @@ class NER_biobert:
             try:
                 # Pass the dataset column directly. This is an iterable view, not a list conversion.
                 results = self.nlp(
-                    inputs=dataset[text_column], batch_size=batch_size
+                    inputs=dataset[text_column],
+                    batch_size=batch_size,
                 )  # Removed input_column kwarg
             except torch.cuda.OutOfMemoryError as oom:
                 print(f"Out of memory error during NER processing: {oom}")
@@ -512,21 +538,24 @@ class NER_biobert:
         # Add predictions to the dataset
         dataset = dataset.add_column("prediction", results)
         if "prediction" not in dataset.column_names:
+            msg = "Failed to add predictions to the dataset. Check the pipeline output."
             raise ValueError(
-                "Failed to add predictions to the dataset. Check the pipeline output."
+                msg,
             )
         return dataset
 
 
 def run_ner_with_biobert_finetuned(
-    articles, ner_config, batch_index, device
+    articles,
+    ner_config,
+    batch_index,
+    device,
 ) -> dict:
-    """
-    Legacy function for backward compatibility.
+    """Legacy function for backward compatibility.
     Uses BioBertNERProcessor to process articles.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     articles: dict
         Articles to process
     ner_config: dict
@@ -536,9 +565,10 @@ def run_ner_with_biobert_finetuned(
     device: Any
         Device to use for processing
 
-    Returns:
-    --------
+    Returns
+    -------
     dict: Processed articles
+
     """
     import warnings
 
@@ -573,7 +603,8 @@ def run_ner_with_biobert_finetuned(
 
     # Convert back to the dictionary structure
     articles_processed = convert_dataset_to_dict(
-        articles, articles_dataset_processed
+        articles,
+        articles_dataset_processed,
     )
     return articles_processed
 

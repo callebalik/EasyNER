@@ -1,18 +1,9 @@
 import json
 import os
-import random
 import sqlite3
-import sys
 import unittest
-from glob import glob
-
-from tqdm import tqdm
-
-# Add EasyNer directory to PYTHONPATH
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from scripts.db_convert_json_to_sqlite import (
-    compare_sizes,
     create_database,
     insert_data,
     load_json_to_db,

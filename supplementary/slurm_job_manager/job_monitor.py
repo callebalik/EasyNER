@@ -2,7 +2,7 @@ import argparse
 import json
 import subprocess
 
-from prettytable import PrettyTable
+from prettytable import PrettyTable  # type: ignore
 
 
 def read_job_metadata(metadata_file):

@@ -4,12 +4,16 @@ import os
 
 
 from co_occurence import get_pairs, create_df_from_pairs
+from easyner.infrastructure.paths import RESULTS_DIR
+from dotenv import load_dotenv
 
-# Get the directory of the current script
-script_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv()
 
-input_dir = "/proj/berzelius-2021-21/users/x_caoll/EasyNer_ner_output/merged/"
-results_dir = os.path.join(script_dir, "results")
+
+data_storage_dir = os.getenv("DATA_STORAGE_DIR")
+
+
+input_dir = f"{data_storage_dir}/EasyNer_ner_output/merged/"
 
 sorted_files = sorted(
     glob(f"{input_dir}*.json"), key=lambda f: int("".join(filter(str.isdigit, f)))
@@ -69,4 +73,4 @@ def save_dataframe_to_csv(df, output_file):
 # df = dict_to_dataframe(pairs)
 # save_dataframe_to_csv(df, "results/co_occurrences.csv")
 
-save_dataframe_to_csv(create_df_from_pairs(pairs), results_dir)
+save_dataframe_to_csv(create_df_from_pairs(pairs), f"{RESULTS_DIR}/co_occurrences.csv")

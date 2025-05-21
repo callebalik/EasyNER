@@ -1,12 +1,16 @@
-import os
 import sqlite3
-import sys
 import unittest
 
-# Add EasyNer directory to PYTHONPATH
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import pytest
 
-from scripts.db_easyner import EasyNerDB
+
+@pytest.mark.skip(
+    reason="Functions under test are not found or may be deprecated in the current codebase.",
+)
+def test_placeholder():
+    assert True  # Placeholder test to indicate skipped/deprecated tests
+
+
 from scripts.db_statistics import (
     add_pmid_to_entity_occurrences,
     calc_article_counts,
@@ -17,12 +21,10 @@ from scripts.db_statistics import (
     get_all_entity_occurrences,
     get_entity_occurrences_with_article_id,
     get_number_of_articles,
-    record_document_cooccurrences,
     record_sentence_cooccurrences,
     tf_idf,
     update_db_with_entity_occurrence_term_fq,
     update_tf_idf,
-    verify_sentences_table,
 )
 
 

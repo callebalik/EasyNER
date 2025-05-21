@@ -6,7 +6,8 @@ documenents total -> with and without named entities -> named entity distributio
 
 import pandas as pd
 import plotly.graph_objects as go
-from db_statistics import DBStatistics
+
+from easyner.database.sqlite_backend.statistics import DBStatistics
 
 from ...statistics.color_scheme import (
     LINK_COLOR_DEFAULT,

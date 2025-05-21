@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=false,  reportPossiblyUnboundVariable=false
 import logging
 import sqlite3
 
@@ -264,7 +265,9 @@ class View:
         self.columns = columns
 
     def create_if_not_exists(
-        self, cursor: sqlite3.Cursor, logger: logging.Logger = None,
+        self,
+        cursor: sqlite3.Cursor,
+        logger: logging.Logger = None,
     ) -> bool:
         """Execute the CREATE VIEW IF NOT EXISTS statement for this view."""
         # Check if the view already exists

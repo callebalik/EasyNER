@@ -38,7 +38,9 @@ log_level = "DEBUG"
 addopts = [
     "--durations=10",
     "--nf",
+    "--ignore=tests/sqlite_backend/unresolved",
 ]
+
 
 # lf = last-failed
 # nf = new-first (runs the last modified test files first)

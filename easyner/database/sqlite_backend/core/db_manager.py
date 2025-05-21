@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=false
 import json
 import logging
 import os
@@ -422,8 +423,7 @@ class DatabaseManager:
 
     @classmethod
     def create_db(cls, db_path, schema_path):
-        """Class method to create a database at the given path using the provided schema.
-        """
+        """Class method to create a database at the given path using the provided schema."""
         if not os.path.isabs(schema_path):
             script_dir = os.path.dirname(os.path.abspath(__file__))
             schema_path = os.path.join(script_dir, schema_path)

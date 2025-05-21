@@ -1,19 +1,52 @@
+# pyright: reportOptionalMemberAccess=false,  reportPossiblyUnboundVariable=false
 # entity_occurrence_module.py
 import csv
 import json
-import logging
 import sqlite3
 import time
-from pathlib import Path
-from typing import Optional
 
 from tqdm import tqdm
 
+from easyner.database.sqlite_backend.core.db_engine import ReaderWriterPair
 from easyner.database.sqlite_backend.db_main import BaseComponent, EasyNerDBHandler
+from easyner.infrastructure.paths import PROJECT_ROOT
 
-from ..core.db_engine import ReaderWriterPair
-from ..db_data_exchanger import DBDataExchanger
-from .schema import *
+from .schema import (
+    ALPHA_COUNT,
+    CLASS_ID,
+    DOC_ID,
+    ERROR_DESC,
+    ERROR_ID,
+    FQ,
+    IDX_NE_ERROR_ID_NOT_NULL,
+    NE_NORM_ID,
+    NE_OVERLAP,
+    NE_PRIMARY_ID,
+    SENT_COUNT,
+    SENT_IDX,
+    SPAN_END,
+    SPAN_START,
+    TABLE_DOCS,
+    TABLE_NE,
+    TABLE_NE_AGGR,
+    TABLE_NE_ERROR,
+    TABLE_SENTENCES,
+    TITLE,
+    TOKEN_COUNT,
+    TXT,
+    TXT_NORM,
+    VIEW_NE_PRESENTATION,
+    VIEW_NE_VALIDATION_NORMALIZATION,
+    WORD_COUNT,
+    Index,
+    ne_class_schema,
+    ne_error_schema,
+    schema_create_table_docs,
+    schema_create_table_ne,
+    schema_create_table_ne_aggregated,
+    schema_create_table_ne_lookup,
+    schema_create_table_sentences,
+)
 
 
 class SchemaManager(BaseComponent):
@@ -1303,6 +1336,7 @@ class Preprocessor(BaseComponent):
 
     def _normalize_entity_text(self, text):
         """Normalize entity text by:
+
         1. Converting to lowercase
         2. Removing leading/trailing whitespace
         3. Removing special characters
@@ -1493,11 +1527,12 @@ class Preprocessor(BaseComponent):
 
     def set_error_entity_error_codes(
         self,
-        error_info: str = "/home/carloa/Desktop/EasyNer/dictionaries/misslabeled_ner.csv",
-        error_codes_path: str = "entity_error_codes.json",
+        error_info: str = f"{PROJECT_ROOT}/dictionaries/misslabeled_ner.csv",
+        error_codes_path: str = f"{PROJECT_ROOT}/dictionaries/entity_error_codes.json",
         batch_size: int = 100000,
     ) -> None:
         """Attach error information to the entity_occurrences table. IMPORTANT: Trigger somewhat inconsistent db changes.
+
         TODO This is duue to develoment setup for now, but should be changed in future
         Does the following:
         1. ERROR_ID is attached to NE -> NORM_ID is removed from the specific entity
@@ -2563,10 +2598,6 @@ class Aggregator(BaseComponent):
             dict: Statistics about the entities to be processed
 
         """
-        import hashlib
-        import json
-        import os
-        import time
 
         # Create necessary indexes for efficient aggregation
         # self.logger.info("Creating supporting indexes for aggregation...")

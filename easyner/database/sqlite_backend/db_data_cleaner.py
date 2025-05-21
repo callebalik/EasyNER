@@ -1,13 +1,20 @@
 import csv
-import json
 import logging
 import re
 import sqlite3
-from typing import List, Optional, Tuple
 
 from tqdm import tqdm
 
-from .data_model.schema import *
+from easyner.database.sqlite_backend.data_model.schema import (
+    CLASS_ID,
+    ERROR_ID,
+    SPAN_END,
+    SPAN_START,
+    TABLE_NE,
+    TXT,
+)
+from easyner.infrastructure.paths import PROJECT_ROOT
+
 from .db_data_exchanger import DBDataExchanger
 
 
@@ -29,7 +36,9 @@ class DBDataCleaner:
         self.config = config
 
     def clean_entity_text_by_pattern(
-        self, patterns: list[str], dry_run: bool = True,
+        self,
+        patterns: list[str],
+        dry_run: bool = True,
     ) -> list[tuple]:
         """Clean entity occurrences by removing leading patterns and adjusting spans.
 
@@ -159,10 +168,12 @@ class DBDataCleaner:
 
     def set_error_entity_error_codes(
         self,
-        error_info: str = "/home/carloa/Desktop/EasyNer/dictionaries/misslabeled_ner.csv",
-        error_codes_path: str = "entity_error_codes.json",
+        error_info: str = f"{PROJECT_ROOT}/dictionaries/misslabeled_ner.csv",
+        error_codes_path: str = f"{PROJECT_ROOT}/dictionaries/entity_error_codes.json",
     ) -> None:
-        """Attach error information to the entity_occurrences table. The error information is expected to be in the following format:
+        """Attach error information to the entity_occurrences table.
+
+        The error information is expected to be in the following format:
 
         entity_type,entity_text,error_id
         DIS,fires,MISSL
@@ -307,7 +318,8 @@ class DBDataCleaner:
                     batch_size = 200000
                     total_updates = len(entity_updates)
                     with tqdm(
-                        total=total_updates, desc="Updating entity occurrences",
+                        total=total_updates,
+                        desc="Updating entity occurrences",
                     ) as pbar:
                         for i in range(0, total_updates, batch_size):
                             batch = entity_updates[i : i + batch_size]

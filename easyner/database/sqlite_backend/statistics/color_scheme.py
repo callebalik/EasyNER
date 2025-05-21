@@ -1,6 +1,4 @@
-import math
 import re
-from typing import Dict, Tuple, Union
 
 
 # HSL to RGB conversion functions
@@ -76,7 +74,8 @@ def convert_color_to_rgb(color_str: str) -> str:
     elif color_str.startswith("rgba"):
         # Just strip the alpha component for rgb
         match = re.match(
-            r"rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*\)", color_str,
+            r"rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*\)",
+            color_str,
         )
         if match:
             r = match.group(1)
@@ -122,7 +121,8 @@ def get_matplotlib_color(
 
     elif rgb_color.startswith("rgba("):
         match = re.match(
-            r"rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*\)", rgb_color,
+            r"rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*\)",
+            rgb_color,
         )
         if match:
             r = int(match.group(1)) / 255.0

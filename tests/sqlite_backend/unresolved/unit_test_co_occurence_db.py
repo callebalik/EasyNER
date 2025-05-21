@@ -3,13 +3,16 @@ import os
 import sys
 import unittest
 
-# Add EasyNer directory to PYTHONPATH
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import pytest
+
+from easyner.infrastructure.paths import PROJECT_ROOT
+
+TEST_DIR = PROJECT_ROOT / "tests" / "sqlite_backend"
 
 
 class TestCoOccurrenceDB(unittest.TestCase):
     def setUp(self):
-        self.mockup_file_path = "/home/x_caoll/EasyNer/tests/co_occurence_mockup.json"
+        self.mockup_file_path = f"{TEST_DIR}/co_occurence_mockup.json"
         with open(self.mockup_file_path) as f:
             self.mockup_data = json.load(f)  # Read mockup_data from the file
 
@@ -27,7 +30,7 @@ class TestCoOccurrenceDB(unittest.TestCase):
         result_str_keys = {str(key): value for key, value in result.items()}
 
         # Export the actual result to a JSON file
-        with open("/home/x_caoll/EasyNer/tests/actual_result.json", "w") as f:
+        with open(f"{TEST_DIR}/actual_result.json", "w") as f:
             json.dump(result_str_keys, f, indent=4)
 
         expected_result = {
@@ -95,7 +98,6 @@ class TestCoOccurrenceDB(unittest.TestCase):
                 },
             ],
         }
-
         self.assertEqual(result, expected_result)
 
     def test_store_and_query_co_occurrences(self):
@@ -108,7 +110,7 @@ class TestCoOccurrenceDB(unittest.TestCase):
             "phenomenon",
         )
 
-        db_path = "/home/x_caoll/EasyNer/tests/co_occurrences.db"
+        db_path = f"{TEST_DIR}/co_occurrences.db"
         store_co_occurrences_in_db(co_occurrences, db_path)
 
         # Query the database

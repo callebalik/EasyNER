@@ -28,7 +28,7 @@ fi
 #fi
 
 # Change to the working directory
-cd /home/x_caoll/EasyNer/
+cd $EASYNER_DIR
 
 # Check if the conda environment already exists
 if conda info --envs | grep -q "^easyner_env"; then
@@ -48,7 +48,6 @@ else
     echo "Installing spaCy language model 'en_core_web_sm'..."
     python -m spacy download en_core_web_sm
 fi
-
 
 # Run the main Python script
 python main.py

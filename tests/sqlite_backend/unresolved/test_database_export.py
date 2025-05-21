@@ -1,16 +1,12 @@
 import csv
 import os
-import sqlite3
-import sys
 import unittest
 
-# Add EasyNer directory to PYTHONPATH
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from test_db_convert_json_to_sqlite import TestConvertJsonToSqlite
-from test_db_easyner import suite as easyner_suite
-
 from scripts.db_easyner import EasyNerDB
+from tests.sqlite_backend.unit_test_db_easyner import suite as easyner_suite
+from tests.sqlite_backend.unittests.test_db_convert_json_to_sqlite import (
+    TestConvertJsonToSqlite,
+)
 
 
 class TestDatabaseExport(unittest.TestCase):

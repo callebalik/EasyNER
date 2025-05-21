@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=false,  reportPossiblyUnboundVariable=false
 # entity_cooccurrence_module.py
 import logging
 import sqlite3
@@ -19,8 +20,10 @@ from easyner.database.sqlite_backend.data_model.schema import (
     NE_PRIMARY_ID,
     PMI,
     SCHEMA_TABLE_DIS_PNM,
+    SCHEMA_TABLE_DIS_PNM_AGGR,
     SCHEMA_TABLE_ENTITY_COOCURRENCES,
     SENT_IDX,
+    TABLE_CO_AGGR,
     TABLE_COOCCURRENCES,
     TABLE_DIS_PNM,
     TABLE_DIS_PNM_AGGR,

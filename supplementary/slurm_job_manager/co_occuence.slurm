@@ -28,7 +28,7 @@ fi
 #fi
 
 # Change to the working directory
-cd /home/x_caoll/EasyNer/
+cd $EASYNER_DIR
 
 # Check if the conda environment already exists
 if conda info --envs | grep -q "^easyner_env"; then
@@ -50,7 +50,7 @@ else
 fi
 
 # Change to the scripts directory
-cd /home/x_caoll/EasyNer/scripts
+cd $EASYNER_DIRscripts
 
 # Run the main Python script
 python get_cooc.py

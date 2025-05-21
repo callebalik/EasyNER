@@ -2,11 +2,14 @@ import json
 import unittest
 
 from easyner.database.sqlite_backend.json_to_sqlite import process_chunk
+from easyner.infrastructure.paths import PROJECT_ROOT
+
+tests_dir = PROJECT_ROOT / "tests"
 
 
 class TestJsonToSqlite(unittest.TestCase):
     def setUp(self):
-        with open("/home/carloa/Desktop/EasyNer/tests/mockup.json") as f:
+        with open(f"{tests_dir}/mockup.json") as f:
             self.data = json.load(f)
 
     def test_process_chunk(self):

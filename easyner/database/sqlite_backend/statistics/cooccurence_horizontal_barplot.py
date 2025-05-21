@@ -211,7 +211,9 @@ class CooccurenceHorizontalBarplot:
         ax.set_xlim(0, 1)
 
         # Add background rectangles and text for each entity
-        for i, (y_pos, entity_name) in enumerate(zip(y_positions, entity_names, strict=False)):
+        for i, (y_pos, entity_name) in enumerate(
+            zip(y_positions, entity_names, strict=False),
+        ):
             # Background rectangle - extend to edges based on alignment
             rect = Rectangle(
                 xy=(0, y_pos - 0.4),

@@ -1,8 +1,10 @@
+# pyright: reportOptionalMemberAccess=false,  reportPossiblyUnboundVariable=false
 import argparse
 import atexit
 import logging
 import os
 import re
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -14,6 +16,20 @@ from socket import AF_INET, SOCK_STREAM, socket
 import psutil
 import sass
 from flask import Flask, g, has_request_context, jsonify, render_template, request
+
+from easyner.database.sqlite_backend.data_model.schema import (
+    CLASS_ID,
+    DOC_ID,
+    ERROR_DESC,
+    ERROR_ID,
+    NE_CLASS,
+    TABLE_NE,
+    TABLE_NE_CLASS,
+    TABLE_NE_ERROR,
+    TITLE,
+    VIEW_NE_PRESENTATION,
+    WORD_COUNT,
+)
 
 # Import connection pool
 from .core.connection_pool import ConnectionPool
@@ -561,7 +577,8 @@ def get_named_entity_types():
         return jsonify(
             {
                 "types": [
-                    dict(zip(["id", "class_name"], type_row, strict=False)) for type_row in types
+                    dict(zip(["id", "class_name"], type_row, strict=False))
+                    for type_row in types
                 ],
             },
         )
@@ -652,7 +669,8 @@ def entity_cooccurrences_table():
                                 "document_id",
                                 "sentence_index",
                             ],
-                            row, strict=False,
+                            row,
+                            strict=False,
                         ),
                     )
                     for row in cooccurrences
@@ -758,7 +776,8 @@ def raw_cooccurrences_table():
                                 "document_id",
                                 "sentence_index",
                             ],
-                            row, strict=False,
+                            row,
+                            strict=False,
                         ),
                     )
                     for row in cooccurrences
@@ -831,7 +850,13 @@ def entity_cooccurrences_plot_data():
         return jsonify(
             {
                 "plot_data": [
-                    dict(zip([col[0] for col in db.cursor.description], row, strict=False))
+                    dict(
+                        zip(
+                            [col[0] for col in db.cursor.description],
+                            row,
+                            strict=False,
+                        ),
+                    )
                     for row in plot_data
                 ],
             },
@@ -1038,13 +1063,20 @@ def debug_entity_cooccurrences_summary():
                     dict(
                         zip(
                             ["cid", "name", "type", "notnull", "dflt_value", "pk"],
-                            col, strict=False,
+                            col,
+                            strict=False,
                         ),
                     )
                     for col in schema
                 ],
                 "sample_row": [
-                    dict(zip([col[0] for col in db.cursor.description], row, strict=False))
+                    dict(
+                        zip(
+                            [col[0] for col in db.cursor.description],
+                            row,
+                            strict=False,
+                        ),
+                    )
                     for row in sample
                 ],
             },
@@ -1081,7 +1113,9 @@ def get_view_sample(view_name):
             return jsonify({"message": "No data available"}), 404
 
         # Convert sample to dictionary
-        sample_data = [dict(zip([col for col in columns], row, strict=False)) for row in sample]
+        sample_data = [
+            dict(zip([col for col in columns], row, strict=False)) for row in sample
+        ]
 
         return jsonify({"sample": sample_data})
     except Exception as e:
@@ -1129,7 +1163,8 @@ def show_views():
                         dict(
                             zip(
                                 ["cid", "name", "type", "notnull", "dflt_value", "pk"],
-                                col, strict=False,
+                                col,
+                                strict=False,
                             ),
                         )
                         for col in schema

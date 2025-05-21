@@ -1,9 +1,7 @@
 import os
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import plotly.graph_objects as go
 import pytest
 
@@ -12,11 +10,7 @@ from easyner.database.sqlite_backend.data_model.entity_cooccurrence import (
     NormallizedNamedEntity,
 )
 from easyner.database.sqlite_backend.data_model.schema import (
-    FQ,
     FQ_DOCUMENT_LEVEL,
-    NPMI,
-    PMI,
-    TXT,
     UNIQ_DOCS,
 )
 from easyner.database.sqlite_backend.statistics.sankey_diagram import CooccurenceSankey
@@ -238,12 +232,20 @@ class TestCooccurenceSankey:
 
     def test_export_as_image_file(self, sankey_diagram, mock_cooccurrences) -> None:
         """Test actual image file generation.
+
         Note: This test requires Plotly's kaleido package to be installed.
         """
-        try:
-            import kaleido
+        import importlib.util
 
-            kaleido_available = True
+        try:
+            kaleido_spec = importlib.util.find_spec("kaleido")
+            if kaleido_spec is None:
+                kaleido_available = False
+                pytest.skip(
+                    "Kaleido not available - skipping actual image generation test",
+                )
+            else:
+                kaleido_available = True
         except ImportError:
             kaleido_available = False
             pytest.skip("Kaleido not available - skipping actual image generation test")

@@ -1,7 +1,9 @@
 # analysis/analyzer.py
-from ..core.core_classes import BaseExecutor, BaseLogger
-from ..core.db_manager import DatabaseManager
-from ..core.threading_mp.parallel_executor import ParallelExecutor
+from easyner.database.sqlite_backend.core.core_classes import BaseExecutor, BaseLogger
+from easyner.database.sqlite_backend.core.db_manager import DatabaseManager
+from easyner.database.sqlite_backend.core.threading_mp.parallel_executor import (
+    ParallelExecutor,
+)
 
 
 class DataAnalyzer(BaseExecutor):
@@ -10,7 +12,8 @@ class DataAnalyzer(BaseExecutor):
     def __init__(self, db_manager: DatabaseManager, logger: BaseLogger):
         super().__init__(db_manager, logger)  # Initialize BaseExecutor
         self.parallel_executor = ParallelExecutor(
-            db_manager, logger,
+            db_manager,
+            logger,
         )  # For parallel ops
 
     def analyze_user_activity(self, user_ids):
@@ -56,7 +59,8 @@ class DataAnalyzer(BaseExecutor):
             for uid in user_ids
         ]  # Create task lambdas
         results = self.parallel_executor.run_in_threads(
-            tasks, max_workers=10,
+            tasks,
+            max_workers=10,
         )  # Run in threads
 
         processed_results = [

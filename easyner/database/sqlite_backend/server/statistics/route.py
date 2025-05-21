@@ -1,12 +1,13 @@
 """Provides blueprint routes to the flask app to show database characteristics.
+
 Data is fetched mainly via db_statistics.py, which caches most results, to provide quick access.
 """
 
 from flask import Blueprint, render_template
 
-from ...db_server import get_db_easyner_context_connection
-from ...statistics.db_statistics import DBStatistics
-from ...statistics.ne_doc_distr import Flowchart
+from easyner.database.sqlite_backend.db_server import get_db_easyner_context_connection
+from easyner.database.sqlite_backend.statistics import DBStatistics
+from easyner.database.sqlite_backend.statistics.ne_doc_distr import Flowchart
 
 stats = Blueprint(
     "database_stats",

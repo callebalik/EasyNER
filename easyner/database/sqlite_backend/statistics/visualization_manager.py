@@ -1,12 +1,10 @@
 import importlib
 import os
-import shutil
 import sys
 import threading
 import time
 from contextlib import contextmanager
 
-from flask import g
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 

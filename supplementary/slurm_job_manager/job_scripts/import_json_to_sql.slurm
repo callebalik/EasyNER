@@ -12,21 +12,18 @@ module load Anaconda3
 source config_conda.sh
 conda activate easyner_env
 
-
 # Debug: Print the activated environment
 echo "Activated conda environment: $(conda env list | grep '*')"
 
-
 # Set environment variables
-export PYTHONPATH=$PYTHONPATH:/home/carloa/Desktop/EasyNer
+export PYTHONPATH=$PYTHONPATH:$EASYNER_DIR
 export DB_RUN=True
 # export FILE_SPAN=None
 echo "DB_RUN is set to: $DB_RUN"
 echo "FILE_SPAN is set to: $FILE_SPAN"
 
-
-# Remove the existing database 
+# Remove the existing database
 rm /lunarc/nobackup/projects/snic2020-6-41/carl/envidis.db
 
 # Run the conversion script (all configuration is in config.json)
-python /home/carloa/Desktop/EasyNer/scripts/database/json_to_sqlite.py 
+python $EASYNER_DIR/scripts/database/json_to_sqlite.py

@@ -1,9 +1,16 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from matplotlib.lines import Line2D
 
-from .color_scheme import *
+from easyner.database.sqlite_backend.statistics.color_scheme import (
+    AMBIGUOUS_COLOR_RGB,
+    DIS_HIGHLIGHT_COLORS,
+    MISLABELED_COLOR_RGB,
+    NODE_COLOR_DIS_ONLY_RGB,
+    NODE_COLOR_PNM_ONLY_RGB,
+    NODE_COLOR_VALID_RGB,
+    PNM_HIGHLIGHT_COLORS,
+)
 
 
 class EntityDistributionPlotter:
@@ -218,7 +225,10 @@ class EntityDistributionPlotter:
         """Add text labels to percentage bars with proper positioning."""
         for i, (ambig, mislab, valid) in enumerate(
             zip(
-                self.ambig_percentages, self.mislab_percentages, self.valid_percentages, strict=False,
+                self.ambig_percentages,
+                self.mislab_percentages,
+                self.valid_percentages,
+                strict=False,
             ),
         ):
             # Ambiguous segment

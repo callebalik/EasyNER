@@ -6,6 +6,25 @@ from easyner.database.sqlite_backend.data_model.entity_cooccurrence import (
     Cooccurrence,
     NormallizedNamedEntity,
 )
+from easyner.database.sqlite_backend.data_model.schema import (
+    AVG_SENT_DIST,
+    CO_AGGR_ID,
+    E1,
+    E1_NORM_ID,
+    E2,
+    E2_NORM_ID,
+    FQ,
+    FQ_DOCUMENT_LEVEL,
+    FQ_SENTENCE_LEVEL,
+    MAX_SENT_DIST,
+    MIN_SENT_DIST,
+    NE_CLASS,
+    NE_NORM_ID,
+    NPMI,
+    PMI,
+    TXT,
+    UNIQ_DOCS,
+)
 
 
 # Fixtures for mock objects
@@ -102,7 +121,7 @@ def mock_cursor():
     """Create a mock cursor with sample description."""
     cursor = MagicMock()
     cursor.description = [
-        (E1_NORM_ID, None, None, None, None, None, None),
+        (E1_NORM_ID, None, None, None, None, None, None),  # noqa: F821
         (E2_NORM_ID, None, None, None, None, None, None),
         (E1 + "_" + TXT, None, None, None, None, None, None),
         (E2 + "_" + TXT, None, None, None, None, None, None),
@@ -116,9 +135,9 @@ def mock_cursor():
         (UNIQ_DOCS, None, None, None, None, None, None),
         (PMI, None, None, None, None, None, None),
         (NPMI, None, None, None, None, None, None),
-        (AVG_SENT_DIST, None, None, None, None, None, None),
+        (AVG_SENT_DIST, None, None, None, None, None, None),  # noqa: F821
         (MIN_SENT_DIST, None, None, None, None, None, None),
-        (MAX_SENT_DIST, None, None, None, None, None, None),
+        (MAX_SENT_DIST, None, None, None, None, None, None),  # noqa: F821
     ]
     return cursor
 
@@ -239,7 +258,7 @@ class TestCooccurrence:
         assert result.npmi is None  # This should be None
 
     @patch(
-        "easyner.database.sql_backend.data_model.entity_cooccurrence.NormallizedNamedEntity"
+        "easyner.database.sql_backend.data_model.entity_cooccurrence.NormallizedNamedEntity",
     )
     def test_row_factory_entity_error(
         self,
