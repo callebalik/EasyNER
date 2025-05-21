@@ -9,8 +9,9 @@ import threading
 import time
 import traceback
 from contextlib import contextmanager
+from pathlib import Path
 
-from dotenv import load_dotenv
+from easyner.database.sqlite_backend.sqlite_config import SQLiteConfig
 
 # Global thread-local storage for connections
 _thread_local = threading.local()
@@ -45,28 +46,15 @@ def db_error_handler(method):
 class EasyNerDBHandler:
     """Handle database operations with thread-safety and connection management."""
 
-    def __init__(
-        self,
-        db_path: str | None = None,
-        config_path: str = "../../config.json",
-        from_pool: bool = False,
-    ):
-        """Initialize the database handler.
-
-        :param db_path: Path to the SQLite database file.
-        :param config_path: Path to the configuration file.
-        :param from_pool: Whether this instance is being created from a connection pool.
-                        If True, some initialization is skipped (shared resources are already set up).
-        """
-        # Set thread ID that created this connection - initialize early to avoid attribute errors
+    def __init__(self, db_path: str | None = None, from_pool: bool = False):
+        """Initialize the database handler."""
+        # Set thread ID that created this connection
         self.creation_thread_id = threading.get_ident()
 
-        # TODO FIx hacky solution Initialize logger early
-        # if logging.getLogger("EasyNerDB").hasHandlers():
+        # Initialize logger early
         self.logger = logging.getLogger("EasyNerDB")
 
-        # Initialize critical attributes that need to be set before any other operations
-        # Use consistent naming for internal attributes that match property getters/setters
+        # Initialize critical attributes
         self._connection = None
         self._cursor = None
         self._tables = None
@@ -75,27 +63,23 @@ class EasyNerDBHandler:
         self._from_pool = from_pool
         self._schema = None
 
-        # # Set default log file paths (will be properly set later for non-pool connections)
-        # self.log_file = "pooled_connection.log"  # Default value for pooled connections
-        # self.error_log_file = "pooled_connection.err"
-        # self.debug_log_file = "pooled_connection.debug.log"
+        if db_path is None:
+            self.config = SQLiteConfig()  # type: ignore this is a pydantic-settings model. Don't know why pyright doesn't see it
+        else:  # If provided path it can be used
+            self.config = SQLiteConfig(db_path=db_path)  # type: ignore this is a pydantic-settings model. Don't know why pyright doesn't see it
 
-        # Load config and setup paths first
-        self.config = self._load_config(config_path)
-        self.db_path, self.path_source = self._setup_path(db_path=db_path)
-        self.name = os.path.basename(self.db_path)
+        # Set default values if path resolution failed
+        self.db_path = self.config.db_path
+
         # For pooled connections, skip some initialization
         if from_pool:
             self._setup_logging()
-            # self.logger = logging.getLogger("EasyNerDB")  # Should already be set up
-
             self.connect(self.db_path)
             self._init_cache_minimal()
             self._initialize_components()
             self.logger.debug(f"Created pooled connection to {self.db_path}")
         else:
             # Now set up the full logging system with proper file paths
-            # Can't use @db_error_handler before logging is set up
             self._setup_logging()
 
             # Connect to the database
@@ -104,11 +88,23 @@ class EasyNerDBHandler:
             # Ensure cache table exists
             self._init_cache()
 
-            # Load environment settings and store in cache
-            self._load_environment_settings()
-
             # Initialize components
             self._initialize_components()
+
+            # Store settings in cache if we have a cache manager
+            if hasattr(self, "cache_manager"):
+                self.cache_manager.set_global(
+                    "environment_settings",
+                    self.config.model_dump(),
+                )
+
+    # Non-environment derived property
+    @property
+    def name(self) -> str:
+        """Get database name from path."""
+        if not self.db_path:
+            return "unnamed_database"
+        return Path(self.db_path).stem
 
     def _init_cache_minimal(self):
         """Initialize the cache table for pooled connections."""
@@ -144,21 +140,13 @@ class EasyNerDBHandler:
     def connect(self, db_path=None) -> None:
         """Connect to database with path from environment or parameter."""
         try:
-            # Try to get database path from environment if not provided
-            if not db_path:
-                db_path = os.environ.get("SQLITE_DB_PATH")
-                path_source = "SQLITE_DB_PATH environment variable"
-            else:
-                path_source = "parameter"
-
-            if not db_path:
-                db_path = "dev.db"
-                path_source = "default"
+            # Use the provided path or the resolved path from config
+            connect_path = db_path if db_path else self.db_path
+            path_source = "parameter" if db_path else self.db_path
 
             # Create connection with thread checking to ensure thread safety
-            # Use consistent naming - always set _connection not conn
             self._connection = sqlite3.connect(
-                db_path,
+                connect_path,
                 check_same_thread=False,  # We'll manage thread safety ourselves
                 timeout=5.0,  # 5 second timeout for busy database
             )
@@ -168,6 +156,10 @@ class EasyNerDBHandler:
 
             # Create cursor
             self._cursor = self._connection.cursor()
+
+            # Apply database settings from configuration
+            applied_settings = self.config.apply_pragma_settings(self._connection)
+            self.logger.debug(f"Applied database settings: {applied_settings}")
 
             # Set up database tables if needed
             self._setup_tables()
@@ -187,6 +179,18 @@ class EasyNerDBHandler:
         except Exception as e:
             self.logger.error(f"Failed to connect to database at {db_path}: {e}")
             raise
+
+    # Remove the now deprecated method as it's been moved to the config class
+    # def _set_default_settings(self):
+    #     """Set default settings for the database connection.
+    #     Only call on a newly created database.
+    #     """
+    #     self.execute("PRAGMA foreign_keys = ON;")
+    #     self.execute("PRAGMA journal_mode = WAL;")
+    #     self.execute("PRAGMA synchronous = NORMAL;")
+    #     self.execute("PRAGMA journal_size_limit = 6144000;")
+    #     self.execute("PRAGMA temp_store = MEMORY;")
+    #     self.execute("PRAGMA busy_timeout = 10000;")
 
     def _initialize_cache(self):
         """Initialize cache table for storing metadata."""
@@ -269,7 +273,7 @@ class EasyNerDBHandler:
                 log_config = {
                     "Database": self.name,
                     "Path": self.db_path,
-                    "Path source": self.path_source,
+                    "Path source": self.db_path,
                     "Main log (INFO)": self.log_file,
                     "Error log (ERRORS only)": self.error_log_file,
                     "Debug log (FULL DEBUG)": self.debug_log_file,
@@ -298,7 +302,7 @@ class EasyNerDBHandler:
                     f"Logging system initialized - DB: {self.name}"
                     f"\n Main log - (INFO): {self.log_file}"
                     f"\n Path: {self.db_path}"
-                    f"\n Path source: {self.path_source}"
+                    f"\n Path source: {self.db_path}"
                     f"\n Error log - (ONLY ERRORS) - Resets: {self.error_log_file}"
                     f"\n Debug log - (FULL DEBUG LOG): {self.debug_log_file}",
                 )
@@ -380,7 +384,7 @@ class EasyNerDBHandler:
     # Use _get_data_exchanger instead of direct property for initialization
     def _get_data_exchanger(self):
         """Get data exchanger object for complex operations."""
-        from db_data_exchanger import DBDataExchanger
+        from easyner.database.sqlite_backend.db_data_exchanger import DBDataExchanger
 
         if self._data_exchanger is None:
             self._data_exchanger = DBDataExchanger(
@@ -636,41 +640,6 @@ class EasyNerDBHandler:
             # Ignore any errors in destructor
             pass
 
-    def _setup_path(self, db_path: str | None) -> None:
-        # Database path selection with clear precedence:
-        # 1.SQLITE_DB_PATH environment variable
-        # 2. Development mode default path (if config["develop"]=True)
-        # 3. Explicitly provided db_path parameter
-        # 4. Path from config file
-        load_dotenv()
-        path_source = None
-        env_db_path = os.getenv("SQLITE_DB_PATH")
-        resolved_path = None
-        if env_db_path:
-            resolved_path = env_db_path
-            path_source = "SQLITE_DB_PATH environment variable"
-        elif self.config.get("develop", False):
-            pwd = os.path.dirname(os.path.abspath(__file__))
-            resolved_path = os.path.join(pwd, "development.db")
-            path_source = "development mode default path"
-        elif db_path is not None:
-            resolved_path = db_path
-            path_source = "explicitly provided path"
-        else:
-            resolved_path = self.config.get("db_path")
-            path_source = "config file"
-
-        # Ensure the path is absolute and resolved
-        if not resolved_path:
-            msg = "Database path could not be resolved"
-            raise ValueError(msg)
-
-        if not os.path.isabs(resolved_path):
-            msg = "Database path must be absolute"
-            raise ValueError(msg)
-
-        return resolved_path, path_source
-
     @db_error_handler
     def _init_cache(self):
         """Initialize the cache table and set up the global cache manager singleton."""
@@ -689,41 +658,6 @@ class EasyNerDBHandler:
 
         except ImportError as e:
             self.logger.warning(f"Failed to initialize cache system: {e}")
-
-    @db_error_handler
-    def _load_environment_settings(self):
-        """Load settings from environment variables."""
-        env_settings = {}
-
-        # Batch size for processing
-        try:
-            env_batch_size = os.getenv("DEFAULT_BATCH_SIZE")
-            if env_batch_size:
-                env_settings["batch_size"] = int(env_batch_size)
-        except ValueError:
-            self.logger.warning(
-                f"Invalid DEFAULT_BATCH_SIZE value: {os.getenv('DEFAULT_BATCH_SIZE')}",
-            )
-            env_settings["batch_size"] = 32
-
-        # Log level
-        env_log_level = os.getenv("LOG_LEVEL")
-        if env_log_level:
-            valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-            if env_log_level.upper() in valid_levels:
-                env_settings["log_level"] = env_log_level.upper()
-                # Update logger level
-                level = getattr(logging, env_log_level.upper())
-                self.logger.setLevel(level)
-                self.logger.info(
-                    f"Set log level to {env_log_level.upper()} from environment variable",
-                )
-
-        # Store settings in cache if we have a cache manager
-        if hasattr(self, "cache_manager"):
-            self.cache_manager.set_global("environment_settings", env_settings)
-
-        return env_settings
 
     @db_error_handler
     def _initialize_components(self):
@@ -796,38 +730,6 @@ class EasyNerDBHandler:
         self.execute("PRAGMA journal_size_limit = 6144000;")
         self.execute("PRAGMA temp_store = MEMORY;")
         self.execute("PRAGMA busy_timeout = 10000;")
-
-    def _load_config(self, config_path):
-        """Load the JSON configuration file."""
-        if not os.path.isabs(config_path):
-            config_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                config_path,
-            )
-        try:
-            with open(config_path) as f:
-                config = json.load(f).get("database", {})
-                # Test integrity of the configuration
-                if not config["develop"]:  # No db path neeeded when in development mode
-                    if "db_path" not in config:
-                        msg = "Database configuration must contain 'db_path' key."
-                        raise ValueError(
-                            msg,
-                        )
-                else:
-                    print(
-                        "Setting up in development mode, ignoring database path provided",
-                    )
-                if "schema_path" not in config:
-                    msg = "Database configuration does not contain 'schema_path' key."
-                    raise ValueError(
-                        msg,
-                    )
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            msg = f"Error loading configuration file: {e}"
-            raise ValueError(msg)
-
-        return config
 
     def _setup_logging(self):
         """Configure logging to save to db.log in the database directory."""
@@ -1326,11 +1228,9 @@ class EasyNerDBHandler:
             return (
                 "Not available"  # Return a placeholder if result is empty or malformed
             )
-
         except sqlite3.Error as e:
             self.logger.warning(f"SQLite error getting pragma {pragma_name}: {str(e)}")
             return f"Not available (SQLite error: {str(e)[:30]})"
-
         except Exception as e:
             self.logger.debug(f"Error getting pragma {pragma_name}: {str(e)}")
             return "Not available"  # Return a placeholder on error
@@ -1340,7 +1240,6 @@ class BaseComponent:
     """Common base class for all components with shared logger and database connection."""
 
     def __init__(self, db_handler: EasyNerDBHandler):
-        # Direct attribute access from the database handler
         self.logger = db_handler.logger
         self.cursor = db_handler.cursor
         self.conn = db_handler.conn
@@ -1348,7 +1247,6 @@ class BaseComponent:
         self.conn_params_dict = db_handler.conn_params_dict
         self.data = db_handler.data_exchanger
         self.db = db_handler  # Keep a direct reference to the database handler
-
         # Optional initialization hook for subclasses
         self._initialize()
 
