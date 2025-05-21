@@ -246,3 +246,62 @@ max-string-length = 20
     #"PT011",   # Too-broad pytest.raises matches any exception
     "E501"     # Line too long in test files
 ]
+
+
+# Ignore in the to be integrated Old sqlite backend. Roll these back as files are fixed
+"easyner/database/sqlite_backend/**.py" = [
+    "D100",  # Missing docstring in public module
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D107",  # Missing docstring in __init__
+    "D10",
+    "D2", # Docstring
+    "D401",  # Imperative mood required
+    "E501",  # Line too long
+    "F401",  # Unused import
+    "F403", # unable to detect undefined names
+    "F841",  # Local variable is assigned to but never used
+    "UP006", # Use built-in types instead of importing from `typing`
+    "ANN00", # Type annotations
+    "ANN001", # Missing type annotation for function
+    "ANN002", # Missing type annotation for variable
+    "ANN101", # Missing type annotation for class
+    "ANN201", # Missing type annotation for parameter
+    "ANN204", # Missing type annotation for init
+    "ANN202", # Missing type annotation for return private function
+    "F405", # Not known attribute of none
+    "C9", # McCabe complexity
+    "E722", # Do not use bare `except`
+    "E402", # Module level import not at top of file - change this with care as there where circular import issues
+
+]
+
+# Ignore in the to be integrated Old sqlite backend. Roll these back as files are fixed
+"tests/**/sqlite_backend/*" = [
+    "D100",  # Missing docstring in public module
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D107",  # Missing docstring in __init__
+    "D10",
+    "D2", # Docstring
+    "D401",  # Imperative mood required
+    "E501",  # Line too long
+    "F401",  # Unused import
+    "F403", # unable to detect undefined names
+    "F841",  # Local variable is assigned to but never used
+    "UP006", # Use built-in types instead of importing from `typing`
+    "ANN00", # Type annotations
+    "ANN001", # Missing type annotation for function
+    "ANN002", # Missing type annotation for variable
+    "ANN101", # Missing type annotation for class
+    "ANN201", # Missing type annotation for parameter
+    "ANN204", # Missing type annotation for init
+    "ANN202", # Missing type annotation for return private function
+    "F405", # Not known attribute of none
+    "C9", # McCabe complexity
+    "E722", # Do not use bare `except`
+    "E402", # Module level import not at top of file - change this with care as there where circular import issues
+
+]
