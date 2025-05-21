@@ -9,8 +9,6 @@ import unittest
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from scripts.db_easyner import EasyNerDB
-
 
 class TestDBAnalysis(unittest.TestCase):
     successful_tests = []

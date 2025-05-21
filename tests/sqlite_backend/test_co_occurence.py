@@ -9,15 +9,6 @@ import unittest
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Use absolute import
-from scripts.co_occurence import (
-    create_df_from_pairs,
-    get_batch_index,
-    get_inter_entity_co_occurrences,
-    get_intra_entity_co_occurrences,
-    load_json,
-)
-
 
 class TestGetPairs(unittest.TestCase):
     @classmethod

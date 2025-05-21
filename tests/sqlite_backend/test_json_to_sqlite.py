@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from scripts.sqlite_backend.json_to_sqlite import process_chunk
+from easyner.database.sqlite_backend.json_to_sqlite import process_chunk
 
 
 class TestJsonToSqlite(unittest.TestCase):

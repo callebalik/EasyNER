@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from scripts.sqlite_backend.data_model.entity_cooccurrence import DataExchanger
+from easyner.database.sqlite_backend.data_model.entity_cooccurrence import DataExchanger
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def mock_db_handler():
 @pytest.fixture
 def data_exchanger(mock_db_handler):
     with patch(
-        "scripts.database.data_model.entity_cooccurrence.VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY",
+        "easyner.database.sql_backend.data_model.entity_cooccurrence.VIEW_DIS_PNM_CO_AGGR_ROW_FACTORY",
     ) as mock_view:
         mock_view.refresh = MagicMock()
         exchanger = DataExchanger(mock_db_handler)

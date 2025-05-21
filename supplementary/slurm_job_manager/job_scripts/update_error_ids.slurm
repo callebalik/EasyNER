@@ -14,10 +14,8 @@ module load Anaconda3
 source config_conda.sh
 conda activate easyner_env
 
-
 # Debug: Print the activated environment
 echo "Activated conda environment: $(conda env list | grep '*')"
-
 
 # Set environment variables
 export PYTHONPATH=$PYTHONPATH:/home/carloa/Desktop/EasyNer
@@ -28,7 +26,7 @@ echo "FILE_SPAN is set to: $FILE_SPAN"
 
 # Run the conversion script (all configuration is in config.json)
 python -c "
-from scripts.database.db_main import EasyNerDBHandler
+from easyner.database.sql_backend.db_main import EasyNerDBHandler
 with EasyNerDBHandler() as db:
     db.ne.error_ids.update_error_ids()
 "

@@ -11,12 +11,12 @@ from typing import Optional
 import psutil
 from dotenv import load_dotenv
 
-from scripts.sqlite_backend.db_server import get_db_easyner_context_connection
+from easyner.database.sqlite_backend.db_server import get_db_easyner_context_connection
 
 # Set environment variables before importing app modules
 # This prevents the invalid subscript error by ensuring variables are set before any tracking happens
 os.environ.setdefault("PYTHONPATH", os.path.dirname(os.path.abspath(__file__)))
-os.environ.setdefault("FLASK_APP", "scripts.database.db_server")
+os.environ.setdefault("FLASK_APP", "easyner.database.sql_backend.db_server")
 os.environ.setdefault("FLASK_ENV", "development")
 os.environ.setdefault("LOG_LEVEL", "DEBUG")
 os.environ.setdefault("SERVER_PORT", "5001")
@@ -26,11 +26,15 @@ load_dotenv()  # This loads the db path from env
 # Improved error handling for imports
 try:
     # Now import Flask app after environment variables are set
-    from scripts.sqlite_backend.db_server import app, get_db_easyner, setup_logging
+    from easyner.database.sqlite_backend.db_server import (
+        app,
+        get_db_easyner,
+        setup_logging,
+    )
 
     # Import the monitoring module only if it exists
     try:
-        from scripts.sqlite_backend.db_server import operation_monitor
+        from easyner.database.sqlite_backend.db_server import operation_monitor
     except ImportError:
         operation_monitor = None
 except ImportError as e:
@@ -41,7 +45,7 @@ except ImportError as e:
 # Define required environment variables and their defaults
 REQUIRED_ENV_VARS = {
     "PYTHONPATH": os.path.dirname(os.path.abspath(__file__)),
-    "FLASK_APP": "scripts.database.db_server",
+    "FLASK_APP": "easyner.database.sql_backend.db_server",
     "FLASK_ENV": "development",
     "LOG_LEVEL": "DEBUG",
     "DB_PATH": os.getenv("SQLITE_DB_PATH"),  # Set your default DB path
@@ -203,8 +207,8 @@ def optimize_performance():
     """Optimize database settings for better performance."""
     try:
         # Import the monitoring module
-        from scripts.sqlite_backend.db_server import app
-        from scripts.sqlite_backend.monitoring import OperationMonitor
+        from easyner.database.sqlite_backend.db_server import app
+        from easyner.database.sqlite_backend.monitoring import OperationMonitor
 
         # Create a temporary monitor if needed
         temp_monitor = OperationMonitor(app.logger)
@@ -224,7 +228,7 @@ def optimize_performance():
         return False
 
 
-def test_database_connection() -> Optional[bool]:
+def test_database_connection() -> bool | None:
     """Test the database connection to verify it's working correctly."""
     try:
         # Use the context manager directly

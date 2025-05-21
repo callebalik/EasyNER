@@ -2,11 +2,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from scripts.sqlite_backend.data_model.entity_cooccurrence import (
+from easyner.database.sqlite_backend.data_model.entity_cooccurrence import (
     Cooccurrence,
     NormallizedNamedEntity,
 )
-from scripts.sqlite_backend.data_model.schema import *
 
 
 # Fixtures for mock objects
@@ -239,7 +238,9 @@ class TestCooccurrence:
         assert result.pmi is None  # This should be None
         assert result.npmi is None  # This should be None
 
-    @patch("scripts.database.data_model.entity_cooccurrence.NormallizedNamedEntity")
+    @patch(
+        "easyner.database.sql_backend.data_model.entity_cooccurrence.NormallizedNamedEntity"
+    )
     def test_row_factory_entity_error(
         self,
         mock_entity_class,

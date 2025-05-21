@@ -6,12 +6,6 @@ import unittest
 # Add EasyNer directory to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from scripts.co_occurence_db import (
-    get_inter_entity_co_occurrences,
-    query_co_occurrences,
-    store_co_occurrences_in_db,
-)
-
 
 class TestCoOccurrenceDB(unittest.TestCase):
     def setUp(self):

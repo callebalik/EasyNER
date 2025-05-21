@@ -1,6 +1,6 @@
 from IPython import embed
 
-from scripts.sqlite_backend.db_main import EasyNerDBHandler
+from easyner.database.sqlite_backend.db_main import EasyNerDBHandler
 
 if __name__ == "__main__":
     with EasyNerDBHandler() as db:

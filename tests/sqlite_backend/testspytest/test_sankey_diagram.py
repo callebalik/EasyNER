@@ -7,11 +7,11 @@ import numpy as np
 import plotly.graph_objects as go
 import pytest
 
-from scripts.sqlite_backend.data_model.entity_cooccurrence import (
+from easyner.database.sqlite_backend.data_model.entity_cooccurrence import (
     Cooccurrence,
     NormallizedNamedEntity,
 )
-from scripts.sqlite_backend.data_model.schema import (
+from easyner.database.sqlite_backend.data_model.schema import (
     FQ,
     FQ_DOCUMENT_LEVEL,
     NPMI,
@@ -19,7 +19,7 @@ from scripts.sqlite_backend.data_model.schema import (
     TXT,
     UNIQ_DOCS,
 )
-from scripts.sqlite_backend.statistics.sankey_diagram import CooccurenceSankey
+from easyner.database.sqlite_backend.statistics.sankey_diagram import CooccurenceSankey
 
 
 @pytest.fixture

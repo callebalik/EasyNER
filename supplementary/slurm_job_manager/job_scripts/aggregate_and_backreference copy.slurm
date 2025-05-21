@@ -29,7 +29,7 @@ echo "FILE_SPAN is set to: $FILE_SPAN"
 
 # Run the conversion script (all configuration is in config.json)
 python -c "
-from scripts.database.db_main import EasyNerDBHandler
+from easyner.database.sql_backend.db_main import EasyNerDBHandler
 
 with EasyNerDBHandler() as db:
     db.ne.aggregator.aggregate_named_entities()
