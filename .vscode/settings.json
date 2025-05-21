@@ -40,6 +40,9 @@
     "**/anaconda3/**",
     "**/transformers/**",
   ],
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportRedeclaration": false, // Ruff already does this faster
+  },
   "mypy.enabled": true,
   "mypy.runUsingActiveInterpreter": true,
   "[python]": {
