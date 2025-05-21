@@ -44,7 +44,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 
-from easyner.io.database.conn import DatabaseConnection
+from easyner.io.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 
