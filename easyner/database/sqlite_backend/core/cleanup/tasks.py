@@ -1,5 +1,8 @@
 # Example cleanup tasks within core/cleanup/tasks/
-from ..core_classes import BaseLogger, DatabaseManager
+from easyner.database.sqlite_backend.core.core_classes import (
+    BaseLogger,
+    DatabaseManager,
+)
 
 
 # core/cleanup/tasks/vacuum_task.py
@@ -17,7 +20,11 @@ def vacuum_database_task(db_manager: DatabaseManager, logger: BaseLogger) -> Non
 
 # core/cleanup/tasks/delete_old_records_task.py
 def delete_old_logs_task(
-    db_manager: DatabaseManager, logger: BaseLogger, table_name, date_column, days_ago,
+    db_manager: DatabaseManager,
+    logger: BaseLogger,
+    table_name,
+    date_column,
+    days_ago,
 ) -> None:
     """Task to delete old records from a table based on a date column."""
     import datetime

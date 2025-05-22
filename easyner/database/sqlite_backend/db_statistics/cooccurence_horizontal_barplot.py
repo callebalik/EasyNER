@@ -4,7 +4,7 @@ import numpy as np
 import seaborn as sns
 from matplotlib.patches import Rectangle
 
-from easyner.database.sqlite_backend.statistics.color_scheme import *
+from easyner.database.sqlite_backend.db_statistics.color_scheme import *
 
 
 class CooccurenceHorizontalBarplot:

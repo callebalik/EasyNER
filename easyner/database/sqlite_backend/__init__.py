@@ -1,19 +1,22 @@
 """Database module initialization."""
 
 # Core imports first
-from easyner.database.sqlite_backend.db_main import EasyNerDBHandler
-
-from .analysis.analyzer import DataAnalyzer
-from .core.cache_manager import CacheManager
-from .core.cleanup.cleanup_mangager import CleanupManager
-from .core.core_classes import BaseExecutor, BaseLogger
-from .core.db_manager import DatabaseManager
-from .core.threading_mp.parallel_executor import ParallelExecutor
+from easyner.database.sqlite_backend.analysis.analyzer import DataAnalyzer
+from easyner.database.sqlite_backend.core.cache_manager import CacheManager
+from easyner.database.sqlite_backend.core.cleanup.cleanup_mangager import CleanupManager
+from easyner.database.sqlite_backend.core.core_classes import BaseExecutor, BaseLogger
+from easyner.database.sqlite_backend.core.db_manager import DatabaseManager
+from easyner.database.sqlite_backend.core.threading_mp.parallel_executor import (
+    ParallelExecutor,
+)
 
 # Data model imports
 # Main components - order matters to avoid circular imports
-from .db_data_exchanger import DBDataExchanger
-from .statistics.db_statistics import DBStatistics
+from easyner.database.sqlite_backend.db_data_exchanger import DBDataExchanger
+from easyner.database.sqlite_backend.db_main import EasyNerDBHandler
+from easyner.database.sqlite_backend.db_statistics.db_statistics_class import (
+    DBStatistics,
+)
 
 __all__ = ["EasyNerDBHandler", "DBStatistics", "DBDataExchanger", "CacheManager"]
 

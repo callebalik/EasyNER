@@ -1,10 +1,12 @@
-"""Database analysis package initialization.
-"""
+"""Database analysis package initialization."""
 
-from ..data_model.docs import Docs
-from ..data_model.entities import EntityCooccurence, EntityOccurrence
-from ..data_model.sent import Sentence
-from .analyzer import DataAnalyzer
+from easyner.database.sqlite_backend.data_model.docs import Docs
+from easyner.database.sqlite_backend.data_model.entities import (
+    EntityCooccurence,
+    EntityOccurrence,
+)
+from easyner.database.sqlite_backend.data_model.sent import Sentence
+from easyner.database.sqlite_backend.analysis.analyzer import DataAnalyzer
 
 __all__ = [
     "DBAnalysis",

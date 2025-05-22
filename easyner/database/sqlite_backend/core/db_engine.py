@@ -42,8 +42,7 @@ def run_with_profiling(func, prof_filename):
 
 
 class Reader:
-    """Reader class to read data from a database, process it, and put it into a queue.
-    """
+    """Reader class to read data from a database, process it, and put it into a queue."""
 
     def __init__(
         self,
@@ -77,10 +76,10 @@ class Reader:
 
         """
         if batch_queue is None:
-            msg = "batch_queue must be provided for Reader when using chunking strategy."
-            raise ValueError(
-                msg,
+            msg = (
+                "batch_queue must be provided for Reader when using chunking strategy."
             )
+            raise ValueError(msg)
         self.batch_queue = batch_queue
 
         self.lock = lock
@@ -148,7 +147,8 @@ class Reader:
             # Format as table
             log_level = logging.WARNING if batch_empty else logging.DEBUG
             table = self.table_formatter.format_table(
-                data, title="Batch Processing Statistics",
+                data,
+                title="Batch Processing Statistics",
             )
             self.logger.log(log_level, f"\n{table}")
         except Exception:
@@ -248,7 +248,8 @@ class Reader:
                 thread_stats["total_fetch_time"] += reader_duration
                 current_queue_size = self.data_queue.qsize() if self.data_queue else 0
                 thread_stats["max_queue_size"] = max(
-                    thread_stats["max_queue_size"], current_queue_size,
+                    thread_stats["max_queue_size"],
+                    current_queue_size,
                 )
 
                 batch_empty = len(batch) == 0
@@ -270,10 +271,12 @@ class Reader:
                 # Update row statistics
                 thread_stats["total_rows_fetched"] += len(batch)
                 thread_stats["max_batch_size"] = max(
-                    thread_stats["max_batch_size"], len(batch),
+                    thread_stats["max_batch_size"],
+                    len(batch),
                 )
                 thread_stats["min_batch_size"] = min(
-                    thread_stats["min_batch_size"], len(batch),
+                    thread_stats["min_batch_size"],
+                    len(batch),
                 )
 
                 processed_batch = self.process_function(batch, self.conn_params)
@@ -397,7 +400,8 @@ class Reader:
             }
 
             table = self.table_formatter.format_table(
-                summary_data, title="Reader Thread Completion Summary",
+                summary_data,
+                title="Reader Thread Completion Summary",
             )
             self.logger.info(f"\n{table}")
         except Exception:
@@ -407,7 +411,10 @@ class Reader:
                 f"{stats['total_rows_processed']} rows processed in {stats['thread_duration']:.2f} seconds",
             )
 
-    def run(self, num_threads=1) -> None:  # `num_threads` is now OPTIONAL with default 1
+    def run(
+        self,
+        num_threads=1,
+    ) -> None:  # `num_threads` is now OPTIONAL with default 1
         """Runs the Reader process, in single or multi-threaded mode based on num_threads.
 
         Args:
@@ -423,13 +430,15 @@ class Reader:
         """
         if self.profiling_file:
             run_with_profiling(
-                lambda: self._run_internal(num_threads), self.profiling_file,
+                lambda: self._run_internal(num_threads),
+                self.profiling_file,
             )  # Use lambda to call internal run with args
         else:
             self._run_internal(num_threads)
 
     def _run_internal(
-        self, num_threads=1,
+        self,
+        num_threads=1,
     ):  # `num_threads` is now OPTIONAL with default 1
         """Runs the Reader process, in single or multi-threaded mode based on num_threads.
 
@@ -471,8 +480,7 @@ class Reader:
 
 
 class Writer:
-    """Writer class as before, now not directly managing the queue.
-    """
+    """Writer class as before, now not directly managing the queue."""
 
     def __init__(
         self,
@@ -597,11 +605,13 @@ class Writer:
                 write_stats["total_batches"] += 1
                 batch_size = len(batch)
                 write_stats["max_batch_size"] = max(
-                    write_stats["max_batch_size"], batch_size,
+                    write_stats["max_batch_size"],
+                    batch_size,
                 )
                 if batch_size > 0:  # Only update min_batch_size for non-empty batches
                     write_stats["min_batch_size"] = min(
-                        write_stats["min_batch_size"], batch_size,
+                        write_stats["min_batch_size"],
+                        batch_size,
                     )
 
                 # Perform the write operation with timing
@@ -689,7 +699,8 @@ class Writer:
             }
 
             table = self.table_formatter.format_table(
-                summary_data, title="Writer Thread Completion Summary",
+                summary_data,
+                title="Writer Thread Completion Summary",
             )
             self.logger.info(f"\n{table}")
         except Exception:
@@ -728,8 +739,7 @@ class Writer:
 
 
 class ReaderWriterPair(TableLoggingMixin):
-    """Manages a Reader and Writer pair, creating and connecting their data queue internally.
-    """
+    """Manages a Reader and Writer pair, creating and connecting their data queue internally."""
 
     def __init__(
         self,
@@ -786,9 +796,7 @@ class ReaderWriterPair(TableLoggingMixin):
                 f"Invalid process_function signature. Expected: "
                 f"Function(List[Any], Dict[str, Any]) -> List[Any]. Error: {str(e)}"
             )
-            raise TypeError(
-                msg,
-            )
+            raise TypeError(msg)
 
         # Create test objects for write_function validation
         test_conn = sqlite3.connect(":memory:")
@@ -810,9 +818,7 @@ class ReaderWriterPair(TableLoggingMixin):
                 f"Invalid write_function signature. Expected: "
                 f"Function(List[Any], sqlite3.Cursor, sqlite3.Connection) -> bool. Error: {str(e)}"
             )
-            raise TypeError(
-                msg,
-            )
+            raise TypeError(msg)
         finally:
             test_conn.close()
 
@@ -822,30 +828,28 @@ class ReaderWriterPair(TableLoggingMixin):
         # Check for ORDER BY clause
         if "ORDER BY" not in reader_query.upper():
             msg = "Reader query must include an ORDER BY clause to ensure consistent row processing."
-            raise ValueError(
-                msg,
-            )
+            raise ValueError(msg)
         if ":offset" not in reader_query:
-            msg = "Reader query must include a :offset parameter for threaded pagination."
-            raise ValueError(
-                msg,
+            msg = (
+                "Reader query must include a :offset parameter for threaded pagination."
             )
+            raise ValueError(msg)
         if ":limit" not in reader_query:
-            msg = "Reader query must include a :limit parameter for threaded pagination."
-            raise ValueError(
-                msg,
+            msg = (
+                "Reader query must include a :limit parameter for threaded pagination."
             )
+            raise ValueError(msg)
         # **NEW CHECKS: Ensure exactly ONE :limit and ONE :offset placeholder**
         if reader_query.lower().count(":limit") != 1:
-            msg = "Reader query must contain exactly one ':limit' parameter placeholder."
-            raise ValueError(
-                msg,
+            msg = (
+                "Reader query must contain exactly one ':limit' parameter placeholder."
             )
+            raise ValueError(msg)
         if reader_query.lower().count(":offset") != 1:
-            msg = "Reader query must contain exactly one ':offset' parameter placeholder."
-            raise ValueError(
-                msg,
+            msg = (
+                "Reader query must contain exactly one ':offset' parameter placeholder."
             )
+            raise ValueError(msg)
 
         self.conn_params = conn_params
 
@@ -876,18 +880,21 @@ class ReaderWriterPair(TableLoggingMixin):
         self.process_title = process_title  # Store process title if provided
 
         self.pbar_aggregated = tqdm(
-            total=total_rows, desc="Total Progress",
+            total=total_rows,
+            desc="Total Progress",
         )  # Initialize tqdm for aggregated progress
 
         self.profiling_reader_enabled = os.getenv(
-            "PROFILING_READER_ENABLED", profiling_reader_enabled,
+            "PROFILING_READER_ENABLED",
+            profiling_reader_enabled,
         )  # Added profiling_reader_enabled
         self.profiling_reader_fileanme = None
         if self.profiling_reader_enabled:
             self.profiling_reader_fileanme = f"reader_threaded_{self.process_title if self.process_title else ''}.{time.strftime('%Y%m%d_%H%M%S')}.prof"
 
         self.profiling_writer_enabled = os.getenv(
-            "PROFILING_WRITER_ENABLED", profiling_writer_enabled,
+            "PROFILING_WRITER_ENABLED",
+            profiling_writer_enabled,
         )  # Added profiling_writer_enabled
 
         self.profiling_writer_filename = None
@@ -1058,8 +1065,7 @@ class ReaderWriterPair(TableLoggingMixin):
             self.logger.warning(f"Unexpected error in query plan (non-critical): {e}")
 
     def run(self) -> None:
-        """Runs the Reader and Writer threads with proper queue monitoring and cleanup.
-        """
+        """Runs the Reader and Writer threads with proper queue monitoring and cleanup."""
         reader_threads = []
         writer_thread = None
         aggregation_thread = None
@@ -1070,7 +1076,8 @@ class ReaderWriterPair(TableLoggingMixin):
 
             # Start aggregation thread first
             aggregation_thread = threading.Thread(
-                target=self._progress_aggregation_process, daemon=True,
+                target=self._progress_aggregation_process,
+                daemon=True,
             )
             aggregation_thread.start()
 
@@ -1098,7 +1105,9 @@ class ReaderWriterPair(TableLoggingMixin):
 
             # Log job info
             self._log_configuration_as_table(
-                num_of_batches, started_reader_threads, writer_thread_started,
+                num_of_batches,
+                started_reader_threads,
+                writer_thread_started,
             )
 
             # 2. SECOND: Monitor overall processing progress
@@ -1227,7 +1236,10 @@ class ReaderWriterPair(TableLoggingMixin):
             pass
 
     def _log_configuration_as_table(
-        self, num_of_batches, started_reader_threads, writer_thread_started,
+        self,
+        num_of_batches,
+        started_reader_threads,
+        writer_thread_started,
     ):
         """Log configuration information as a formatted table.
 
@@ -1254,8 +1266,7 @@ class ReaderWriterPair(TableLoggingMixin):
 
 
 class WriteFunction:
-    """Class to define the write function for the Writer.
-    """
+    """Class to define the write function for the Writer."""
 
     @staticmethod
     def write_batch(batch, cursor, conn, logger):

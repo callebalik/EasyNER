@@ -1,13 +1,9 @@
 import gc
 import json
-import logging
 import os
 import sqlite3
 import time
-from concurrent.futures import ThreadPoolExecutor
 from glob import glob
-from pathlib import Path
-from typing import Dict, List, Tuple
 
 import psutil
 from tqdm import tqdm
@@ -176,7 +172,12 @@ def batch_insert(
         gc.collect()
 
 
-def insert_data(db_path: str, data: tuple, batch_size: int = 200000, logger=None) -> None:
+def insert_data(
+    db_path: str,
+    data: tuple,
+    batch_size: int = 200000,
+    logger=None,
+) -> None:
     # Enable URI connection string but without exclusive locking
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -216,13 +217,21 @@ def insert_data(db_path: str, data: tuple, batch_size: int = 200000, logger=None
             # Then named entities
             named_entities_rows = [(v, k, None) for k, v in named_entities.items()]
             batch_insert(
-                cursor, "named_entities", named_entities_rows, batch_size, logger,
+                cursor,
+                "named_entities",
+                named_entities_rows,
+                batch_size,
+                logger,
             )
             named_entities.clear()
 
             # Finally entity occurrences
             batch_insert(
-                cursor, "entity_occurrences", entity_occurrences, batch_size, logger,
+                cursor,
+                "entity_occurrences",
+                entity_occurrences,
+                batch_size,
+                logger,
             )
             entity_occurrences.clear()
 
@@ -290,9 +299,7 @@ def json_to_sqlite(
         )
     else:
         msg = "Invalid path. Please provide a valid directory path to JSON files."
-        raise ValueError(
-            msg,
-        )
+        raise ValueError(msg)
 
     start_time = time.time()
     start_memory = get_memory_usage()

@@ -81,9 +81,7 @@ class ConnectionPool:
                     except queue.Empty:
                         self.logger.error("Timed out waiting for a connection")
                         msg = "Connection pool exhausted and timed out waiting for a connection"
-                        raise TimeoutError(
-                            msg,
-                        )
+                        raise TimeoutError(msg)
 
         try:
             # Hand the connection to the caller

@@ -19,8 +19,7 @@ def register_cooccurrence_routes(app, get_db) -> None:
             app.logger.error(f"Error loading co-occurrence network page: {e}")
             return (
                 render_template(
-                    "error.html",
-                    message="Error loading co-occurrence network page",
+                    "error.html", message="Error loading co-occurrence network page"
                 ),
                 500,
             )

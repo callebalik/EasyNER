@@ -7,8 +7,10 @@ from flask import render_template, request
 from easyner.database.sqlite_backend.data_model.entity_cooccurrence import (
     EntityCooccurrence,
 )
-from easyner.database.sqlite_backend.statistics.sankey_diagram import CooccurenceSankey
-from easyner.database.sqlite_backend.statistics.visualization_manager import (
+from easyner.database.sqlite_backend.db_statistics.sankey_diagram import (
+    CooccurenceSankey,
+)
+from easyner.database.sqlite_backend.db_statistics.visualization_manager import (
     VisualizationManager,
 )
 

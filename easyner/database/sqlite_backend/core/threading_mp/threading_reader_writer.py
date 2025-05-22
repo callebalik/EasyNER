@@ -11,10 +11,13 @@ from multiprocessing import Lock, Value
 
 from tqdm import tqdm
 
+from easyner.database.sqlite_backend.core.db_manager import (  # Import DatabaseManager
+    DatabaseManager,
+)
+from easyner.database.sqlite_backend.core.logger import (  # Assuming BaseLogger is in core.core_classes
+    BaseLogger,
+)
 from easyner.utils.logging.log_formatter import TableFormatter  # Import TableFormatter
-
-from ..db_manager import DatabaseManager  # Import DatabaseManager
-from ..logger import BaseLogger  # Assuming BaseLogger is in core.core_classes
 
 
 def run_with_profiling(func, prof_filename):
@@ -40,8 +43,7 @@ def run_with_profiling(func, prof_filename):
 
 
 class Reader:
-    """Reader class to read data from a database, process it, and put it into a queue.
-    """
+    """Reader class to read data from a database, process it, and put it into a queue."""
 
     def __init__(
         self,
@@ -124,7 +126,8 @@ class Reader:
                     break  # No more data
 
                 processed_batch = self.process_function(
-                    batch, self.database_manager.get_connection_params(),
+                    batch,
+                    self.database_manager.get_connection_params(),
                 )  # Pass connection params via manager
 
                 if processed_batch:  # Only put into queue if there is processed data
@@ -179,7 +182,10 @@ class Reader:
             )  # Ensure sentinel value is ALWAYS added to queue at the end
             self.logger.debug("Reader thread: added sentinel value to queue.")
 
-    def run(self, num_threads=1) -> None:  # `num_threads` is now OPTIONAL with default 1
+    def run(
+        self,
+        num_threads=1,
+    ) -> None:  # `num_threads` is now OPTIONAL with default 1
         """Runs the Reader process, in single or multi-threaded mode based on num_threads.
 
         Args:
@@ -200,13 +206,15 @@ class Reader:
                 f"Reader thread starting with profiling enabled. Results will be in '{prof_filename}'",
             )
             run_with_profiling(
-                lambda: self._run_internal(num_threads), prof_filename,
+                lambda: self._run_internal(num_threads),
+                prof_filename,
             )  # Use lambda to call internal run with args
         else:
             self._run_internal(num_threads)
 
     def _run_internal(
-        self, num_threads=1,
+        self,
+        num_threads=1,
     ):  # `num_threads` is now OPTIONAL with default 1
         """Runs the Reader process, in single or multi-threaded mode based on num_threads.
 
@@ -252,8 +260,7 @@ class Reader:
 
 
 class Writer:
-    """Writer class as before, now not directly managing the queue.
-    """
+    """Writer class as before, now not directly managing the queue."""
 
     def __init__(
         self,
@@ -398,8 +405,7 @@ class Writer:
 
 
 class ReaderWriterPair:
-    """Manages a Reader and Writer pair, creating and connecting their data queue internally.
-    """
+    """Manages a Reader and Writer pair, creating and connecting their data queue internally."""
 
     def __init__(
         self,
@@ -455,7 +461,8 @@ class ReaderWriterPair:
         self.total_count = total_count  # Store total_count
         if total_count is not None:
             self.shared_processed_count = multiprocessing.Value(
-                "i", 0,
+                "i",
+                0,
             )  # use multiprocessing.Value
             self.shared_processed_lock = (
                 multiprocessing.Lock()
@@ -472,10 +479,12 @@ class ReaderWriterPair:
         )  # Initialize tqdm for aggregated progress
 
         self.profiling_reader_enabled = os.getenv(
-            "PROFILING_READER_ENABLED", profiling_reader_enabled,
+            "PROFILING_READER_ENABLED",
+            profiling_reader_enabled,
         )  # Added profiling_reader_enabled
         self.profiling_writer_enabled = os.getenv(
-            "PROFILING_WRITER_ENABLED", profiling_writer_enabled,
+            "PROFILING_WRITER_ENABLED",
+            profiling_writer_enabled,
         )  # Added profiling_writer_enabled
         self.writer_batch_chunking = (
             writer_batch_chunking  # Added writer_batch_chunking
@@ -559,8 +568,7 @@ class ReaderWriterPair:
         return logger.logger  # Return the logger object from BaseLogger
 
     def _log_query_plan(self, sql, params=None):
-        """Executes a query, logs its query plan, and returns the results.
-        """
+        """Executes a query, logs its query plan, and returns the results."""
         try:
             if params:
                 self.cursor.execute(f"EXPLAIN QUERY PLAN {sql}", params)
@@ -578,7 +586,10 @@ class ReaderWriterPair:
             return None
 
     def _log_configuration_as_table(
-        self, num_of_batches, started_reader_threads, writer_thread_started,
+        self,
+        num_of_batches,
+        started_reader_threads,
+        writer_thread_started,
     ):
         """Log configuration information as a formatted table.
 
@@ -602,7 +613,8 @@ class ReaderWriterPair:
 
         try:
             table_str = TableFormatter.format_table(
-                config_data, title="ReaderWriterPair Processing Configuration",
+                config_data,
+                title="ReaderWriterPair Processing Configuration",
             )
             self.logger.info(f"\n{table_str}")
         except ImportError:
@@ -619,14 +631,14 @@ class ReaderWriterPair:
             )
 
     def run(self) -> None:
-        """Runs the Reader and Writer threads CONCURRENTLY (Corrected Thread Management).
-        """
+        """Runs the Reader and Writer threads CONCURRENTLY (Corrected Thread Management)."""
         self.logger.info(
             f"Starting ReaderWriterPair with {self.num_reader_threads} reader threads.",
         )
 
         aggregation_thread = threading.Thread(
-            target=self._progress_aggregation_process, daemon=True,
+            target=self._progress_aggregation_process,
+            daemon=True,
         )  # Create aggregation thread
         aggregation_thread.start()  # Start aggregation thread
 

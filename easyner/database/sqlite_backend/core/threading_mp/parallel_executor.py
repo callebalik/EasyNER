@@ -1,7 +1,7 @@
 import concurrent.futures
 
-from ..core_classes import BaseLogger
-from ..db_manager import DatabaseManager
+from easyner.database.sqlite_backend.core.core_classes import BaseLogger
+from easyner.database.sqlite_backend.core.db_manager import DatabaseManager
 
 
 class ParallelExecutor:
@@ -49,7 +49,8 @@ class ParallelExecutor:
         # If tasks are write-heavy, consider connection management per thread.
         try:
             return task(
-                self.db_manager, self.logger,
+                self.db_manager,
+                self.logger,
             )  # Pass db_manager & logger to task
         except Exception as e:
             self.logger.error(f"Error executing task in thread: {e}")
@@ -60,7 +61,8 @@ class ParallelExecutor:
         # Ensure tasks and arguments are serializable for multiprocessing.
         try:
             return task(
-                self.db_manager, self.logger,
+                self.db_manager,
+                self.logger,
             )  # Pass db_manager & logger to task
         except Exception as e:
             self.logger.error(f"Error executing task in process: {e}")

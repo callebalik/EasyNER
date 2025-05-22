@@ -6,8 +6,8 @@ Data is fetched mainly via db_statistics.py, which caches most results, to provi
 from flask import Blueprint, render_template
 
 from easyner.database.sqlite_backend.db_server import get_db_easyner_context_connection
-from easyner.database.sqlite_backend.statistics import DBStatistics
-from easyner.database.sqlite_backend.statistics.ne_doc_distr import Flowchart
+from easyner.database.sqlite_backend.db_statistics import DBStatistics
+from easyner.database.sqlite_backend.db_statistics.ne_doc_distr import Flowchart
 
 stats = Blueprint(
     "database_stats",

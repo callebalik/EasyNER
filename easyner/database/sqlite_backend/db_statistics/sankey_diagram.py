@@ -5,14 +5,13 @@ import logging
 import numpy as np
 import plotly.graph_objects as go
 
+from easyner.database.sqlite_backend.data_model.entity_cooccurrence import Cooccurrence
 from easyner.database.sqlite_backend.data_model.schema import (
     FQ_DOCUMENT_LEVEL,
     UNIQ_DOCS,
 )
 from easyner.database.sqlite_backend.db_main import EasyNerDBHandler
 from easyner.io.database.services.data_exchanger import DataExchanger
-
-from ..data_model.entity_cooccurrence import Cooccurrence
 
 logger = logging.getLogger("EasyNerDB")
 

@@ -5,7 +5,7 @@ import re
 import plotly.graph_objects as go
 
 from easyner.database.sqlite_backend.data_model.entity_cooccurrence import Cooccurrence
-from easyner.database.sqlite_backend.statistics.color_scheme import (
+from easyner.database.sqlite_backend.db_statistics.color_scheme import (
     NODE_COLOR_DEFAULT,
     NODE_COLOR_DIS_ONLY,
     NODE_COLOR_PNM_ONLY,

@@ -6,8 +6,7 @@ class Sentence:
         self.logger = logger
 
     def check_word_counts(self):
-        """Check and report statistics about sentence-level counts.
-        """
+        """Check and report statistics about sentence-level counts."""
         self.logger.info("Analyzing sentence-level counts...")
 
         self.cursor.execute(
@@ -22,7 +21,7 @@ class Sentence:
                 AVG(CASE WHEN token_count > 0 THEN token_count END) as avg_tokens,
                 AVG(alpha_count) as avg_alpha
             FROM sentences
-            """,
+            """
         )
         stats = self.cursor.fetchone()
 
@@ -47,7 +46,7 @@ class Sentence:
             WHERE word_count IS NULL OR token_count IS NULL
                 OR word_count = 0 OR token_count = 0
             LIMIT 5
-            """,
+            """
         )
         problem_samples = self.cursor.fetchall()
 
@@ -55,7 +54,7 @@ class Sentence:
             self.logger.info("\nSample problematic sentences:")
             for sample in problem_samples:
                 self.logger.info(
-                    f"Document ID: {sample[0]}, Sentence Index: {sample[1]}, Text: {sample[2]}, Word Count: {sample[3]}, Token Count: {sample[4]}, Alpha Count: {sample[5]}",
+                    f"Document ID: {sample[0]}, Sentence Index: {sample[1]}, Text: {sample[2]}, Word Count: {sample[3]}, Token Count: {sample[4]}, Alpha Count: {sample[5]}"
                 )
 
         return stats

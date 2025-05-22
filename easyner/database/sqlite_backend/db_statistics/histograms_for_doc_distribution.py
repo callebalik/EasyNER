@@ -69,7 +69,11 @@ class DocumentMetricsVisualizer:
 
         # Plot histogram
         plt.hist(
-            self.metric_values, bins=bins, color=color, alpha=0.8, edgecolor="black",
+            self.metric_values,
+            bins=bins,
+            color=color,
+            alpha=0.8,
+            edgecolor="black",
         )
 
         # Configure axes

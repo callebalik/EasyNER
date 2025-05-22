@@ -17,6 +17,9 @@ import psutil
 import sass
 from flask import Flask, g, has_request_context, jsonify, render_template, request
 
+# Import connection pool
+from easyner.database.sqlite_backend.core.connection_pool import ConnectionPool
+from easyner.database.sqlite_backend.data_model import entities
 from easyner.database.sqlite_backend.data_model.schema import (
     CLASS_ID,
     DOC_ID,
@@ -31,10 +34,6 @@ from easyner.database.sqlite_backend.data_model.schema import (
     WORD_COUNT,
 )
 
-# Import connection pool
-from .core.connection_pool import ConnectionPool
-from .data_model import entities
-
 DBPATH = os.environ.get("SQLITE_DB_PATH")
 if not DBPATH:
     msg = "SQLITE_DB_PATH environment variable is not set"
@@ -48,7 +47,11 @@ if not os.path.isabs(DBPATH):
 
 
 # Import our new monitoring module
-from .monitoring import DBConnectionMonitor, OperationMonitor, ThreadMonitor
+from easyner.database.sqlite_backend.monitoring import (
+    DBConnectionMonitor,
+    OperationMonitor,
+    ThreadMonitor,
+)
 
 # Import after app is defined
 from .statistics.visualization_manager import VisualizationManager
@@ -1089,7 +1092,6 @@ def debug_entity_cooccurrences_summary():
 @app.route("/view/<view_name>/sample")
 def get_view_sample(view_name):
     try:
-
         db = get_db_simple_connection()
         cursor = db.cursor
 
@@ -2551,12 +2553,12 @@ def terminate_connection():
 
 
 # Import route implementations
-from .routes import init_routes
+from easyner.database.sqlite_backend.routes import init_routes
 
 # Initialize all routes from the routes module
 
 init_routes(app, get_db_easyner, visualization_manager)
-from .server.statistics.route import stats
+from easyner.database.sqlite_backend.server.sqlserver_statistics.route import stats
 
 app.register_blueprint(stats)
 

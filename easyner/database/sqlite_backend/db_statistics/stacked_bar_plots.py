@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 
-from easyner.database.sqlite_backend.statistics.color_scheme import (
+from easyner.database.sqlite_backend.db_statistics.color_scheme import (
     AMBIGUOUS_COLOR_RGB,
     DIS_HIGHLIGHT_COLORS,
     MISLABELED_COLOR_RGB,

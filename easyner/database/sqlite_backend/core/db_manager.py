@@ -5,7 +5,7 @@ import os
 import sqlite3
 import sys
 
-from .logger import BaseLogger
+from easyner.database.sqlite_backend.core.logger import BaseLogger
 
 
 class DatabaseManager:
@@ -120,20 +120,14 @@ class DatabaseManager:
                 # Basic config integrity check (can be expanded)
                 if not config_data.get("develop") and not config_data.get("db_path"):
                     msg = "Database configuration must contain 'db_path' unless in development mode."
-                    raise ValueError(
-                        msg,
-                    )
+                    raise ValueError(msg)
                 if not config_data.get("schema_path"):
                     msg = "Database configuration must contain 'schema_path'."
-                    raise ValueError(
-                        msg,
-                    )
+                    raise ValueError(msg)
                 return config_data
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
             msg = f"Error loading database configuration from {config_path}: {e}"
-            raise ValueError(
-                msg,
-            )
+            raise ValueError(msg)
 
     def _setup_default_logging(self):
         """Configure default logging to files within the 'logs' directory."""

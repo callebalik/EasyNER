@@ -6,12 +6,13 @@ documenents total -> with and without named entities -> named entity distributio
 import pandas as pd
 import plotly.graph_objects as go
 
-from .db_statistics import DBStatistics
+from easyner.database.sqlite_backend.db_statistics.db_statistics_class import (
+    DBStatistics,
+)
 
 
 class Flowchart:
-    """Provides data for document distribution flowchart and tables based on named entities.
-    """
+    """Provides data for document distribution flowchart and tables based on named entities."""
 
     def __init__(self, db_statistics: DBStatistics):
         """Initialize with a DBStatistics instance."""
@@ -48,10 +49,12 @@ class Flowchart:
             included_ne_classes=["DIS", "PNM"],
         )
         with_dis_only = stats.documents_with_entities(
-            included_ne_classes=["DIS"], excluded_ne_classes=["PNM"],
+            included_ne_classes=["DIS"],
+            excluded_ne_classes=["PNM"],
         )
         with_pnm_only = stats.documents_with_entities(
-            included_ne_classes=["PNM"], excluded_ne_classes=["DIS"],
+            included_ne_classes=["PNM"],
+            excluded_ne_classes=["DIS"],
         )
 
         # Validate counts
@@ -281,7 +284,12 @@ class Flowchart:
         # Debug: Print connections to verify correctness
         print("\nSankey Diagram Connections:")
         for i, (src, tgt, val) in enumerate(
-            zip(sankey_data["source"], sankey_data["target"], sankey_data["value"], strict=False),
+            zip(
+                sankey_data["source"],
+                sankey_data["target"],
+                sankey_data["value"],
+                strict=False,
+            ),
         ):
             print(f"  {i+1}. {src} → {tgt}: {val:,}")
 

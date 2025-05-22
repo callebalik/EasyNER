@@ -57,7 +57,8 @@ class BaseLogger:
     def _setup_error_file_handler(self):
         """Sets up a separate file handler for logging ERROR level and above to an error log file."""
         error_log_file = os.path.join(
-            self.log_dir, "db_error.log",
+            self.log_dir,
+            "db_error.log",
         )  # Keeping "db_error.log" as in original
         error_file_handler = logging.FileHandler(error_log_file)
         error_file_handler.setLevel(logging.ERROR)

@@ -357,7 +357,9 @@ class EasyNerDBHandler:
     def statistics(self):
         """Get database statistics."""
         if self._statistics is None:
-            from easyner.database.sqlite_backend.statistics import DBStatistics
+            from easyner.database.sqlite_backend.db_statistics.db_statistics_class import (
+                DBStatistics,
+            )
 
             self._statistics = DBStatistics(
                 self._connection,
@@ -369,7 +371,9 @@ class EasyNerDBHandler:
 
     def _get_statistics(self):
         """Get statistics object for complex operations."""
-        from easyner.database.sqlite_backend.statistics import DBStatistics
+        from easyner.database.sqlite_backend.db_statistics.db_statistics_class import (
+            DBStatistics,
+        )
 
         if self._statistics is None:
             self._statistics = DBStatistics(
@@ -678,11 +682,11 @@ class EasyNerDBHandler:
                 EntityOccurrence,
             )
             from easyner.database.sqlite_backend.db_data_cleaner import DBDataCleaner
-            from easyner.database.sqlite_backend.db_data_exchanger import (
-                DBDataExchanger,  # noqa: F401
+            from easyner.database.sqlite_backend.db_data_exchanger import (  # noqa: F401
+                DBDataExchanger,
             )
-            from easyner.database.sqlite_backend.statistics.db_statistics import (
-                DBStatistics,  # noqa: F401
+            from easyner.database.sqlite_backend.db_statistics.db_statistics_class import (  # noqa: F401
+                DBStatistics,
             )
 
             # Use _get_data_exchanger instead of direct assignment to property

@@ -13,7 +13,9 @@ from easyner.database.sqlite_backend.data_model.schema import (
     FQ_DOCUMENT_LEVEL,
     UNIQ_DOCS,
 )
-from easyner.database.sqlite_backend.statistics.sankey_diagram import CooccurenceSankey
+from easyner.database.sqlite_backend.db_statistics.cs.sankey_diagram import (
+    CooccurenceSankey,
+)
 
 
 @pytest.fixture

@@ -160,7 +160,11 @@ class DualDistributionVisualizer:
 
             # Add vertical line
             self.ax_primary.axvline(
-                x=value, color=color, linestyle=linestyle, linewidth=1, alpha=0.7,
+                x=value,
+                color=color,
+                linestyle=linestyle,
+                linewidth=1,
+                alpha=0.7,
             )
 
             # Add text annotation
@@ -224,5 +228,7 @@ if __name__ == "__main__":
 
     visualizer = DualDistributionVisualizer(data)
     visualizer.create_dual_axis_plot().add_percentile_annotations(
-        percentiles=[50, 75], colors="darkred", include_zero_pmi=True,
+        percentiles=[50, 75],
+        colors="darkred",
+        include_zero_pmi=True,
     ).adjust_layout(width_scale=0.7).show()

@@ -3,12 +3,15 @@ import logging
 import sqlite3
 from typing import Any
 
-from .data_model.data_model import Document, NamedEntity, Sentence
-from .data_model.schema import *
+from easyner.database.sqlite_backend.data_model.data_model import (
+    Document,
+    NamedEntity,
+    Sentence,
+)
+from easyner.database.sqlite_backend.data_model.schema import *
 
 
 class DBDataExchanger:
-
     def __init__(
         self,
         conn: sqlite3.Connection,

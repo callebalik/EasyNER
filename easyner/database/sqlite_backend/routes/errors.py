@@ -61,7 +61,7 @@ def init_error_handlers(app) -> None:
                     {
                         "error": "Internal Server Error",
                         "message": "An unexpected error occurred",
-                    },
+                    }
                 ),
                 500,
             )
@@ -86,7 +86,7 @@ def init_error_handlers(app) -> None:
                         "error": "Internal Server Error",
                         "message": "An unexpected error occurred",
                         "details": str(error) if app.debug else None,
-                    },
+                    }
                 ),
                 500,
             )
@@ -112,7 +112,7 @@ def init_error_handlers(app) -> None:
                         "error": "Visualization Error",
                         "message": error.message,
                         "details": error.details if app.debug else None,
-                    },
+                    }
                 ),
                 error.status_code,
             )
@@ -138,7 +138,7 @@ def init_error_handlers(app) -> None:
                         "error": "Visualization Error",
                         "message": error.message,
                         "details": error.details if app.debug else None,
-                    },
+                    }
                 ),
                 error.status_code,
             )

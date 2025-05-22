@@ -4,7 +4,10 @@ import time
 
 import schedule
 
-from ..core_classes import BaseLogger, DatabaseManager
+from easyner.database.sqlite_backend.core.core_classes import (
+    BaseLogger,
+    DatabaseManager,
+)
 
 
 class CleanupManager:

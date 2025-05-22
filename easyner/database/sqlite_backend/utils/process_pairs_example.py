@@ -32,15 +32,13 @@ def example_process_function(batch: list[dict], conn_params: dict) -> list[dict]
                 "text": row["text"].upper(),
                 "processed": True,
                 "length": len(row["text"]),
-            },
+            }
         )
     return processed_data
 
 
 def example_write_function(
-    batch: list[dict],
-    cursor: sqlite3.Cursor,
-    conn: sqlite3.Connection,
+    batch: list[dict], cursor: sqlite3.Cursor, conn: sqlite3.Connection
 ) -> None:
     """Example write function that writes processed data to a database.
 
@@ -75,7 +73,7 @@ def setup_example_database(db_path: str) -> None:
         id INTEGER PRIMARY KEY,
         text TEXT NOT NULL
     )
-    """,
+    """
     )
 
     # Create processed table
@@ -87,7 +85,7 @@ def setup_example_database(db_path: str) -> None:
         is_processed BOOLEAN NOT NULL,
         text_length INTEGER NOT NULL
     )
-    """,
+    """
     )
 
     # Insert sample data
@@ -102,8 +100,7 @@ def setup_example_database(db_path: str) -> None:
 
     for i, text in enumerate(sample_texts):
         cursor.execute(
-            "INSERT INTO source_texts (id, text) VALUES (?, ?)",
-            (i + 1, text),
+            "INSERT INTO source_texts (id, text) VALUES (?, ?)", (i + 1, text)
         )
 
     conn.commit()
@@ -155,7 +152,7 @@ def run_example() -> None:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT text, is_processed, text_length FROM processed_texts ORDER BY id",
+        "SELECT text, is_processed, text_length FROM processed_texts ORDER BY id"
     )
     results = cursor.fetchall()
 

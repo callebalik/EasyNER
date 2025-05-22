@@ -25,7 +25,7 @@ def init_routes(app, get_db, visualization_manager):
 
             if not hasattr(g, "_database_simple"):
                 db_path = current_app.config.get("SQLITE_DB_PATH") or app.config.get(
-                    "SQLITE_DB_PATH",
+                    "SQLITE_DB_PATH"
                 )
                 if not db_path:
                     # Try to get it from environment
@@ -37,7 +37,7 @@ def init_routes(app, get_db, visualization_manager):
 
     # Register routes using dependency injection - pass both connection functions
     register_disease_phenomena_routes(
-        app, get_db_simple_connection, visualization_manager,
+        app, get_db_simple_connection, visualization_manager
     )
 
     return app

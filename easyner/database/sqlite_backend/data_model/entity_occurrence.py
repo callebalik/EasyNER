@@ -8,10 +8,7 @@ import time
 from tqdm import tqdm
 
 from easyner.database.sqlite_backend.core.db_engine import ReaderWriterPair
-from easyner.database.sqlite_backend.db_main import BaseComponent, EasyNerDBHandler
-from easyner.infrastructure.paths import PROJECT_ROOT
-
-from .schema import (
+from easyner.database.sqlite_backend.data_model.schema import (
     ALPHA_COUNT,
     CLASS_ID,
     DOC_ID,
@@ -47,6 +44,8 @@ from .schema import (
     schema_create_table_ne_lookup,
     schema_create_table_sentences,
 )
+from easyner.database.sqlite_backend.db_main import BaseComponent, EasyNerDBHandler
+from easyner.infrastructure.paths import PROJECT_ROOT
 
 
 class SchemaManager(BaseComponent):
@@ -889,15 +888,8 @@ class SchemaManager(BaseComponent):
         self.logger.info("Validating documents and sentences migration...")
         validation = {
             "success": True,
-            "documents": {
-                "backup_exists": False,
-                "count_match": False,
-            },
-            "sentences": {
-                "backup_exists": False,
-                "count_match": False,
-                "orphaned": 0,
-            },
+            "documents": {"backup_exists": False, "count_match": False},
+            "sentences": {"backup_exists": False, "count_match": False, "orphaned": 0},
             "integrity": {"valid": True, "invalid_references": 0},
         }
 
@@ -1599,7 +1591,6 @@ class Preprocessor(BaseComponent):
         }
 
         try:
-
             # 1. Check if error_id column exists
             self.logger.info(f"Checking for {ERROR_ID} column in {TABLE_NE}")
             self.cursor.execute(f"PRAGMA table_info({TABLE_NE})")

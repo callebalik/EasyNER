@@ -472,7 +472,9 @@ class OperationMonitor:
             yield
 
     def monitor_exception(
-        self, exception: Exception, context: dict[str, Any] = None,
+        self,
+        exception: Exception,
+        context: dict[str, Any] = None,
     ) -> None:
         """Log an exception with context."""
         if context is None:
@@ -703,9 +705,7 @@ class ThreadMonitor:
 
             self.logger.debug(f"Registered thread {thread_id} ({name})")
 
-    def heartbeat(
-        self, status: str = "running", progress: float | None = None,
-    ) -> None:
+    def heartbeat(self, status: str = "running", progress: float | None = None) -> None:
         """Update thread heartbeat to indicate it's still alive."""
         with self.lock:
             thread_id = threading.get_ident()

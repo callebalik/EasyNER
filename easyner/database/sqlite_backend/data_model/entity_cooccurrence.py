@@ -39,10 +39,7 @@ from easyner.database.sqlite_backend.data_model.schema import (
     Index,
     View,
 )
-from easyner.database.sqlite_backend.db_main import (
-    BaseComponent,
-    EasyNerDBHandler,
-)
+from easyner.database.sqlite_backend.db_main import BaseComponent, EasyNerDBHandler
 
 logger = logging.getLogger("EasyNer")
 
@@ -193,7 +190,6 @@ class Cooccurrence:
 
 
 class SchemaManager(BaseComponent):
-
     def setup_tables(self) -> None:
         """Create tables for entity co-occurrence if they do not
         already exist.
@@ -1148,7 +1144,6 @@ class Aggregator(BaseComponent):
             return validation_result
 
     def update_unique_document_counts(self) -> None:
-
         self.logger.info("Updating unique document counts and frequencies...")
 
         query_with_view = f"""--sql

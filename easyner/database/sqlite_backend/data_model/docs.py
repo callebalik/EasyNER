@@ -73,7 +73,7 @@ class Docs:
                     self.cursor.execute(
                         """
                         WITH document_stats AS (
-                            SELECT 
+                            SELECT
                                 document_id,
                                 SUM(COALESCE(word_count, 0)) as total_words,
                                 SUM(COALESCE(token_count, 0)) as total_tokens,
@@ -84,20 +84,20 @@ class Docs:
                             HAVING total_words > 0 AND total_tokens > 0
                         )
                         UPDATE documents
-                        SET 
+                        SET
                             word_count = (
-                                SELECT total_words 
-                                FROM document_stats 
+                                SELECT total_words
+                                FROM document_stats
                                 WHERE document_stats.document_id = documents.id
                             ),
                             token_count = (
-                                SELECT total_tokens 
-                                FROM document_stats 
+                                SELECT total_tokens
+                                FROM document_stats
                                 WHERE document_stats.document_id = documents.id
                             ),
                             alpha_count = (
-                                SELECT total_alpha 
-                                FROM document_stats 
+                                SELECT total_alpha
+                                FROM document_stats
                                 WHERE document_stats.document_id = documents.id
                             )
                         WHERE id IN (%s)
@@ -152,7 +152,7 @@ class Docs:
         # Verify results and provide detailed statistics
         self.cursor.execute(
             """
-            SELECT 
+            SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN word_count IS NULL OR token_count IS NULL THEN 1 ELSE 0 END) as null_counts,
                 SUM(CASE WHEN word_count = 0 OR token_count = 0 THEN 1 ELSE 0 END) as zero_counts,
@@ -235,7 +235,7 @@ class Docs:
         # Verify results and provide detailed statistics
         self.cursor.execute(
             """
-            SELECT 
+            SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN word_count IS NULL OR token_count IS NULL THEN 1 ELSE 0 END) as null_counts,
                 SUM(CASE WHEN word_count = 0 OR token_count = 0 THEN 1 ELSE 0 END) as zero_counts,
@@ -263,8 +263,7 @@ class Docs:
             )
 
     def export_documents_to_json(self, doc_ids, output_path, metadata):
-        """Exports the given document IDs and metadata to a JSON file.
-        """
+        """Exports the given document IDs and metadata to a JSON file."""
         data = {"document_ids": doc_ids, "metadata": metadata}
         try:
             with open(output_path, "w") as f:
@@ -286,7 +285,7 @@ class Docs:
                 WHERE word_count IS NULL OR token_count IS NULL
                     OR word_count = 0 OR token_count = 0
             )
-            SELECT 
+            SELECT
                 p.id,
                 COUNT(*) OVER () as total_count,
                 SUM(CASE WHEN d.word_count IS NULL THEN 1 ELSE 0 END) OVER () as null_word_count,
@@ -355,7 +354,7 @@ class Docs:
                 WHERE word_count IS NULL OR token_count IS NULL
                     OR word_count = 0 OR token_count = 0
             )
-            SELECT 
+            SELECT
                 p.id,
                 COUNT(*) OVER () as total_count,
                 SUM(CASE WHEN d.word_count IS NULL THEN 1 ELSE 0 END) OVER () as null_word_count,

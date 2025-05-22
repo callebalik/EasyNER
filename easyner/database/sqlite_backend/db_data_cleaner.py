@@ -13,9 +13,8 @@ from easyner.database.sqlite_backend.data_model.schema import (
     TABLE_NE,
     TXT,
 )
+from easyner.database.sqlite_backend.db_data_exchanger import DBDataExchanger
 from easyner.infrastructure.paths import PROJECT_ROOT
-
-from .db_data_exchanger import DBDataExchanger
 
 
 class DBDataCleaner:
@@ -128,7 +127,6 @@ class DBDataCleaner:
         else:
             entity_id = self.data_exchanger.get_named_entity_class_id(entity_type)
         try:
-
             # Get all spans for entities of the specified type
             query = """
             SELECT

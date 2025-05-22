@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from .schema import *
+from easyner.database.sqlite_backend.data_model.schema import *
 
 
 @dataclass

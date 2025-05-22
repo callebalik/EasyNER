@@ -324,12 +324,7 @@ class CacheManager:
                 self.logger.error(f"Error retrieving all global values: {e}")
                 return default or {}
 
-    def set_global(
-        self,
-        name: str,
-        value: Any,
-        ttl_seconds: int | None = None,
-    ) -> bool:
+    def set_global(self, name: str, value: Any, ttl_seconds: int | None = None) -> bool:
         """Set a global cache value with optional expiration.
 
         Args:

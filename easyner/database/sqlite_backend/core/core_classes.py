@@ -3,8 +3,8 @@ import os
 import sqlite3
 import time
 
-from .db_manager import DatabaseManager
-from .logger import BaseLogger
+from easyner.database.sqlite_backend.core.db_manager import DatabaseManager
+from easyner.database.sqlite_backend.core.logger import BaseLogger
 
 
 class BaseExecutor:

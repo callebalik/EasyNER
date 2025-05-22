@@ -6,10 +6,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from easyner.database.sqlite_backend.core.db_engine import ReaderWriterPair
+from easyner.database.sqlite_backend.data_model.schema import *
 from easyner.database.sqlite_backend.db_main import EasyNerDBHandler
-
-from ..core.db_engine import ReaderWriterPair
-from .schema import *
 
 
 class EntityOccurrence:
@@ -60,13 +59,11 @@ class EntityOccurrence:
                     )"""
 
     def create_entity_occurrences_table(self) -> None:
-        """Create the entity_occurrences table.
-        """
+        """Create the entity_occurrences table."""
         self.cursor.execute(self.stmt_table_ne)
 
     def migrate_old_entity_occurences_table(self) -> None:
-        """Migrate old entity_occurrences table to new table structure.
-        """
+        """Migrate old entity_occurrences table to new table structure."""
         self.cursor.execute(
             f"""--sql
             INSERT INTO {TABLE_NE}
@@ -167,8 +164,7 @@ class EntityOccurrence:
     """
 
     def generate_lookup_table_for_normalized_entities(self, target_table=None) -> None:
-        """Create a temporary table with normalized entity text and entity_id.
-        """
+        """Create a temporary table with normalized entity text and entity_id."""
         try:
             self.logger.info(
                 f"Generating {TABLE_NE} --> lookup table: {TABLE_NE_LOOKUP} for normalized entity texts",
@@ -208,7 +204,9 @@ class EntityOccurrence:
             )
 
     def validate_normalized_entities(
-        self, eo_table=TABLE_NE, target_table=TABLE_NE_LOOKUP,
+        self,
+        eo_table=TABLE_NE,
+        target_table=TABLE_NE_LOOKUP,
     ) -> None:
         # Use reader writer pair to validate normalized entities, i.e. all entity_ids in entiry_occurrences, filtered for error_id, and overlap, should be present in the lookup table
         self.logger.info(
@@ -268,10 +266,8 @@ class EntityOccurrence:
         process_function=None,
         write_function=None,
     ):
-
         def validate_table_column(table_name, column_name):
-            """Check if a column exists in a table.
-            """
+            """Check if a column exists in a table."""
             self.cursor.execute(
                 f"""
                 SELECT COUNT(*)
@@ -413,7 +409,8 @@ class EntityOccurrence:
             ) as pbar:
                 while True:
                     self.cursor.execute(
-                        sql_remove_leading_quote_space_batched, (batch_size, offset),
+                        sql_remove_leading_quote_space_batched,
+                        (batch_size, offset),
                     )
                     row_count = self.cursor.rowcount
                     if row_count == 0:
@@ -592,7 +589,8 @@ class EntityOccurrence:
             """
 
             self.log_query_plan(
-                reader_query_eo_lookup_backref, params={"limit": 100, "offset": 0},
+                reader_query_eo_lookup_backref,
+                params={"limit": 100, "offset": 0},
             )
 
             total_records = self.cursor.execute(
@@ -645,8 +643,7 @@ class EntityOccurrence:
             raise
 
     def create_view_entity_occurrences(self) -> None:
-        """Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data.
-        """
+        """Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data."""
         try:
             self.logger.info(f"Creating {VIEW_NE} view...")
 
@@ -680,8 +677,7 @@ class EntityOccurrence:
             raise
 
     def create_view__comp__txt(self) -> None:
-        """Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data.
-        """
+        """Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data."""
         try:
             self.logger.info(f"Creating {VIEW_NE} view...")
 
@@ -717,8 +713,7 @@ class EntityOccurrence:
             raise
 
     def create_view_raw_entity_occurrences(self) -> None:
-        """Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data.
-        """
+        """Creates a view that joins entity occurrences with other tables to provide a comprehensive view of the data."""
         try:
             self.logger.info(f"Creating {VIEW_NE_RAW} view...")
 
@@ -753,8 +748,7 @@ class EntityOccurrence:
             raise
 
     def create_view_ne_compiled(self) -> None:
-        """Create view with compiled entity information for easy access and computations.
-        """
+        """Create view with compiled entity information for easy access and computations."""
         try:
             self.logger.info("Creating view_ne_compiled view...")
             self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_NE_COMP}")
@@ -790,8 +784,7 @@ class EntityOccurrence:
             raise
 
     def create_view_ne_stats(self) -> None:
-        """Create view with compiled entity information for easy access and computations.
-        """
+        """Create view with compiled entity information for easy access and computations."""
         try:
             self.logger.info("Creating view_ne_compiled view...")
             self.cursor.execute(f"DROP VIEW IF EXISTS {VIEW_NE_STATS}")
@@ -970,8 +963,7 @@ class EntityOccurrence:
             raise
 
     def stats_aggregated_threaded(self) -> None:
-        """Calculates statistics based on the aggregated entities in the compiled view using ReaderWriterPair.
-        """
+        """Calculates statistics based on the aggregated entities in the compiled view using ReaderWriterPair."""
         try:
             self.logger.info("Creating indexes for optimized queries...")
 
@@ -1089,8 +1081,7 @@ class EntityOccurrence:
         self.logger.info("Aggregated entity statistics calculated and updated.")
 
     def calc_intra_doc_fq(self) -> None:
-        """For each entity, calculate the frequency of the entity within each document.
-        """
+        """For each entity, calculate the frequency of the entity within each document."""
         try:
             self.logger.info("Calculating intra-document frequencies for entities...")
 
@@ -1259,7 +1250,9 @@ class EntityCooccurence:
         self.conn_params_dict = conn_params_dict
 
     def record_entity_cooccurrences(
-        self, level: str = "document", ignore_error_occurrencess: bool = True,
+        self,
+        level: str = "document",
+        ignore_error_occurrencess: bool = True,
     ) -> None:
         """Updated version enforcing e1_id <= e2_id schema constraint.
         Identifies and records unique co-occurrences of named entities at the
@@ -1394,7 +1387,9 @@ class EntityCooccurence:
         )
 
     def co_aggregate_old(
-        self, batch_size=50000, ignore_entities_with_error_codes: bool = True,
+        self,
+        batch_size=50000,
+        ignore_entities_with_error_codes: bool = True,
     ) -> None:
         """Aggregate entity cooccurrences based on normalized entity IDs from entity_occurrences_summary.
         Uses existing relationships through entity_occurrences.{COL_NE_NORM_ID} to get normalized IDs.
@@ -1611,10 +1606,10 @@ class EntityCooccurence:
         pass
 
     def co_aggregate_single_function(
-        self, ignore_entities_with_error_codes: bool = True,
+        self,
+        ignore_entities_with_error_codes: bool = True,
     ) -> None:
-        """Aggregate entity cooccurrences in a single function call (no batching).
-        """
+        """Aggregate entity cooccurrences in a single function call (no batching)."""
         self.logger.info("Starting single-function cooccurrence aggregation...")
 
         ignore_error_code_condition_eo1 = (
@@ -1668,7 +1663,9 @@ class EntityCooccurence:
 
         # --- Write function (similar to batched version) ---
         def aggregation_write_function(
-            batch, cursor_param, conn_param,
+            batch,
+            cursor_param,
+            conn_param,
         ):  # Simplified write function
             """Writes aggregated co-occurrence data to entity_cooccurrences_summary."""
             sql = f"""--sql
@@ -1680,7 +1677,9 @@ class EntityCooccurence:
             cursor_param.executemany(sql, batch)
 
         aggregation_write_function(
-            aggregated_data, cursor, conn,
+            aggregated_data,
+            cursor,
+            conn,
         )  # Write all aggregated data
 
         conn.commit()

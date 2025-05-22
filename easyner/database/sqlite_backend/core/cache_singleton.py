@@ -44,9 +44,7 @@ def set_cache_manager_connection(conn, cursor, logger=None):
     return cache_mgr
 
 
-def cached(
-    ttl_seconds: int | None = 3600, prefix: str = None, overwrite: bool = True,
-):
+def cached(ttl_seconds: int | None = 3600, prefix: str = None, overwrite: bool = True):
     """Global cached decorator that works without explicit CacheManager instantiation.
     If the cache manager is not fully initialized when this decorator is used,
     it will fall back to a pass-through execution of the function.
@@ -125,7 +123,10 @@ def cached(
 
                 # Store in cache
                 cache_mgr.set(
-                    cache_key, result, ttl_seconds=ttl_seconds, overwrite=overwrite,
+                    cache_key,
+                    result,
+                    ttl_seconds=ttl_seconds,
+                    overwrite=overwrite,
                 )
 
                 # Record performance metrics if possible
