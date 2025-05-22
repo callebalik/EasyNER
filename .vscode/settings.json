@@ -64,4 +64,9 @@
   },
   "ruff.fixAll": true,
   "ruff.organizeImports": true,
+  "black-formatter.importStrategy": "fromEnvironment",
+  "black-formatter.args": [
+    "--config",
+    "${workspaceFolder}/pyproject.toml"
+  ],
 }
