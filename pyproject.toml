@@ -47,7 +47,15 @@ addopts = [
 # --sw, --stepwise Exit on test failure and continue from last failing test next time
 
 [tool.black]
+# --python-cell-magics
+# When processing Jupyter Notebooks, add the given magic to the list of known python- magics. Useful for formatting cells with custom python magics.
+
 line-length = 88
+# skip-magic-trailing-comma = true
+# This nicely compacts code, but conflicts with ruff as it removes trailing commas from one line expansions
+#  synchronous: str = Field(
+#         "NORMAL", description="NORMAL for balanced safety/performance"   (missing trailing comma after format autosave)
+#     )
 target-version = ['py312']
 include = '\.pyi?$'
 exclude = '''
@@ -68,6 +76,9 @@ exclude = '''
 profile = "black"
 line_length = 88
 
+[tool.coverage.run]
+relative_files = true
+branch = true
 
 [tool.mypy]
 python_version = "3.9"
