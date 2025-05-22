@@ -81,7 +81,10 @@ relative_files = true
 branch = true
 
 [tool.mypy]
-python_version = "3.9"
+# Specify the target platform details in config, so your developers are
+# free to run mypy on Windows, Linux, or macOS and get consistent
+# results.
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
