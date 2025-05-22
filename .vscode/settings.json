@@ -47,7 +47,13 @@
   "mypy.runUsingActiveInterpreter": true,
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter",
-    "editor.wordBasedSuggestions": "matchingDocuments"
+    "editor.wordBasedSuggestions": "matchingDocuments",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.pylance": "always",
+      "source.convertImportFormat": "always",
+      "source.organizeImports.ruff": "always",
+      "source.fixAll.ruff": "always"
+    }
   },
   "flake8.enabled": false,
   "flake8.ignorePatterns": [
