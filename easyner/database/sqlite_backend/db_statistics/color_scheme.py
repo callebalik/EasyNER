@@ -95,6 +95,39 @@ def convert_color_to_rgb(color_str: str) -> str:
         return color_str
 
 
+def mix_hsl_colors(
+    color1: str,
+    color2: str,
+    weight: float,
+) -> str:
+    """Mix two HSL colors.
+
+    Args:
+        color1 (str): First color in HSL format
+        color2 (str): Second color in HSL format
+        weight (float): Weight for the first color (0-1)
+
+    Returns:
+        str: Mixed color in HSL format
+
+    """
+    # Extract h, s, l values using regex
+    match1 = re.match(r"hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)", color1)
+    match2 = re.match(r"hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)", color2)
+
+    if match1 and match2:
+        h1, s1, l1 = map(float, match1.groups())
+        h2, s2, l2 = map(float, match2.groups())
+
+        h = (h1 * weight + h2 * (1 - weight)) % 360
+        s = s1 * weight + s2 * (1 - weight)
+        l = l1 * weight + l2 * (1 - weight)
+
+        return f"hsl({int(h)}, {int(s)}%, {int(l)}%)"
+    else:
+        return "hsl(128, 128%, 128%)"  # Default gray if parsing fails
+
+
 def get_matplotlib_color(
     color_str: str,
 ) -> str | tuple[float, float, float, float]:
@@ -139,9 +172,13 @@ def get_matplotlib_color(
 NODE_COLOR_TOTAL_DOCUMENTS = "hsl(0, 5%, 76%)"  # Light gray for Total Documents
 NODE_COLOR_WITH_ENTITIES = "hsl(171, 18%, 63%)"  # Tan/gold for With Named Entities
 NODE_COLOR_WITHOUT_ENTITIES = "hsl(142, 6%, 35%)"  # Green for Without Named Entities
-NODE_COLOR_DIS_ONLY = "hsl(12, 48%, 43%)"  # Intense pink/red for DIS Only
-NODE_COLOR_PNM_ONLY = "hsl(38, 100%, 68%)"  # Light green for PNM Only
-NODE_COLOR_BOTH_DIS_PNM = "hsl(230, 55%, 65%)"  # Mixed color for Both
+NODE_COLOR_DIS_ONLY = "hsl(0, 35%, 44%)"  # Intense pink/red for DIS Only
+NODE_COLOR_PNM_ONLY = "hsl(45, 56%, 55%)"  # Yellow for PNM Only
+NODE_COLOR_BOTH_DIS_PNM = mix_hsl_colors(
+    NODE_COLOR_DIS_ONLY,
+    NODE_COLOR_PNM_ONLY,
+    0.5,
+)  # Mixed color for Both
 NODE_COLOR_DEFAULT = "rgba(150, 150, 150, 0.8)"  # Default gray
 
 # Link colors
