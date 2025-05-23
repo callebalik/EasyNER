@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+from typing import Optional
 
 import pandas as pd
 import seaborn as sns
@@ -10,6 +11,21 @@ from pandas import DataFrame
 # We use this decorator as an instance method of CacheManager
 # So we need to create a cache_manager instance to use its cached decorator
 from easyner.database.sqlite_backend.core.cache_singleton import cached
+from easyner.database.sqlite_backend.data_model.schema import (
+    CLASS_ID,
+    DOC_ID,
+    ERROR_ID,
+    NE_CLASS,
+    NE_OVERLAP,
+    SENT_IDX,
+    TABLE_DIS_PNM,
+    TABLE_DOCS,
+    TABLE_NE,
+    TABLE_NE_CLASS,
+    TABLE_SENTENCES,
+    VIEW_NE_CLEAN,
+    VIEW_NE_COMP,
+)
 from easyner.database.sqlite_backend.db_data_exchanger import DBDataExchanger
 
 
@@ -572,7 +588,7 @@ class DBStatistics:
         self,
         sort_by: str = "pmi",
         ascending: bool = False,
-        rows: int = None,
+        rows: int | None = None,
     ) -> None:
         """Write disease-phenomenon co-occurrences to a CSV file using the view_disease_phenomena_summary.
 
