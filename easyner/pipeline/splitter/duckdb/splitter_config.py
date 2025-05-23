@@ -8,9 +8,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database path
-DB_PATH = os.getenv("DB_PATH")
+DB_PATH = os.getenv("DUCKDB__DB_PATH")
 if DB_PATH is None or DB_PATH.strip() == "":
-    msg = "DB_PATH environment variable is not set."
+    msg = "DUCKDB__DB_PATH environment variable is not set."
     raise ValueError(msg)
 
 # Database and table settings
@@ -39,13 +39,13 @@ CREATE TABLE IF NOT EXISTS {SENTENCES_TABLE} (
 SPACY_MODEL = "en_core_web_sm"  # Same sentence performance as en_core_web_md
 SPACY_EXCLUDE_COMPONENTS = ["ner", "attribute_ruler", "lemmatizer", "tagger"]
 N_PROCESS = 32  # Number of parallel spaCy processes
-SPACY_BATCH_SIZE = 30000
+SPACY_BATCH_SIZE = 10000
 
 # Processing parameters
-BATCH_SIZE = 60000  # Batch size for reading from DuckDB
-MEM_THRESHOLD_MB = 25000  # 25GB memory threshold
+BATCH_SIZE = 800000  # Batch size for reading from DuckDB
+MEM_THRESHOLD_MB = 40000  # 40GB memory threshold
 # Use multiple spacy model processes
 # These might run multiprocessing themselves. Carefully monitor memory
 MULTIPROCESSING = True
-MAX_PIPELINES = 2  # Number of pipelines to run in parallel
-MAX_INTERNAL_PROCESS_IF_MULTIPROCESSING = 2
+MAX_PIPELINES = 48  # Number of pipelines to run in parallel
+MAX_INTERNAL_PROCESS_IF_MULTIPROCESSING = 1
