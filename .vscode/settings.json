@@ -66,4 +66,5 @@
     "--config",
     "${workspaceFolder}/pyproject.toml"
   ],
+  "python.terminal.activateEnvironment": false, // On distributed system where anaconda module has to be loaded this should be set to false as it will otherwise cause failures or inconsistencises as vscode tries to contribute the env before conda is activated. Which can lead to conda version problems.
 }
